@@ -94,7 +94,9 @@ function SupervisorDashboard() {
 
   const departmentTasks = tasks.filter((task) => {
     const worker = users.find((u) => u.id === task.assigned_to_user_id)
-    return worker?.department === user?.department
+    const taskDepartment = task.department || worker?.department
+    if (!user?.department) return true
+    return taskDepartment === user.department
   })
 
   const filteredTasks = departmentTasks.filter((task) => {

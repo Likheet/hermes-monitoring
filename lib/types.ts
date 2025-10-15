@@ -41,6 +41,7 @@ export interface Task {
   task_type: string
   priority_level: PriorityLevel
   status: TaskStatus
+  department: Department
   assigned_to_user_id: string
   assigned_by_user_id: string
   assigned_at: DualTimestamp

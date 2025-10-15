@@ -3,7 +3,6 @@
 import { ProtectedRoute } from "@/components/protected-route"
 import { useAuth } from "@/lib/auth-context"
 import { useTasks } from "@/lib/task-context"
-import { mockUsers } from "@/lib/mock-data"
 import { Button } from "@/components/ui/button"
 import { ArrowLeft } from "lucide-react"
 import { useRouter } from "next/navigation"
@@ -13,20 +12,22 @@ import { calculateDepartmentStats, calculateWorkerPerformance, getTasksByPriorit
 
 function AnalyticsDashboard() {
   const { user } = useAuth()
-  const { tasks } = useTasks()
+  const { tasks, users } = useTasks()
   const router = useRouter()
 
   // Filter tasks by department
   const departmentTasks = tasks.filter((task) => {
-    const worker = mockUsers.find((u) => u.id === task.assigned_to_user_id)
-    return worker?.department === user?.department
+    const worker = users.find((u) => u.id === task.assigned_to_user_id)
+    const taskDepartment = task.department || worker?.department
+    if (!user?.department) return true
+    return taskDepartment === user.department
   })
 
   const departmentStats = calculateDepartmentStats(departmentTasks)
   const priorityBreakdown = getTasksByPriority(departmentTasks)
 
   // Get worker performance
-  const departmentWorkers = mockUsers.filter((u) => u.role === "worker" && u.department === user?.department)
+  const departmentWorkers = users.filter((u) => u.role === "worker" && u.department === user?.department)
   const workerPerformance = departmentWorkers.map((worker) =>
     calculateWorkerPerformance(departmentTasks, worker.id, worker.name),
   )
