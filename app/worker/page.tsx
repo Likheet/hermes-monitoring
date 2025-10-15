@@ -19,6 +19,7 @@ import { useEffect, useState } from "react"
 import { BottomNav } from "@/components/mobile/bottom-nav"
 import { MaintenanceCalendar } from "@/components/maintenance/maintenance-calendar"
 import type { MaintenanceTask } from "@/lib/maintenance-types"
+import { TASK_TYPE_LABELS } from "@/lib/maintenance-types"
 import type { TaskCompletionData } from "@/components/maintenance/room-task-modal"
 import { formatDistanceToNow } from "date-fns"
 import { cn } from "@/lib/utils"
@@ -83,6 +84,51 @@ function WorkerDashboard() {
   const myMaintenanceTasks = (maintenanceTasks || []).filter(
     (t) => t.assigned_to === user?.id && (t.status === "in_progress" || t.status === "paused"),
   )
+
+  const getMaintenanceTaskLabel = (task: MaintenanceTask) =>
+    TASK_TYPE_LABELS[task.task_type] ?? task.task_type.replace(/_/g, " ")
+
+  const getMaintenanceTaskTimestamp = (task: MaintenanceTask) => {
+    const timestamps = [task.paused_at, task.started_at, task.completed_at, task.created_at]
+      .filter(Boolean)
+      .map((value) => new Date(value!).getTime())
+      .filter((time) => !Number.isNaN(time))
+
+    return timestamps.length > 0 ? Math.max(...timestamps) : 0
+  }
+
+  const getPrimaryMaintenanceTimestamp = (task: MaintenanceTask) => {
+    if (task.status === "in_progress" && task.started_at) return task.started_at
+    if (task.status === "paused" && task.paused_at) return task.paused_at
+    if (task.started_at) return task.started_at
+    return task.created_at
+  }
+
+  const currentMaintenanceTask = myMaintenanceTasks.length
+    ? [...myMaintenanceTasks]
+        .sort((a, b) => {
+          const statusPriority = (status: MaintenanceTask["status"]) => (status === "in_progress" ? 0 : 1)
+          const statusDiff = statusPriority(a.status) - statusPriority(b.status)
+          if (statusDiff !== 0) return statusDiff
+
+          return getMaintenanceTaskTimestamp(b) - getMaintenanceTaskTimestamp(a)
+        })[0]
+    : null
+
+  const maintenanceTaskStatusLabel: Record<MaintenanceTask["status"], string> = {
+    pending: "Pending",
+    in_progress: "In Progress",
+    paused: "Paused",
+    completed: "Completed",
+  }
+
+  const handleNavigateToMaintenanceTask = (task: MaintenanceTask) => {
+    if (!task.room_number) return
+
+    router.push(
+      `/worker/maintenance/${task.room_number}/${task.task_type}/${encodeURIComponent(task.location)}`,
+    )
+  }
 
   useEffect(() => {
     console.log("[v0] Worker status check:", {
@@ -631,6 +677,66 @@ function WorkerDashboard() {
                   <strong>Urgent Guest Request!</strong> A new high-priority task has been assigned to you.
                 </AlertDescription>
               </Alert>
+            )}
+
+            {user?.department === "Maintenance" && currentMaintenanceTask && currentMaintenanceTask.room_number && (
+              <Card
+                className="cursor-pointer border-accent/60 bg-accent/10 transition-colors hover:bg-accent/20"
+                onClick={() => handleNavigateToMaintenanceTask(currentMaintenanceTask)}
+              >
+                <CardContent className="p-6 flex flex-col gap-3">
+                  <div className="flex items-center justify-between gap-4 flex-wrap">
+                    <div>
+                      <p className="text-xs font-medium uppercase text-muted-foreground tracking-wide">
+                        {currentMaintenanceTask.status === "in_progress"
+                          ? "Currently Working On"
+                          : "Paused Maintenance Task"}
+                      </p>
+                      <h2 className="text-xl font-semibold text-foreground">
+                        {getMaintenanceTaskLabel(currentMaintenanceTask)}
+                      </h2>
+                      <p className="text-sm text-muted-foreground">
+                        Room {currentMaintenanceTask.room_number}
+                        {currentMaintenanceTask.location && ` • ${currentMaintenanceTask.location}`}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge
+                        variant={currentMaintenanceTask.status === "in_progress" ? "default" : "outline"}
+                        className="text-xs"
+                      >
+                        {maintenanceTaskStatusLabel[currentMaintenanceTask.status]}
+                      </Badge>
+                      {(() => {
+                        const timestamp = getPrimaryMaintenanceTimestamp(currentMaintenanceTask)
+                        if (!timestamp) return null
+
+                        const date = new Date(timestamp)
+                        if (Number.isNaN(date.getTime())) return null
+
+                        return (
+                          <span className="text-xs text-muted-foreground">
+                            {currentMaintenanceTask.status === "paused" ? "Paused" : "Started"}{" "}
+                            {formatDistanceToNow(date, { addSuffix: true })}
+                          </span>
+                        )
+                      })()}
+                    </div>
+                  </div>
+
+                  <p className="text-sm text-muted-foreground">
+                    {currentMaintenanceTask.status === "in_progress"
+                      ? "Tap to jump back into your active maintenance task."
+                      : "This task is paused. Tap to resume when you're ready."}
+                  </p>
+
+                  <div>
+                    <Button size="sm" variant="secondary" className="pointer-events-none">
+                      Go to task
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
             )}
 
             {user?.department === "Maintenance" && totalRooms > 0 && (
