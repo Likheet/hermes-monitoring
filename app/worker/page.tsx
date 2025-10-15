@@ -120,8 +120,8 @@ function WorkerDashboard() {
     return task.created_at
   }
 
-  const currentMaintenanceTask = myMaintenanceTasks.length
-    ? [...myMaintenanceTasks].sort((a, b) => {
+  const currentMaintenanceTask = myActiveMaintenanceTasks.length
+    ? [...myActiveMaintenanceTasks].sort((a, b) => {
         const statusPriority = (status: MaintenanceTask["status"]) => (status === "in_progress" ? 0 : 1)
         const statusDiff = statusPriority(a.status) - statusPriority(b.status)
         if (statusDiff !== 0) return statusDiff
@@ -154,10 +154,8 @@ function WorkerDashboard() {
       maintenanceTasks: {
         total: maintenanceTasks?.length || 0,
         myActive: myActiveMaintenanceTasks.length,
-        details: myActiveMaintenanceTasks.map((t) => ({
-        myActive: myMaintenanceTasks.length,
         myCompleted: myCompletedMaintenanceTasks.length,
-        details: myMaintenanceTasks.map((t) => ({
+        details: myMaintenanceAssignments.map((t) => ({
           id: t.id,
           room: t.room_number,
           type: t.task_type,
@@ -167,8 +165,7 @@ function WorkerDashboard() {
       workerStatus:
         inProgressTasks.length > 0 || myActiveMaintenanceTasks.length > 0 ? "BUSY" : "AVAILABLE",
     })
-  }, [myTasks, myActiveMaintenanceTasks, maintenanceTasks, user?.id])
-  }, [myTasks, maintenanceTasks, user?.id, myCompletedMaintenanceTasks.length])
+  }, [myTasks, maintenanceTasks, user?.id])
 
   const activeMaintenanceByRoom = myActiveMaintenanceTasks.reduce(
     (acc, task) => {
@@ -468,7 +465,7 @@ function WorkerDashboard() {
                   key={tab.value}
                   variant={tasksFilter === tab.value ? "default" : "outline"}
                   size="sm"
-                  onClick={() => setTasksFilter(tab.value as any)}
+                  onClick={() => setTasksFilter(tab.value as typeof tasksFilter)}
                   className="whitespace-nowrap"
                 >
                   {tab.label}
@@ -728,9 +725,6 @@ function WorkerDashboard() {
               </Alert>
             )}
 
-            {user?.department?.toLowerCase() === "maintenance" &&
-              currentMaintenanceTask &&
-              currentMaintenanceTask.room_number && (
             {isMaintenanceUser && currentMaintenanceTask && currentMaintenanceTask.room_number && (
               <Card
                 className="cursor-pointer border-2 border-accent bg-accent/20 shadow-lg transition-all hover:shadow-xl hover:border-accent/80"
@@ -784,22 +778,6 @@ function WorkerDashboard() {
               </Card>
             )}
 
-            {user?.department?.toLowerCase() === "maintenance" && totalRooms > 0 && (
-            {(() => {
-              console.log("[v0] Home view state:", {
-                hasCurrentMaintenanceTask: !!currentMaintenanceTask,
-                currentMaintenanceTaskRoom: currentMaintenanceTask?.room_number,
-                myMaintenanceTasksCount: myMaintenanceTasks.length,
-                myTasksCount: myTasks.length,
-                inProgressTasksCount: inProgressTasks.length,
-                pendingTasksCount: pendingTasks.length,
-                completedTasksCount: completedTasks.length,
-                completedMaintenanceTasksCount: myCompletedMaintenanceTasks.length,
-                totalCompletedCount: completedTasks.length + myCompletedMaintenanceTasks.length,
-              })
-              return null
-            })()}
-
             {isMaintenanceUser && totalRooms > 0 && (
               <Card className="bg-primary/5 border-primary/20">
                 <CardContent className="p-6">
@@ -824,7 +802,6 @@ function WorkerDashboard() {
               </Card>
             )}
 
-            {user?.department?.toLowerCase() === "maintenance" && nearbyRooms.length > 0 && (
             {isMaintenanceUser && nearbyRooms.length > 0 && (
               <section>
                 <h2 className="text-base md:text-lg font-semibold mb-3">💡 Smart Suggestions</h2>
@@ -863,7 +840,6 @@ function WorkerDashboard() {
               </section>
             )}
 
-            {user?.department?.toLowerCase() === "maintenance" && Object.keys(activeMaintenanceByRoom).length > 0 && (
             {isMaintenanceUser && Object.keys(activeMaintenanceByRoom).length > 0 && (
               <section>
                 <h2 className="text-base md:text-lg font-semibold mb-3 text-black">🔧 Active Maintenance Tasks</h2>
@@ -1039,13 +1015,11 @@ function WorkerDashboard() {
             </h1>
             {activeTab !== "scheduled" && (
               <p className="text-xs md:text-sm text-muted-foreground">
-                {user?.name} - {user?.department}
-                {(inProgressTasks.length > 0 || myActiveMaintenanceTasks.length > 0) && (
                 {user?.name}
                 {departmentDisplay && (
                   <span className="ml-1 text-muted-foreground">- {departmentDisplay}</span>
                 )}
-                {(inProgressTasks.length > 0 || myMaintenanceTasks.length > 0) && (
+                {(inProgressTasks.length > 0 || myActiveMaintenanceTasks.length > 0) && (
                   <span className="ml-2 text-accent font-medium">● Busy</span>
                 )}
                 {inProgressTasks.length === 0 && myActiveMaintenanceTasks.length === 0 && (
