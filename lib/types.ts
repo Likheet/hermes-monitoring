@@ -19,6 +19,9 @@ export interface User {
   department: Department
   shift_start: string // Format: "HH:MM" (24-hour format)
   shift_end: string // Format: "HH:MM" (24-hour format)
+  has_break: boolean
+  break_start?: string // Format: "HH:MM" (24-hour format)
+  break_end?: string // Format: "HH:MM" (24-hour format)
   is_available: boolean
 }
 
@@ -26,6 +29,11 @@ export interface PauseRecord {
   paused_at: DualTimestamp
   resumed_at: DualTimestamp | null
   reason: string
+}
+
+export interface CategorizedPhotos {
+  room_photos: string[] // Full-room photos post-service
+  proof_photos: string[] // Proof-of-completion photos
 }
 
 export interface Task {
@@ -40,7 +48,8 @@ export interface Task {
   completed_at: DualTimestamp | null
   expected_duration_minutes: number
   actual_duration_minutes: number | null
-  photo_url: string | null
+  photo_urls: string[] // Deprecated - keeping for backward compatibility
+  categorized_photos: CategorizedPhotos | null
   photo_required: boolean
   worker_remark: string
   supervisor_remark: string

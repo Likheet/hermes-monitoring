@@ -6,18 +6,18 @@ import Link from "next/link"
 import { formatTimestamp, calculateDuration } from "@/lib/date-utils"
 
 const priorityColors = {
-  GUEST_REQUEST: "bg-red-500 text-white",
-  TIME_SENSITIVE: "bg-orange-500 text-white",
-  DAILY_TASK: "bg-blue-500 text-white",
-  PREVENTIVE_MAINTENANCE: "bg-green-500 text-white",
+  GUEST_REQUEST: "bg-destructive text-destructive-foreground",
+  TIME_SENSITIVE: "bg-accent text-accent-foreground",
+  DAILY_TASK: "bg-muted text-muted-foreground",
+  PREVENTIVE_MAINTENANCE: "bg-secondary text-secondary-foreground",
 }
 
 const statusColors = {
-  PENDING: "bg-yellow-500",
-  IN_PROGRESS: "bg-blue-500",
-  PAUSED: "bg-orange-500",
-  COMPLETED: "bg-green-500",
-  REJECTED: "bg-red-500",
+  PENDING: "bg-muted",
+  IN_PROGRESS: "bg-primary",
+  PAUSED: "bg-accent",
+  COMPLETED: "bg-secondary",
+  REJECTED: "bg-destructive",
 }
 
 interface TaskCardProps {

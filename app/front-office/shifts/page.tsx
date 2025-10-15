@@ -8,7 +8,8 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { ArrowLeft, Clock, Save } from "lucide-react"
+import { Switch } from "@/components/ui/switch"
+import { ArrowLeft, Clock, Save, Coffee } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { useToast } from "@/hooks/use-toast"
 import { calculateShiftHours, formatShiftRange } from "@/lib/date-utils"
@@ -21,13 +22,35 @@ function ShiftManagement() {
 
   const workers = users.filter((u) => u.role === "worker")
 
-  const [editingShifts, setEditingShifts] = useState<Record<string, { start: string; end: string }>>(
-    Object.fromEntries(workers.map((w) => [w.id, { start: w.shift_start, end: w.shift_end }])),
+  const [editingShifts, setEditingShifts] = useState<
+    Record<
+      string,
+      {
+        start: string
+        end: string
+        hasBreak: boolean
+        breakStart: string
+        breakEnd: string
+      }
+    >
+  >(
+    Object.fromEntries(
+      workers.map((w) => [
+        w.id,
+        {
+          start: w.shift_start,
+          end: w.shift_end,
+          hasBreak: w.has_break || false,
+          breakStart: w.break_start || "12:00",
+          breakEnd: w.break_end || "13:00",
+        },
+      ]),
+    ),
   )
 
   const handleSaveShift = (workerId: string) => {
     const shift = editingShifts[workerId]
-    updateWorkerShift(workerId, shift.start, shift.end, user!.id)
+    updateWorkerShift(workerId, shift.start, shift.end, user!.id, shift.hasBreak, shift.breakStart, shift.breakEnd)
     toast({
       title: "Shift Updated",
       description: "Worker shift timing has been updated successfully",
@@ -38,7 +61,39 @@ function ShiftManagement() {
     const worker = workers.find((w) => w.id === workerId)
     if (!worker) return false
     const edited = editingShifts[workerId]
-    return edited.start !== worker.shift_start || edited.end !== worker.shift_end
+    return (
+      edited.start !== worker.shift_start ||
+      edited.end !== worker.shift_end ||
+      edited.hasBreak !== (worker.has_break || false) ||
+      edited.breakStart !== (worker.break_start || "12:00") ||
+      edited.breakEnd !== (worker.break_end || "13:00")
+    )
+  }
+
+  const calculateWorkingHours = (
+    start: string,
+    end: string,
+    hasBreak: boolean,
+    breakStart: string,
+    breakEnd: string,
+  ) => {
+    const totalHours = calculateShiftHours(start, end)
+    if (!hasBreak) return totalHours
+
+    // Calculate break duration
+    const [breakStartHour, breakStartMin] = breakStart.split(":").map(Number)
+    const [breakEndHour, breakEndMin] = breakEnd.split(":").map(Number)
+    const breakMinutes = breakEndHour * 60 + breakEndMin - (breakStartHour * 60 + breakStartMin)
+    const breakHours = breakMinutes / 60
+
+    // Parse total hours to subtract break
+    const hoursMatch = totalHours.match(/(\d+\.?\d*)\s*hours?/)
+    if (hoursMatch) {
+      const total = Number.parseFloat(hoursMatch[1])
+      const working = total - breakHours
+      return `${working.toFixed(1)} hours (${breakHours.toFixed(1)}h break)`
+    }
+    return totalHours
   }
 
   return (
@@ -50,7 +105,7 @@ function ShiftManagement() {
           </Button>
           <div>
             <h1 className="text-2xl font-bold">Shift Management</h1>
-            <p className="text-sm text-muted-foreground">Manage worker shift timings</p>
+            <p className="text-sm text-muted-foreground">Manage worker shift timings and breaks</p>
           </div>
         </div>
       </header>
@@ -59,7 +114,13 @@ function ShiftManagement() {
         <div className="grid gap-4 md:grid-cols-2">
           {workers.map((worker) => {
             const edited = editingShifts[worker.id]
-            const shiftHours = calculateShiftHours(edited.start, edited.end)
+            const workingHours = calculateWorkingHours(
+              edited.start,
+              edited.end,
+              edited.hasBreak,
+              edited.breakStart,
+              edited.breakEnd,
+            )
 
             return (
               <Card key={worker.id}>
@@ -102,9 +163,67 @@ function ShiftManagement() {
                       </div>
                     </div>
 
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground">Total Shift Duration:</span>
-                      <span className="font-semibold">{shiftHours}</span>
+                    <div className="flex items-center justify-between py-2 border-t">
+                      <div className="flex items-center gap-2">
+                        <Coffee className="h-4 w-4 text-muted-foreground" />
+                        <Label htmlFor={`break-${worker.id}`} className="cursor-pointer">
+                          Break Shifts
+                        </Label>
+                      </div>
+                      <Switch
+                        id={`break-${worker.id}`}
+                        checked={edited.hasBreak}
+                        onCheckedChange={(checked) =>
+                          setEditingShifts((prev) => ({
+                            ...prev,
+                            [worker.id]: { ...prev[worker.id], hasBreak: checked },
+                          }))
+                        }
+                      />
+                    </div>
+
+                    {edited.hasBreak && (
+                      <div className="grid grid-cols-2 gap-3 pl-6 border-l-2 border-muted">
+                        <div>
+                          <Label htmlFor={`break-start-${worker.id}`} className="text-xs">
+                            Break Start
+                          </Label>
+                          <Input
+                            id={`break-start-${worker.id}`}
+                            type="time"
+                            value={edited.breakStart}
+                            onChange={(e) =>
+                              setEditingShifts((prev) => ({
+                                ...prev,
+                                [worker.id]: { ...prev[worker.id], breakStart: e.target.value },
+                              }))
+                            }
+                            className="mt-1"
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor={`break-end-${worker.id}`} className="text-xs">
+                            Break End
+                          </Label>
+                          <Input
+                            id={`break-end-${worker.id}`}
+                            type="time"
+                            value={edited.breakEnd}
+                            onChange={(e) =>
+                              setEditingShifts((prev) => ({
+                                ...prev,
+                                [worker.id]: { ...prev[worker.id], breakEnd: e.target.value },
+                              }))
+                            }
+                            className="mt-1"
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="flex items-center justify-between text-sm pt-2 border-t">
+                      <span className="text-muted-foreground">Working Hours:</span>
+                      <span className="font-semibold">{workingHours}</span>
                     </div>
                   </div>
 

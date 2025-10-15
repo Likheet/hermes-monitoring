@@ -4,7 +4,7 @@ import type React from "react"
 import { useState, useRef } from "react"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
-import { Camera, Loader2, AlertCircle } from "lucide-react"
+import { Camera, Loader2, AlertCircle, X, Plus } from "lucide-react"
 import { compressImage, blobToDataURL } from "@/lib/image-utils"
 import { uploadTaskPhoto } from "@/lib/storage-utils"
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -14,12 +14,20 @@ import { triggerHaptic, triggerSuccessHaptic, triggerErrorHaptic } from "@/lib/h
 interface PhotoCaptureModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  onPhotoCapture: (photoUrl: string) => void
+  onPhotosCapture: (photoUrls: string[]) => void
   taskId: string
+  existingPhotos?: string[]
 }
 
-export function PhotoCaptureModal({ open, onOpenChange, onPhotoCapture, taskId }: PhotoCaptureModalProps) {
-  const [capturedPhoto, setCapturedPhoto] = useState<string | null>(null)
+export function PhotoCaptureModal({
+  open,
+  onOpenChange,
+  onPhotosCapture,
+  taskId,
+  existingPhotos = [],
+}: PhotoCaptureModalProps) {
+  const [capturedPhotos, setCapturedPhotos] = useState<string[]>(existingPhotos)
+  const [currentPhoto, setCurrentPhoto] = useState<string | null>(null)
   const [compressedBlob, setCompressedBlob] = useState<Blob | null>(null)
   const [uploading, setUploading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState(0)
@@ -36,7 +44,7 @@ export function PhotoCaptureModal({ open, onOpenChange, onPhotoCapture, taskId }
       setCompressedBlob(compressed)
 
       const dataUrl = await blobToDataURL(compressed)
-      setCapturedPhoto(dataUrl)
+      setCurrentPhoto(dataUrl)
       triggerHaptic("light")
     } catch (err) {
       setError("Failed to process image. Please try again.")
@@ -45,8 +53,8 @@ export function PhotoCaptureModal({ open, onOpenChange, onPhotoCapture, taskId }
     }
   }
 
-  const handleConfirm = async () => {
-    if (!capturedPhoto || !compressedBlob) return
+  const handleAddPhoto = async () => {
+    if (!currentPhoto || !compressedBlob) return
 
     setUploading(true)
     setError(null)
@@ -65,11 +73,15 @@ export function PhotoCaptureModal({ open, onOpenChange, onPhotoCapture, taskId }
 
       if (photoUrl) {
         triggerSuccessHaptic()
-        onPhotoCapture(photoUrl)
-        setCapturedPhoto(null)
+        setCapturedPhotos((prev) => [...prev, photoUrl])
+        setCurrentPhoto(null)
         setCompressedBlob(null)
         setUploadProgress(0)
-        onOpenChange(false)
+
+        // Reset file input
+        if (fileInputRef.current) {
+          fileInputRef.current.value = ""
+        }
       }
     } catch (err: any) {
       setError(err.message || "Failed to upload photo. Please try again.")
@@ -80,8 +92,13 @@ export function PhotoCaptureModal({ open, onOpenChange, onPhotoCapture, taskId }
     }
   }
 
+  const handleRemovePhoto = (index: number) => {
+    setCapturedPhotos((prev) => prev.filter((_, i) => i !== index))
+    triggerHaptic("light")
+  }
+
   const handleRetake = () => {
-    setCapturedPhoto(null)
+    setCurrentPhoto(null)
     setCompressedBlob(null)
     setError(null)
     setUploadProgress(0)
@@ -91,38 +108,78 @@ export function PhotoCaptureModal({ open, onOpenChange, onPhotoCapture, taskId }
     }
   }
 
-  const handleRetry = () => {
+  const handleConfirm = () => {
+    if (capturedPhotos.length === 0) {
+      setError("Please capture at least one photo")
+      return
+    }
+    onPhotosCapture(capturedPhotos)
+    setCapturedPhotos([])
+    setCurrentPhoto(null)
+    onOpenChange(false)
+  }
+
+  const handleCancel = () => {
+    setCapturedPhotos(existingPhotos)
+    setCurrentPhoto(null)
+    setCompressedBlob(null)
     setError(null)
-    handleConfirm()
+    onOpenChange(false)
   }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Capture Photo</DialogTitle>
-          <DialogDescription>Take a photo to complete this task</DialogDescription>
+          <DialogTitle>Capture Photos</DialogTitle>
+          <DialogDescription>
+            {capturedPhotos.length === 0
+              ? "Take photos to complete this task"
+              : `${capturedPhotos.length} photo(s) captured`}
+          </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
           {error && (
             <Alert variant="destructive">
               <AlertCircle className="h-4 w-4" />
-              <AlertDescription className="flex items-center justify-between">
+              <AlertDescription>
                 <span className="text-sm">{error}</span>
-                {capturedPhoto && (
-                  <Button size="sm" variant="outline" onClick={handleRetry} disabled={uploading}>
-                    Retry
-                  </Button>
-                )}
               </AlertDescription>
             </Alert>
           )}
 
-          {!capturedPhoto ? (
-            <div className="flex flex-col items-center gap-4">
-              <div className="flex h-64 w-full items-center justify-center rounded-lg border-2 border-dashed border-muted-foreground/25 bg-muted/50">
-                <Camera className="h-16 w-16 text-muted-foreground" />
+          {capturedPhotos.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-sm font-medium">Captured Photos:</p>
+              <div className="grid grid-cols-2 gap-2">
+                {capturedPhotos.map((photo, index) => (
+                  <div key={index} className="relative">
+                    <img
+                      src={photo || "/placeholder.svg"}
+                      alt={`Captured ${index + 1}`}
+                      className="w-full aspect-square object-cover rounded-lg border"
+                    />
+                    <Button
+                      size="icon"
+                      variant="destructive"
+                      className="absolute top-1 right-1 h-7 w-7 shadow-lg"
+                      onClick={() => handleRemovePhoto(index)}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
               </div>
+            </div>
+          )}
+
+          {!currentPhoto ? (
+            <div className="flex flex-col items-center gap-4">
+              {capturedPhotos.length === 0 && (
+                <div className="flex h-48 w-full items-center justify-center rounded-lg border-2 border-dashed border-muted-foreground/25 bg-muted/50">
+                  <Camera className="h-12 w-12 text-muted-foreground" />
+                </div>
+              )}
               <input
                 ref={fileInputRef}
                 type="file"
@@ -139,14 +196,15 @@ export function PhotoCaptureModal({ open, onOpenChange, onPhotoCapture, taskId }
                 }}
                 className="w-full min-h-[48px] text-base"
                 disabled={uploading}
+                variant={capturedPhotos.length > 0 ? "outline" : "default"}
               >
-                <Camera className="mr-2 h-5 w-5" />
-                Take Photo
+                <Plus className="mr-2 h-5 w-5" />
+                {capturedPhotos.length > 0 ? "Add Another Photo" : "Take Photo"}
               </Button>
             </div>
           ) : (
             <div className="space-y-4">
-              <img src={capturedPhoto || "/placeholder.svg"} alt="Captured" className="w-full rounded-lg" />
+              <img src={currentPhoto || "/placeholder.svg"} alt="Current" className="w-full rounded-lg" />
 
               {uploading && (
                 <div className="space-y-2">
@@ -167,17 +225,28 @@ export function PhotoCaptureModal({ open, onOpenChange, onPhotoCapture, taskId }
                 >
                   Retake
                 </Button>
-                <Button onClick={handleConfirm} className="flex-1 min-h-[48px]" disabled={uploading}>
+                <Button onClick={handleAddPhoto} className="flex-1 min-h-[48px]" disabled={uploading}>
                   {uploading ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                       Uploading...
                     </>
                   ) : (
-                    "Confirm"
+                    "Add Photo"
                   )}
                 </Button>
               </div>
+            </div>
+          )}
+
+          {capturedPhotos.length > 0 && !currentPhoto && (
+            <div className="flex gap-2 pt-2 border-t">
+              <Button onClick={handleCancel} variant="outline" className="flex-1 min-h-[48px] bg-transparent">
+                Cancel
+              </Button>
+              <Button onClick={handleConfirm} className="flex-1 min-h-[48px]">
+                Confirm ({capturedPhotos.length} photo{capturedPhotos.length !== 1 ? "s" : ""})
+              </Button>
             </div>
           )}
         </div>

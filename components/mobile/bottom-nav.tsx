@@ -1,33 +1,50 @@
 "use client"
 
-import { Home, ListTodo, Clock, User } from "lucide-react"
-import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { Home, ListTodo, FileText, User, Calendar } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { triggerHaptic } from "@/lib/haptics"
+import { useAuth } from "@/lib/auth-context"
 
-export function BottomNav() {
-  const pathname = usePathname()
+interface BottomNavProps {
+  activeTab: string
+  onTabChange: (tab: string) => void
+}
 
-  const navItems = [
-    { href: "/worker", icon: Home, label: "Home" },
-    { href: "/worker/tasks", icon: ListTodo, label: "Tasks" },
-    { href: "/worker/handover", icon: Clock, label: "Handover" },
-    { href: "/worker/profile", icon: User, label: "Profile" },
-  ]
+export function BottomNav({ activeTab, onTabChange }: BottomNavProps) {
+  const { user } = useAuth()
+
+  const isMaintenance = user?.department === "maintenance"
+
+  const navItems = isMaintenance
+    ? [
+        { id: "home", icon: Home, label: "Home" },
+        { id: "scheduled", icon: Calendar, label: "Scheduled" },
+        { id: "notes", icon: FileText, label: "Notes" },
+        { id: "profile", icon: User, label: "Profile" },
+      ]
+    : [
+        { id: "home", icon: Home, label: "Home" },
+        { id: "tasks", icon: ListTodo, label: "Tasks" },
+        { id: "notes", icon: FileText, label: "Notes" },
+        { id: "profile", icon: User, label: "Profile" },
+      ]
+
+  const handleTabClick = (tabId: string) => {
+    triggerHaptic("light")
+    onTabChange(tabId)
+  }
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-50 border-t bg-background pb-safe">
       <div className="flex items-center justify-around h-16">
         {navItems.map((item) => {
-          const isActive = pathname === item.href
+          const isActive = activeTab === item.id
           const Icon = item.icon
 
           return (
-            <Link
-              key={item.href}
-              href={item.href}
-              onClick={() => triggerHaptic("light")}
+            <button
+              key={item.id}
+              onClick={() => handleTabClick(item.id)}
               className={cn(
                 "flex flex-col items-center justify-center gap-1 flex-1 h-full min-w-[48px]",
                 "active:bg-muted transition-colors",
@@ -36,7 +53,7 @@ export function BottomNav() {
             >
               <Icon className="h-5 w-5" />
               <span className="text-xs font-medium">{item.label}</span>
-            </Link>
+            </button>
           )
         })}
       </div>

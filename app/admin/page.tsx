@@ -20,6 +20,7 @@ import {
   Activity,
   UserPlus,
   BarChart3,
+  Calendar,
 } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { useRealtimeTasks } from "@/lib/use-realtime-tasks"
@@ -97,6 +98,12 @@ function AdminDashboard() {
           </div>
           <div className="flex items-center gap-2">
             <ConnectionStatus isConnected={isConnected} />
+            <Link href="/admin/maintenance-schedule">
+              <Button variant="outline">
+                <Calendar className="mr-2 h-4 w-4" />
+                Maintenance Schedule
+              </Button>
+            </Link>
             <Link href="/admin/reports">
               <Button variant="outline">
                 <BarChart3 className="mr-2 h-4 w-4" />

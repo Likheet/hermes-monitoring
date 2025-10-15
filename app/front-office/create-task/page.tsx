@@ -1,7 +1,4 @@
 "use client"
-
-import type React from "react"
-
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { ProtectedRoute } from "@/components/protected-route"
@@ -10,16 +7,19 @@ import { useTasks } from "@/lib/task-context"
 import { createDualTimestamp } from "@/lib/mock-data"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Switch } from "@/components/ui/switch"
-import { ArrowLeft, AlertCircle } from "lucide-react"
+import { ArrowLeft } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
-import type { PriorityLevel } from "@/lib/types"
-import { ShiftBadge } from "@/components/shift/shift-badge"
-import { getWorkersWithShiftStatusFromUsers, canAssignTaskToUser } from "@/lib/shift-utils"
-import { Alert, AlertDescription } from "@/components/ui/alert"
+import type { PriorityLevel, Priority } from "@/lib/types"
+import { TaskSearch } from "@/components/task-search"
+import type { TaskDefinition } from "@/lib/task-definitions"
+import { TaskAssignmentForm, type TaskAssignmentData } from "@/components/task-assignment-form"
+
+function mapPriorityToPriorityLevel(priority: Priority, category: string): PriorityLevel {
+  if (category === "GUEST_REQUEST") return "GUEST_REQUEST"
+  if (category === "TIME_SENSITIVE") return "TIME_SENSITIVE"
+  if (category === "PREVENTIVE_MAINTENANCE") return "PREVENTIVE_MAINTENANCE"
+  return "DAILY_TASK"
+}
 
 function CreateTaskForm() {
   const router = useRouter()
@@ -27,78 +27,57 @@ function CreateTaskForm() {
   const { createTask, tasks, users } = useTasks()
   const { toast } = useToast()
 
-  const [taskType, setTaskType] = useState("")
-  const [roomNumber, setRoomNumber] = useState("")
-  const [priority, setPriority] = useState<PriorityLevel>("DAILY_TASK")
-  const [assignedTo, setAssignedTo] = useState("")
-  const [expectedDuration, setExpectedDuration] = useState("30")
-  const [photoRequired, setPhotoRequired] = useState(false)
+  const [selectedTaskDef, setSelectedTaskDef] = useState<TaskDefinition | null>(null)
 
   const workers = users.filter((u) => u.role === "worker")
 
-  const workersWithShifts = getWorkersWithShiftStatusFromUsers(workers)
+  const handleTaskSelect = (task: TaskDefinition) => {
+    setSelectedTaskDef(task)
+  }
 
-  const sortedWorkers = [...workersWithShifts].sort((a, b) => {
-    const statusOrder = { ON_SHIFT: 0, ENDING_SOON: 1, OFF_DUTY: 2 }
-    return statusOrder[a.availability.status] - statusOrder[b.availability.status]
-  })
+  const handleCancel = () => {
+    setSelectedTaskDef(null)
+  }
 
-  const selectedWorker = workersWithShifts.find((w) => w.id === assignedTo)
-  const assignmentValidation = selectedWorker
-    ? canAssignTaskToUser(selectedWorker, Number.parseInt(expectedDuration))
-    : { canAssign: true }
-
-  console.log(
-    "[v0] Workers with shift status:",
-    workersWithShifts.map((w) => ({
-      name: w.name,
-      shift: `${w.shift_start} - ${w.shift_end}`,
-      status: w.availability.status,
-    })),
-  )
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-
-    if (!taskType || !roomNumber || !assignedTo || !user) {
+  const handleSubmit = async (data: TaskAssignmentData) => {
+    if (!user) {
       toast({
         title: "Error",
-        description: "Please fill in all required fields",
+        description: "User not authenticated",
         variant: "destructive",
       })
       return
     }
 
-    if (!assignmentValidation.canAssign) {
-      toast({
-        title: "Cannot Assign Task",
-        description: assignmentValidation.reason,
-        variant: "destructive",
-      })
-      return
-    }
+    const priorityLevel = mapPriorityToPriorityLevel(data.priority as Priority, data.category)
 
     createTask({
-      task_type: taskType,
-      priority_level: priority,
+      task_type: data.taskName,
+      priority_level: priorityLevel,
       status: "PENDING",
-      assigned_to_user_id: assignedTo,
+      assigned_to_user_id: data.assignedTo,
       assigned_by_user_id: user.id,
       assigned_at: createDualTimestamp(),
       started_at: null,
       completed_at: null,
-      expected_duration_minutes: Number.parseInt(expectedDuration),
+      expected_duration_minutes: data.duration,
       actual_duration_minutes: null,
       photo_url: null,
-      photo_required: photoRequired,
-      worker_remark: "",
+      photo_urls: [],
+      categorized_photos: null,
+      photo_required: data.photoRequired,
+      worker_remark: data.additionalDetails || "",
       supervisor_remark: "",
-      room_number: roomNumber,
+      rating: null,
+      quality_comment: null,
+      rating_proof_photo_url: null,
+      rejection_proof_photo_url: null,
+      room_number: data.location || null,
     })
 
-    const workerCurrentTask = tasks.find((t) => t.assigned_to_user_id === assignedTo && t.status === "IN_PROGRESS")
+    const workerCurrentTask = tasks.find((t) => t.assigned_to_user_id === data.assignedTo && t.status === "IN_PROGRESS")
 
-    if (priority === "GUEST_REQUEST" && workerCurrentTask) {
+    if (priorityLevel === "GUEST_REQUEST" && workerCurrentTask) {
       toast({
         title: "Urgent Task Created",
         description: "Worker's current task has been auto-paused for this urgent request",
@@ -122,136 +101,31 @@ function CreateTaskForm() {
           </Button>
           <div>
             <h1 className="text-xl font-bold">Create New Task</h1>
+            <p className="text-sm text-muted-foreground">Search for a task type and assign it to a worker</p>
           </div>
         </div>
       </header>
 
-      <main className="container mx-auto px-4 py-6 max-w-2xl">
-        <Card>
-          <CardHeader>
-            <CardTitle>Task Details</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="task-type">Task Type</Label>
-                <Input
-                  id="task-type"
-                  placeholder="e.g., Clean Room, Fix AC, Replace Towels"
-                  value={taskType}
-                  onChange={(e) => setTaskType(e.target.value)}
-                  required
-                />
-              </div>
+      <main className="container mx-auto px-4 py-6 max-w-4xl">
+        {!selectedTaskDef && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Search for Task</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <TaskSearch onSelectTask={handleTaskSelect} />
+            </CardContent>
+          </Card>
+        )}
 
-              <div className="space-y-2">
-                <Label htmlFor="room-number">Room Number</Label>
-                <Input
-                  id="room-number"
-                  placeholder="e.g., 101, POOL, LOBBY"
-                  value={roomNumber}
-                  onChange={(e) => setRoomNumber(e.target.value)}
-                  required
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="priority">Priority Level</Label>
-                <Select value={priority} onValueChange={(value) => setPriority(value as PriorityLevel)}>
-                  <SelectTrigger id="priority">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="GUEST_REQUEST">Guest Request (Urgent)</SelectItem>
-                    <SelectItem value="TIME_SENSITIVE">Time Sensitive</SelectItem>
-                    <SelectItem value="DAILY_TASK">Daily Task</SelectItem>
-                    <SelectItem value="PREVENTIVE_MAINTENANCE">Preventive Maintenance</SelectItem>
-                  </SelectContent>
-                </Select>
-                {priority === "GUEST_REQUEST" && (
-                  <p className="text-sm text-orange-600">
-                    Note: This will auto-pause any current task the worker is doing
-                  </p>
-                )}
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="assigned-to">Assign To</Label>
-                <Select value={assignedTo} onValueChange={setAssignedTo}>
-                  <SelectTrigger id="assigned-to">
-                    <SelectValue placeholder="Select a worker" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {sortedWorkers.map((worker) => (
-                      <SelectItem key={worker.id} value={worker.id}>
-                        <div className="flex items-center justify-between w-full gap-2">
-                          <span>
-                            {worker.name} - {worker.department}
-                          </span>
-                          <ShiftBadge availability={worker.availability} />
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {selectedWorker && selectedWorker.availability.status === "OFF_DUTY" && (
-                <Alert variant="destructive">
-                  <AlertCircle className="h-4 w-4" />
-                  <AlertDescription>
-                    This worker is currently off duty. Task assignment is not allowed.
-                  </AlertDescription>
-                </Alert>
-              )}
-
-              {selectedWorker && selectedWorker.availability.status === "ENDING_SOON" && (
-                <Alert className="border-orange-500 bg-orange-50">
-                  <AlertCircle className="h-4 w-4 text-orange-500" />
-                  <AlertDescription className="text-orange-700">
-                    Worker's shift ends in {selectedWorker.availability.minutesUntilEnd} minutes. Ensure task duration
-                    fits within remaining shift time.
-                  </AlertDescription>
-                </Alert>
-              )}
-
-              <div className="space-y-2">
-                <Label htmlFor="duration">Expected Duration (minutes)</Label>
-                <Input
-                  id="duration"
-                  type="number"
-                  min="5"
-                  step="5"
-                  value={expectedDuration}
-                  onChange={(e) => setExpectedDuration(e.target.value)}
-                  required
-                />
-              </div>
-
-              <div className="flex items-center justify-between rounded-lg border p-4">
-                <div className="space-y-0.5">
-                  <Label htmlFor="photo-required">Photo Required</Label>
-                  <p className="text-sm text-muted-foreground">Worker must take a photo upon completion</p>
-                </div>
-                <Switch id="photo-required" checked={photoRequired} onCheckedChange={setPhotoRequired} />
-              </div>
-
-              <div className="flex gap-2 pt-4">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => router.push("/front-office")}
-                  className="flex-1 bg-transparent"
-                >
-                  Cancel
-                </Button>
-                <Button type="submit" className="flex-1" disabled={!assignmentValidation.canAssign}>
-                  Create Task
-                </Button>
-              </div>
-            </form>
-          </CardContent>
-        </Card>
+        {selectedTaskDef && (
+          <TaskAssignmentForm
+            task={selectedTaskDef}
+            onCancel={handleCancel}
+            onSubmit={handleSubmit}
+            workers={workers}
+          />
+        )}
       </main>
     </div>
   )

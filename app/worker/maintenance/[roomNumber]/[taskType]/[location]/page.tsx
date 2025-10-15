@@ -2,9 +2,9 @@
 
 import { use, useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { ProtectedRoute } from "@/components/protected-route"
-import { useAuth } from "@/lib/auth-context"
 import { useTasks } from "@/lib/task-context"
+import { useAuth } from "@/lib/auth-context"
+import { TASK_TYPE_LABELS } from "@/lib/maintenance-types"
 import { CategorizedPhotoCaptureModal } from "@/components/categorized-photo-capture-modal"
 import { RaiseIssueModal } from "@/components/raise-issue-modal"
 import { Button } from "@/components/ui/button"
@@ -15,24 +15,38 @@ import { Label } from "@/components/ui/label"
 import { ArrowLeft, Play, Pause, CheckCircle, Clock, MapPin, Camera, AlertTriangle, Home, Wrench } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { OfflineIndicator } from "@/components/timer/offline-indicator"
-import { PauseTimeline } from "@/components/timer/pause-timeline"
-import { saveTimerState, getTimerState, clearTimerState, addToOfflineQueue, isOnline } from "@/lib/timer-utils"
-import { formatExactTimestamp } from "@/lib/date-utils"
 import type { CategorizedPhotos } from "@/lib/types"
 
-interface TaskDetailProps {
-  params: { taskId: string } | Promise<{ taskId: string }>
+interface MaintenanceTaskPageProps {
+  params:
+    | { roomNumber: string; taskType: string; location: string }
+    | Promise<{ roomNumber: string; taskType: string; location: string }>
 }
 
-function TaskDetail({ params }: TaskDetailProps) {
+function MaintenanceTaskPage({ params }: MaintenanceTaskPageProps) {
   const resolvedParams = params instanceof Promise ? use(params) : params
-  const { taskId } = resolvedParams
+  const { roomNumber, taskType, location: encodedLocation } = resolvedParams
+  const location = decodeURIComponent(encodedLocation)
+
   const router = useRouter()
   const { user } = useAuth()
-  const { getTaskById, startTask, pauseTask, resumeTask, completeTask, raiseIssue } = useTasks()
+  const { maintenanceTasks, updateMaintenanceTask } = useTasks()
   const { toast } = useToast()
 
-  const task = getTaskById(taskId)
+  const task = maintenanceTasks.find(
+    (t) => t.room_number === roomNumber && t.task_type === taskType && t.location === location,
+  )
+
+  console.log("[v0] Task detail page loaded:", {
+    roomNumber,
+    taskType,
+    location,
+    taskFound: !!task,
+    taskId: task?.id,
+    totalMaintenanceTasks: maintenanceTasks.length,
+    matchingRoomTasks: maintenanceTasks.filter((t) => t.room_number === roomNumber).length,
+  })
+
   const [remark, setRemark] = useState("")
   const [photoModalOpen, setPhotoModalOpen] = useState(false)
   const [issueModalOpen, setIssueModalOpen] = useState(false)
@@ -41,95 +55,126 @@ function TaskDetail({ params }: TaskDetailProps) {
     proof_photos: [],
   })
   const [elapsedTime, setElapsedTime] = useState(0)
+  const [isRunning, setIsRunning] = useState(false)
 
   useEffect(() => {
-    if (task?.status === "IN_PROGRESS" && task.started_at) {
-      const interval = setInterval(() => {
-        const startTime = new Date(task.started_at!.client).getTime()
-        const now = Date.now()
-
-        let pausedDuration = 0
-        task.pause_history.forEach((pause) => {
-          if (pause.resumed_at) {
-            const pauseStart = new Date(pause.paused_at.client).getTime()
-            const pauseEnd = new Date(pause.resumed_at.client).getTime()
-            pausedDuration += pauseEnd - pauseStart
-          } else {
-            const pauseStart = new Date(pause.paused_at.client).getTime()
-            pausedDuration += now - pauseStart
-          }
-        })
-
-        const elapsed = Math.floor((now - startTime - pausedDuration) / 1000)
-        setElapsedTime(elapsed)
-      }, 1000)
-
-      return () => clearInterval(interval)
+    if (!task) {
+      console.log(
+        "[v0] Task not found. Available tasks for this room:",
+        maintenanceTasks
+          .filter((t) => t.room_number === roomNumber)
+          .map((t) => ({ type: t.task_type, location: t.location, id: t.id })),
+      )
+      return
     }
-  }, [task])
 
-  useEffect(() => {
-    const savedState = getTimerState()
-    if (savedState && savedState.taskId === taskId) {
-      toast({
-        title: "Timer Restored",
-        description: "Your active task timer has been restored",
+    console.log("[v0] Loading task state:", {
+      status: task.status,
+      started_at: task.started_at,
+      timer_duration: task.timer_duration,
+      paused_at: task.paused_at,
+    })
+
+    // Load existing photos
+    if (task.categorized_photos) {
+      setCategorizedPhotos({
+        room_photos: task.categorized_photos.before_photos || [],
+        proof_photos: task.categorized_photos.after_photos || [],
       })
     }
-  }, [taskId, toast])
+
+    // Load existing notes
+    if (task.notes) {
+      setRemark(task.notes)
+    }
+
+    // Restore timer state
+    if (task.status === "in_progress" && task.started_at) {
+      const startTime = new Date(task.started_at).getTime()
+      const now = Date.now()
+      const elapsed = Math.floor((now - startTime) / 1000)
+      setElapsedTime(elapsed)
+      setIsRunning(true)
+      console.log("[v0] Restored in-progress task, elapsed:", elapsed)
+    } else if (task.status === "paused" && task.timer_duration) {
+      setElapsedTime(task.timer_duration)
+      setIsRunning(false)
+      console.log("[v0] Restored paused task, duration:", task.timer_duration)
+    }
+  }, [task, maintenanceTasks, roomNumber]) // Updated to use task directly
 
   useEffect(() => {
-    if (task?.status === "IN_PROGRESS" && task.started_at) {
-      saveTimerState({
-        taskId: task.id,
-        userId: user?.id || "",
-        startedAt: task.started_at.client,
-        pauseHistory: task.pause_history.map((p) => ({
-          pausedAt: p.paused_at.client,
-          resumedAt: p.resumed_at?.client || null,
-          reason: p.reason,
-        })),
-      })
-    } else {
-      clearTimerState()
-    }
-  }, [task, user])
+    if (!isRunning || !task?.started_at) return
 
-  console.log("[v0] TaskDetail page loaded with taskId:", taskId)
-  console.log("[v0] Task found:", !!task)
+    const interval = setInterval(() => {
+      const startTime = new Date(task.started_at!).getTime()
+      const now = Date.now()
+      const elapsed = Math.floor((now - startTime) / 1000)
+      setElapsedTime(elapsed)
+    }, 1000)
+
+    return () => clearInterval(interval)
+  }, [isRunning, task?.started_at])
 
   if (!task || !user) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-4 p-4">
-        <p className="text-muted-foreground">Task not found</p>
-        <Button onClick={() => router.push("/worker")} variant="outline">
+        <p className="text-lg font-semibold text-foreground">Task Not Found</p>
+        <p className="text-muted-foreground text-center max-w-md">
+          This maintenance task doesn't exist or hasn't been scheduled yet. Please check the maintenance calendar for
+          available tasks.
+        </p>
+        <Button onClick={() => router.push("/worker")} variant="default" size="lg">
           <ArrowLeft className="mr-2 h-4 w-4" />
-          Back to Dashboard
+          Back to Home
         </Button>
       </div>
     )
   }
 
-  console.log("[v0] Task status:", task.status)
-  console.log("[v0] Should show Raise Issue button:", task.status === "IN_PROGRESS" || task.status === "PAUSED")
+  const isCompleted = task.status === "completed"
+  const isStarted = task.status === "in_progress" || task.status === "paused"
 
   const handleStart = () => {
-    if (!isOnline()) {
-      addToOfflineQueue({
-        type: "START",
-        taskId,
-        userId: user!.id,
-        timestamp: new Date().toISOString(),
-      })
+    const inProgressTasks = maintenanceTasks.filter(
+      (t) => t.assigned_to === user?.id && t.status === "in_progress" && t.id !== task.id,
+    )
+
+    if (inProgressTasks.length > 0) {
+      const inProgressTask = inProgressTasks[0]
       toast({
-        title: "Queued Offline",
-        description: "Action will sync when connection is restored",
-        variant: "default",
+        title: "Another Task In Progress",
+        description: `You already have a task in progress (Room ${inProgressTask.room_number}). Please pause it before starting a new task.`,
+        variant: "destructive",
       })
       return
     }
 
-    startTask(taskId, user!.id)
+    // Check if we already have a paused task and trying to start another
+    const pausedTasks = maintenanceTasks.filter(
+      (t) => t.assigned_to === user?.id && t.status === "paused" && t.id !== task.id,
+    )
+
+    if (pausedTasks.length > 0) {
+      // Allow starting if we have only 1 paused task (max 2 tasks: 1 paused + 1 in progress)
+      if (pausedTasks.length >= 1) {
+        toast({
+          title: "Task Limit Reached",
+          description: `You can only have 1 task in progress and 1 paused task at a time. Please complete or resume your paused task first.`,
+          variant: "destructive",
+        })
+        return
+      }
+    }
+
+    const now = new Date().toISOString()
+    updateMaintenanceTask(task.id, {
+      status: "in_progress",
+      started_at: now,
+      assigned_to: user.id,
+    })
+    setIsRunning(true)
+    console.log("[v0] Task started:", task.id)
     toast({
       title: "Task Started",
       description: "Timer is now running",
@@ -137,22 +182,14 @@ function TaskDetail({ params }: TaskDetailProps) {
   }
 
   const handlePause = () => {
-    if (!isOnline()) {
-      addToOfflineQueue({
-        type: "PAUSE",
-        taskId,
-        userId: user!.id,
-        timestamp: new Date().toISOString(),
-        data: { reason: "Worker paused task" },
-      })
-      toast({
-        title: "Queued Offline",
-        description: "Action will sync when connection is restored",
-      })
-      return
-    }
-
-    pauseTask(taskId, user!.id, "Worker paused task")
+    const now = new Date().toISOString()
+    updateMaintenanceTask(task.id, {
+      status: "paused",
+      paused_at: now,
+      timer_duration: elapsedTime,
+    })
+    setIsRunning(false)
+    console.log("[v0] Task paused:", task.id, "duration:", elapsedTime)
     toast({
       title: "Task Paused",
       description: "Timer has been paused",
@@ -160,21 +197,16 @@ function TaskDetail({ params }: TaskDetailProps) {
   }
 
   const handleResume = () => {
-    if (!isOnline()) {
-      addToOfflineQueue({
-        type: "RESUME",
-        taskId,
-        userId: user!.id,
-        timestamp: new Date().toISOString(),
-      })
-      toast({
-        title: "Queued Offline",
-        description: "Action will sync when connection is restored",
-      })
-      return
-    }
-
-    resumeTask(taskId, user!.id)
+    const now = new Date().toISOString()
+    // Calculate new start time based on paused duration
+    const newStartTime = new Date(Date.now() - elapsedTime * 1000).toISOString()
+    updateMaintenanceTask(task.id, {
+      status: "in_progress",
+      started_at: newStartTime,
+      paused_at: undefined,
+    })
+    setIsRunning(true)
+    console.log("[v0] Task resumed:", task.id)
     toast({
       title: "Task Resumed",
       description: "Timer is running again",
@@ -182,40 +214,45 @@ function TaskDetail({ params }: TaskDetailProps) {
   }
 
   const handleComplete = () => {
-    if (
-      task.photo_required &&
-      (categorizedPhotos.room_photos.length === 0 || categorizedPhotos.proof_photos.length === 0)
-    ) {
+    if (categorizedPhotos.room_photos.length === 0 || categorizedPhotos.proof_photos.length === 0) {
+      toast({
+        title: "Photos Required",
+        description: "Please upload at least 1 room photo and 1 proof photo",
+        variant: "destructive",
+      })
       setPhotoModalOpen(true)
       return
     }
 
-    if (!isOnline()) {
-      addToOfflineQueue({
-        type: "COMPLETE",
-        taskId,
-        userId: user!.id,
-        timestamp: new Date().toISOString(),
-        data: { categorizedPhotos, remark },
-      })
-      toast({
-        title: "Queued Offline",
-        description: "Task will be submitted when connection is restored",
-      })
-      router.push("/worker")
-      return
-    }
+    if (!task) return
 
-    completeTask(taskId, user!.id, categorizedPhotos, remark)
+    updateMaintenanceTask(task.id, {
+      status: "completed",
+      categorized_photos: {
+        before_photos: categorizedPhotos.room_photos,
+        after_photos: categorizedPhotos.proof_photos,
+      },
+      timer_duration: elapsedTime,
+      completed_at: new Date().toISOString(),
+      notes: remark,
+    })
+
+    console.log("[v0] Task completed:", task.id, "duration:", elapsedTime)
     toast({
       title: "Task Completed",
-      description: "Task has been submitted for verification",
+      description: "Task has been marked as complete",
     })
-    router.push("/worker")
+    router.back()
   }
 
   const handlePhotosCapture = (photos: CategorizedPhotos) => {
     setCategorizedPhotos(photos)
+    updateMaintenanceTask(task.id, {
+      categorized_photos: {
+        before_photos: photos.room_photos,
+        after_photos: photos.proof_photos,
+      },
+    })
     const totalPhotos = photos.room_photos.length + photos.proof_photos.length
     toast({
       title: "Photos Captured",
@@ -224,7 +261,10 @@ function TaskDetail({ params }: TaskDetailProps) {
   }
 
   const handleRaiseIssue = (issue: string) => {
-    raiseIssue(taskId, user!.id, issue)
+    setRemark((prev) => prev + (prev ? "\n" : "") + `[ISSUE] ${issue}`)
+    updateMaintenanceTask(task.id, {
+      notes: remark + (remark ? "\n" : "") + `[ISSUE] ${issue}`,
+    })
     toast({
       title: "Issue Raised",
       description: "Your issue has been recorded",
@@ -239,11 +279,14 @@ function TaskDetail({ params }: TaskDetailProps) {
 
       <header className="border-b bg-background">
         <div className="container mx-auto flex items-center gap-4 px-4 py-4">
-          <Button variant="ghost" size="icon" onClick={() => router.push("/worker")}>
+          <Button variant="ghost" size="icon" onClick={() => router.back()}>
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <div>
-            <h1 className="text-xl font-bold">Task Details</h1>
+            <h1 className="text-xl font-bold">{TASK_TYPE_LABELS[taskType as keyof typeof TASK_TYPE_LABELS]}</h1>
+            <p className="text-sm text-muted-foreground">
+              Room {roomNumber} • {location}
+            </p>
           </div>
         </div>
       </header>
@@ -252,35 +295,39 @@ function TaskDetail({ params }: TaskDetailProps) {
         <Card>
           <CardHeader>
             <div className="flex items-start justify-between gap-2">
-              <CardTitle className="text-2xl">{task.task_type}</CardTitle>
-              <Badge className={priorityColors[task.priority_level]} variant="secondary">
-                {task.priority_level.replace(/_/g, " ")}
-              </Badge>
+              <CardTitle className="text-2xl">{TASK_TYPE_LABELS[taskType as keyof typeof TASK_TYPE_LABELS]}</CardTitle>
+              {isCompleted && (
+                <Badge className="bg-primary text-primary-foreground" variant="secondary">
+                  Completed
+                </Badge>
+              )}
+              {task.status === "paused" && (
+                <Badge variant="outline" className="border-muted-foreground">
+                  Paused
+                </Badge>
+              )}
+              {task.status === "in_progress" && <Badge variant="default">In Progress</Badge>}
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex items-center gap-2 text-muted-foreground">
-              <Clock className="h-4 w-4" />
-              <span>Assigned at: {formatExactTimestamp(task.assigned_at.client)}</span>
-            </div>
-            <div className="flex items-center gap-2 text-muted-foreground">
               <MapPin className="h-4 w-4" />
-              <span>Room {task.room_number}</span>
+              <span>
+                Room {roomNumber} - {location}
+              </span>
             </div>
             <div className="flex items-center gap-2 text-muted-foreground">
               <Clock className="h-4 w-4" />
-              <span>Expected: {task.expected_duration_minutes} minutes</span>
+              <span>Expected: {task.expected_duration_minutes || 30} minutes</span>
             </div>
-            {task.photo_required && (
-              <div className="flex items-center gap-2 text-muted-foreground">
-                <Camera className="h-4 w-4" />
-                <span>Photo required upon completion</span>
-              </div>
-            )}
+            <div className="flex items-center gap-2 text-muted-foreground">
+              <Camera className="h-4 w-4" />
+              <span>Photo required upon completion</span>
+            </div>
           </CardContent>
         </Card>
 
-        {task.status === "IN_PROGRESS" && (
+        {isStarted && (
           <Card>
             <CardHeader>
               <CardTitle>Timer</CardTitle>
@@ -288,13 +335,15 @@ function TaskDetail({ params }: TaskDetailProps) {
             <CardContent>
               <div className="text-center">
                 <div className="text-4xl font-bold font-mono">{formatTime(elapsedTime)}</div>
-                <p className="text-sm text-muted-foreground mt-2">Expected: {task.expected_duration_minutes} min</p>
+                <p className="text-sm text-muted-foreground mt-2">
+                  Expected: {task.expected_duration_minutes || 30} min
+                </p>
               </div>
             </CardContent>
           </Card>
         )}
 
-        {task.status === "PAUSED" && (
+        {!isRunning && isStarted && !isCompleted && (
           <Card className="border-destructive">
             <CardContent className="pt-6">
               <p className="text-center text-destructive font-medium">Task is currently paused</p>
@@ -307,7 +356,7 @@ function TaskDetail({ params }: TaskDetailProps) {
             <CardHeader>
               <div className="flex items-center justify-between">
                 <CardTitle>Photo Documentation ({totalPhotos})</CardTitle>
-                <Button variant="outline" size="sm" onClick={() => setPhotoModalOpen(true)}>
+                <Button variant="outline" size="sm" onClick={() => setPhotoModalOpen(true)} disabled={isCompleted}>
                   <Camera className="mr-2 h-4 w-4" />
                   Manage
                 </Button>
@@ -363,7 +412,7 @@ function TaskDetail({ params }: TaskDetailProps) {
           </Card>
         )}
 
-        {(task.status === "IN_PROGRESS" || task.status === "PAUSED") && (
+        {isStarted && !isCompleted && (
           <Card>
             <CardHeader>
               <CardTitle>Remarks</CardTitle>
@@ -374,7 +423,10 @@ function TaskDetail({ params }: TaskDetailProps) {
                 id="remark"
                 placeholder="Enter your remarks here..."
                 value={remark}
-                onChange={(e) => setRemark(e.target.value)}
+                onChange={(e) => {
+                  setRemark(e.target.value)
+                  updateMaintenanceTask(task.id, { notes: e.target.value })
+                }}
                 className="mt-2"
                 rows={4}
               />
@@ -382,23 +434,21 @@ function TaskDetail({ params }: TaskDetailProps) {
           </Card>
         )}
 
-        {task.pause_history.length > 0 && <PauseTimeline pauseHistory={task.pause_history} />}
-
         <div className="flex flex-col gap-2">
-          {task.status === "PENDING" && (
+          {!isStarted && !isCompleted && (
             <Button onClick={handleStart} size="lg" className="w-full">
               <Play className="mr-2 h-5 w-5" />
               Start Task
             </Button>
           )}
 
-          {task.status === "IN_PROGRESS" && (
+          {isStarted && isRunning && !isCompleted && (
             <>
               <Button onClick={handlePause} variant="outline" size="lg" className="w-full bg-transparent">
                 <Pause className="mr-2 h-5 w-5" />
                 Pause Task
               </Button>
-              {totalPhotos === 0 && task.photo_required && (
+              {totalPhotos === 0 && (
                 <Button
                   onClick={() => setPhotoModalOpen(true)}
                   variant="outline"
@@ -420,13 +470,13 @@ function TaskDetail({ params }: TaskDetailProps) {
             </>
           )}
 
-          {task.status === "PAUSED" && (
+          {isStarted && !isRunning && !isCompleted && (
             <>
               <Button onClick={handleResume} size="lg" className="w-full">
                 <Play className="mr-2 h-5 w-5" />
                 Resume Task
               </Button>
-              {totalPhotos === 0 && task.photo_required && (
+              {totalPhotos === 0 && (
                 <Button
                   onClick={() => setPhotoModalOpen(true)}
                   variant="outline"
@@ -448,11 +498,11 @@ function TaskDetail({ params }: TaskDetailProps) {
             </>
           )}
 
-          {task.status === "COMPLETED" && (
+          {isCompleted && (
             <div className="text-center py-8">
               <CheckCircle className="h-16 w-16 text-primary mx-auto mb-4" />
               <p className="text-lg font-medium">Task Completed</p>
-              <p className="text-sm text-muted-foreground">Completed in {task.actual_duration_minutes} minutes</p>
+              <p className="text-sm text-muted-foreground">Completed in {Math.floor(elapsedTime / 60)} minutes</p>
             </div>
           )}
         </div>
@@ -462,7 +512,7 @@ function TaskDetail({ params }: TaskDetailProps) {
         open={photoModalOpen}
         onOpenChange={setPhotoModalOpen}
         onPhotosCapture={handlePhotosCapture}
-        taskId={taskId}
+        taskId={task.id}
         existingPhotos={categorizedPhotos}
       />
 
@@ -471,20 +521,7 @@ function TaskDetail({ params }: TaskDetailProps) {
   )
 }
 
-export default function TaskDetailPage(props: TaskDetailProps) {
-  return (
-    <ProtectedRoute allowedRoles={["worker"]}>
-      <TaskDetail {...props} />
-    </ProtectedRoute>
-  )
-}
-
-const priorityColors = {
-  GUEST_REQUEST: "bg-destructive text-destructive-foreground",
-  TIME_SENSITIVE: "bg-accent text-accent-foreground",
-  DAILY_TASK: "bg-muted text-muted-foreground",
-  PREVENTIVE_MAINTENANCE: "bg-secondary text-secondary-foreground",
-}
+export default MaintenanceTaskPage
 
 function formatTime(seconds: number) {
   const mins = Math.floor(seconds / 60)

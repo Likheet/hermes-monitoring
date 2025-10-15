@@ -1,22 +1,26 @@
 "use client"
 
 import { createContext, useContext, useState, useEffect, type ReactNode } from "react"
-import type { Task, AuditLogEntry, PauseRecord, User, TaskIssue } from "./types"
+import type { Task, AuditLogEntry, PauseRecord, User, TaskIssue, CategorizedPhotos } from "./types"
+import type { MaintenanceSchedule, MaintenanceTask, MaintenanceTaskType } from "./maintenance-types"
 import { mockTasks, createDualTimestamp, mockUsers, mockIssues } from "./mock-data"
 import { createClient } from "@/lib/supabase/client"
 import { createNotification, playNotificationSound } from "./notification-utils"
 import { triggerHapticFeedback } from "./haptics"
+import { ALL_ROOMS, getMaintenanceItemsForRoom } from "./location-data"
 
 interface TaskContextType {
   tasks: Task[]
   users: User[]
   issues: TaskIssue[]
+  schedules: MaintenanceSchedule[]
+  maintenanceTasks: MaintenanceTask[]
   updateTask: (taskId: string, updates: Partial<Task>) => void
   addAuditLog: (taskId: string, entry: Omit<AuditLogEntry, "timestamp">) => void
   startTask: (taskId: string, userId: string) => void
   pauseTask: (taskId: string, userId: string, reason: string) => void
   resumeTask: (taskId: string, userId: string) => void
-  completeTask: (taskId: string, userId: string, photoUrl: string | null, remark: string) => void
+  completeTask: (taskId: string, userId: string, categorizedPhotos: CategorizedPhotos, remark: string) => void
   getTaskById: (taskId: string) => Task | undefined
   createTask: (task: Omit<Task, "id" | "audit_log" | "pause_history">) => void
   verifyTask: (
@@ -31,9 +35,22 @@ interface TaskContextType {
   ) => void
   reassignTask: (taskId: string, newWorkerId: string, userId: string, reason: string) => void
   dismissRejectedTask: (taskId: string, userId: string) => void
-  updateWorkerShift: (workerId: string, shiftStart: string, shiftEnd: string, userId: string) => void
+  updateWorkerShift: (
+    workerId: string,
+    shiftStart: string,
+    shiftEnd: string,
+    userId: string,
+    hasBreak: boolean,
+    breakStart?: string,
+    breakEnd?: string,
+  ) => void
   addWorker: (worker: Omit<User, "id" | "is_available">) => void
   raiseIssue: (taskId: string, userId: string, issueDescription: string) => void
+  addSchedule: (schedule: Omit<MaintenanceSchedule, "id" | "created_at">) => void
+  updateSchedule: (scheduleId: string, updates: Partial<MaintenanceSchedule>) => void
+  deleteSchedule: (scheduleId: string) => void
+  toggleSchedule: (scheduleId: string) => void
+  updateMaintenanceTask: (taskId: string, updates: Partial<MaintenanceTask>) => void
 }
 
 const TaskContext = createContext<TaskContextType | undefined>(undefined)
@@ -42,6 +59,8 @@ export function TaskProvider({ children }: { children: ReactNode }) {
   const [tasks, setTasks] = useState<Task[]>(mockTasks)
   const [users, setUsers] = useState<User[]>(mockUsers)
   const [issues, setIssues] = useState<TaskIssue[]>(mockIssues)
+  const [schedules, setSchedules] = useState<MaintenanceSchedule[]>([])
+  const [maintenanceTasks, setMaintenanceTasks] = useState<MaintenanceTask[]>([])
   const [isRealtimeEnabled] = useState(false) // Set to true when switching to real database
 
   useEffect(() => {
@@ -76,6 +95,55 @@ export function TaskProvider({ children }: { children: ReactNode }) {
       channel.unsubscribe()
     }
   }, [isRealtimeEnabled])
+
+  useEffect(() => {
+    console.log("[v0] TaskProvider mounted, loading from localStorage")
+    const savedSchedules = localStorage.getItem("maintenance_schedules")
+    const savedTasks = localStorage.getItem("maintenance_tasks")
+
+    console.log("[v0] localStorage check:", {
+      hasSchedules: !!savedSchedules,
+      hasTasks: !!savedTasks,
+      schedulesLength: savedSchedules?.length,
+      tasksLength: savedTasks?.length,
+    })
+
+    if (savedSchedules) {
+      try {
+        const parsed = JSON.parse(savedSchedules)
+        console.log("[v0] Loaded", parsed.length, "schedules from localStorage")
+        setSchedules(parsed)
+      } catch (error) {
+        console.error("[v0] Error loading schedules:", error)
+      }
+    }
+
+    if (savedTasks) {
+      try {
+        const parsed = JSON.parse(savedTasks)
+        console.log("[v0] Loaded", parsed.length, "maintenance tasks from localStorage")
+        setMaintenanceTasks(parsed)
+      } catch (error) {
+        console.error("[v0] Error loading maintenance tasks:", error)
+      }
+    } else {
+      console.log("[v0] No maintenance tasks found in localStorage")
+    }
+  }, [])
+
+  useEffect(() => {
+    if (maintenanceTasks.length > 0) {
+      localStorage.setItem("maintenance_tasks", JSON.stringify(maintenanceTasks))
+      console.log("[v0] Saved", maintenanceTasks.length, "maintenance tasks to localStorage")
+    }
+  }, [maintenanceTasks])
+
+  useEffect(() => {
+    if (schedules.length > 0) {
+      localStorage.setItem("maintenance_schedules", JSON.stringify(schedules))
+      console.log("[v0] Saved", schedules.length, "schedules to localStorage")
+    }
+  }, [schedules])
 
   const updateTask = (taskId: string, updates: Partial<Task>) => {
     setTasks((prev) => prev.map((task) => (task.id === taskId ? { ...task, ...updates } : task)))
@@ -167,7 +235,7 @@ export function TaskProvider({ children }: { children: ReactNode }) {
     })
   }
 
-  const completeTask = (taskId: string, userId: string, photoUrl: string | null, remark: string) => {
+  const completeTask = (taskId: string, userId: string, categorizedPhotos: CategorizedPhotos, remark: string) => {
     const task = tasks.find((t) => t.id === taskId)
     if (!task || !task.started_at) return
 
@@ -175,7 +243,6 @@ export function TaskProvider({ children }: { children: ReactNode }) {
     const startTime = new Date(task.started_at.client).getTime()
     const endTime = new Date(now.client).getTime()
 
-    // Calculate actual duration excluding pause time
     let pausedDuration = 0
     task.pause_history.forEach((pause) => {
       if (pause.resumed_at) {
@@ -186,12 +253,15 @@ export function TaskProvider({ children }: { children: ReactNode }) {
     })
 
     const actualDuration = Math.round((endTime - startTime - pausedDuration) / 60000)
+    const totalPhotos = categorizedPhotos.room_photos.length + categorizedPhotos.proof_photos.length
 
-    console.log("[v0] Completing task:", {
+    console.log("[v0] Completing task with categorized photos:", {
       taskId,
       status: "COMPLETED",
       actualDuration,
-      hasPhoto: !!photoUrl,
+      roomPhotos: categorizedPhotos.room_photos.length,
+      proofPhotos: categorizedPhotos.proof_photos.length,
+      totalPhotos,
       hasRemark: !!remark,
     })
 
@@ -199,7 +269,8 @@ export function TaskProvider({ children }: { children: ReactNode }) {
       status: "COMPLETED",
       completed_at: now,
       actual_duration_minutes: actualDuration,
-      photo_url: photoUrl,
+      categorized_photos: categorizedPhotos,
+      photo_urls: [...categorizedPhotos.room_photos, ...categorizedPhotos.proof_photos], // Legacy field
       worker_remark: remark,
     })
     addAuditLog(taskId, {
@@ -207,7 +278,7 @@ export function TaskProvider({ children }: { children: ReactNode }) {
       action: "TASK_COMPLETED",
       old_status: task.status,
       new_status: "COMPLETED",
-      details: `Task completed in ${actualDuration} minutes`,
+      details: `Task completed in ${actualDuration} minutes with ${totalPhotos} photo(s) (${categorizedPhotos.room_photos.length} room, ${categorizedPhotos.proof_photos.length} proof)`,
     })
 
     console.log("[v0] Task completed and ready for verification:", taskId)
@@ -287,12 +358,69 @@ export function TaskProvider({ children }: { children: ReactNode }) {
         details: `Supervisor rejected task: ${supervisorRemark}`,
       })
 
+      const allRejectionPhotos = rejectionProofPhotoUrl ? [rejectionProofPhotoUrl] : []
+      const originalPhotos = task.categorized_photos || { room_photos: [], proof_photos: [] }
+
+      const newTask: Task = {
+        id: `t${Date.now()}`,
+        task_type: `[REWORK] ${task.task_type}`,
+        priority_level: task.priority_level,
+        status: "PENDING",
+        assigned_to_user_id: "",
+        assigned_by_user_id: userId,
+        assigned_at: createDualTimestamp(),
+        started_at: null,
+        completed_at: null,
+        expected_duration_minutes: task.expected_duration_minutes,
+        actual_duration_minutes: null,
+        photo_urls: [...allRejectionPhotos, ...task.photo_urls],
+        categorized_photos: {
+          room_photos: [...allRejectionPhotos, ...originalPhotos.room_photos],
+          proof_photos: originalPhotos.proof_photos,
+        },
+        photo_required: task.photo_required,
+        worker_remark: `Original task rejected. Supervisor remark: ${supervisorRemark}`,
+        supervisor_remark: "",
+        rating: null,
+        quality_comment: null,
+        rating_proof_photo_url: null,
+        rejection_proof_photo_url: null,
+        room_number: task.room_number,
+        pause_history: [],
+        audit_log: [
+          {
+            timestamp: createDualTimestamp(),
+            user_id: userId,
+            action: "TASK_CREATED_FROM_REJECTION",
+            old_status: null,
+            new_status: "PENDING",
+            details: `Task created from rejected task ${taskId}. Awaiting supervisor assignment.`,
+          },
+        ],
+      }
+
+      setTasks((prev) => [...prev, newTask])
+
+      console.log("[v0] Created new rework task from rejection:", newTask.id)
+
+      // Notify supervisor about new task needing assignment
+      const supervisors = users.filter((u) => u.role === "supervisor")
+      supervisors.forEach((supervisor) => {
+        createNotification(
+          supervisor.id,
+          "task_assigned",
+          "Rework Task Created",
+          `A rework task "${newTask.task_type}" needs to be assigned at ${newTask.room_number}`,
+          newTask.id,
+        )
+      })
+
       if (task.assigned_to_user_id) {
         createNotification(
           task.assigned_to_user_id,
           "task_rejected",
           "Task Rejected",
-          `Your task "${task.task_type}" was rejected. Reason: ${supervisorRemark}`,
+          `Your task "${task.task_type}" was rejected. A rework task has been created.`,
           taskId,
         )
         playNotificationSound()
@@ -347,8 +475,24 @@ export function TaskProvider({ children }: { children: ReactNode }) {
     })
   }
 
-  const updateWorkerShift = (workerId: string, shiftStart: string, shiftEnd: string, userId: string) => {
-    console.log("[v0] Updating worker shift:", { workerId, shiftStart, shiftEnd, updatedBy: userId })
+  const updateWorkerShift = (
+    workerId: string,
+    shiftStart: string,
+    shiftEnd: string,
+    userId: string,
+    hasBreak = false,
+    breakStart?: string,
+    breakEnd?: string,
+  ) => {
+    console.log("[v0] Updating worker shift:", {
+      workerId,
+      shiftStart,
+      shiftEnd,
+      hasBreak,
+      breakStart,
+      breakEnd,
+      updatedBy: userId,
+    })
     setUsers((prev) => {
       const updated = prev.map((user) =>
         user.id === workerId
@@ -356,6 +500,9 @@ export function TaskProvider({ children }: { children: ReactNode }) {
               ...user,
               shift_start: shiftStart,
               shift_end: shiftEnd,
+              has_break: hasBreak,
+              break_start: breakStart,
+              break_end: breakEnd,
             }
           : user,
       )
@@ -435,12 +582,135 @@ export function TaskProvider({ children }: { children: ReactNode }) {
     console.log("[v0] Issue raised:", newIssue)
   }
 
+  const addSchedule = (scheduleData: Omit<MaintenanceSchedule, "id" | "created_at">) => {
+    const newSchedule: MaintenanceSchedule = {
+      ...scheduleData,
+      id: `sched${Date.now()}`,
+      created_at: createDualTimestamp(),
+    }
+    console.log("[v0] Adding new schedule:", newSchedule)
+    setSchedules((prev) => [...prev, newSchedule])
+
+    if (newSchedule.active) {
+      console.log("[v0] Schedule is active, generating tasks")
+      generateMaintenanceTasksFromSchedule(newSchedule)
+    }
+
+    console.log("[v0] Schedule added successfully")
+  }
+
+  const updateSchedule = (scheduleId: string, updates: Partial<MaintenanceSchedule>) => {
+    console.log("[v0] Updating schedule:", scheduleId, updates)
+    setSchedules((prev) => prev.map((s) => (s.id === scheduleId ? { ...s, ...updates } : s)))
+  }
+
+  const deleteSchedule = (scheduleId: string) => {
+    console.log("[v0] Deleting schedule:", scheduleId)
+    setSchedules((prev) => prev.filter((s) => s.id !== scheduleId))
+    setMaintenanceTasks((prev) => prev.filter((t) => t.schedule_id !== scheduleId))
+  }
+
+  const toggleSchedule = (scheduleId: string) => {
+    console.log("[v0] Toggling schedule:", scheduleId)
+    setSchedules((prev) => {
+      const updated = prev.map((s) => {
+        if (s.id === scheduleId) {
+          const newActive = !s.active
+          const updatedSchedule = { ...s, active: newActive }
+
+          if (newActive) {
+            console.log("[v0] Schedule activated, generating tasks")
+            generateMaintenanceTasksFromSchedule(updatedSchedule)
+          }
+
+          return updatedSchedule
+        }
+        return s
+      })
+      return updated
+    })
+  }
+
+  const generateMaintenanceTasksFromSchedule = (schedule: MaintenanceSchedule) => {
+    if (!schedule.active) {
+      console.log("[v0] Schedule is not active, skipping task generation")
+      return
+    }
+
+    const currentDate = new Date()
+    const currentMonth = currentDate.getMonth() + 1
+    const currentYear = currentDate.getFullYear()
+
+    console.log("[v0] Generating maintenance tasks for schedule:", schedule.id, schedule.task_type, schedule.area)
+
+    let roomsToGenerate = ALL_ROOMS
+    if (schedule.area === "a_block") {
+      roomsToGenerate = ALL_ROOMS.filter((r) => r.block === "A")
+    } else if (schedule.area === "b_block") {
+      roomsToGenerate = ALL_ROOMS.filter((r) => r.block === "B")
+    }
+
+    console.log("[v0] Generating tasks for", roomsToGenerate.length, "rooms")
+
+    const newTasks: MaintenanceTask[] = []
+
+    const taskTypesToGenerate: MaintenanceTaskType[] =
+      schedule.task_type === "all" ? ["ac_indoor", "ac_outdoor", "fan", "exhaust"] : [schedule.task_type]
+
+    console.log("[v0] Task types to generate:", taskTypesToGenerate)
+
+    roomsToGenerate.forEach((room) => {
+      // Get all maintenance items for this room (includes specific locations)
+      const maintenanceItems = getMaintenanceItemsForRoom(room.number)
+
+      // Filter items based on selected task types
+      const filteredItems = maintenanceItems.filter((item) => taskTypesToGenerate.includes(item.type))
+
+      filteredItems.forEach((item) => {
+        const newTask: MaintenanceTask = {
+          id: `mtask${Date.now()}-${room.number}-${item.type}-${item.location}-${Math.random().toString(36).substr(2, 9)}`,
+          schedule_id: schedule.id,
+          room_number: room.number,
+          task_type: item.type,
+          location: item.location, // Specific location like "Hall", "Bedroom 1", etc.
+          description: `${item.name} maintenance for room ${room.number}`,
+          status: "pending",
+          photos: { room_photos: [], proof_photos: [] },
+          period_month: currentMonth,
+          period_year: currentYear,
+          created_at: new Date().toISOString(),
+          expected_duration_minutes: item.expectedDuration,
+        }
+        newTasks.push(newTask)
+      })
+    })
+
+    console.log("[v0] Generated", newTasks.length, "maintenance tasks")
+    setMaintenanceTasks((prev) => [...prev, ...newTasks])
+  }
+
+  const updateMaintenanceTask = (taskId: string, updates: Partial<MaintenanceTask>) => {
+    console.log("[v0] Updating maintenance task:", taskId, updates)
+    setMaintenanceTasks((prev) => {
+      const updated = prev.map((t) => (t.id === taskId ? { ...t, ...updates } : t))
+      console.log(
+        "[v0] Task updated. Total tasks:",
+        updated.length,
+        "Active tasks:",
+        updated.filter((t) => t.status === "in_progress" || t.status === "paused").length,
+      )
+      return updated
+    })
+  }
+
   return (
     <TaskContext.Provider
       value={{
         tasks,
         users,
         issues,
+        schedules,
+        maintenanceTasks,
         updateTask,
         addAuditLog,
         startTask,
@@ -455,6 +725,11 @@ export function TaskProvider({ children }: { children: ReactNode }) {
         updateWorkerShift,
         addWorker,
         raiseIssue,
+        addSchedule,
+        updateSchedule,
+        deleteSchedule,
+        toggleSchedule,
+        updateMaintenanceTask,
       }}
     >
       {children}

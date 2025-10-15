@@ -115,9 +115,11 @@ function SupervisorDashboard() {
     }
     return isCompleted
   })
-  const otherTasks = filteredTasks.filter((t) => t.status !== "COMPLETED" || t.supervisor_remark)
+  const otherTasks = filteredTasks.filter((t) => !(t.status === "COMPLETED" && !t.supervisor_remark))
 
   console.log("[v0] Supervisor dashboard - Completed tasks pending verification:", completedTasks.length)
+  console.log("[v0] Supervisor dashboard - Other tasks:", otherTasks.length)
+  console.log("[v0] Supervisor dashboard - Total filtered tasks:", filteredTasks.length)
 
   const getTaskEscalation = (taskId: string): 1 | 2 | 3 | null => {
     const taskEscalations = escalations.filter((esc) => esc.task_id === taskId && !esc.resolved)
@@ -299,6 +301,16 @@ function SupervisorDashboard() {
                         <div className={`h-2 w-2 rounded-full ${statusColors[task.status]}`} />
                         <span className="text-sm font-medium">{task.status.replace(/_/g, " ")}</span>
                       </div>
+                      {task.status === "COMPLETED" && task.supervisor_remark && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="w-full mt-2 bg-transparent"
+                          onClick={() => router.push(`/supervisor/verify/${task.id}`)}
+                        >
+                          View Details
+                        </Button>
+                      )}
                     </CardContent>
                   </Card>
                 )
