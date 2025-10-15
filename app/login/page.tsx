@@ -17,6 +17,18 @@ export default function LoginPage() {
   const { users } = useTasks()
   const router = useRouter()
 
+  const sortedUsers = [...users].sort((a, b) => {
+    const order: Record<string, number> = {
+      "user-admin": 1,
+      "user-supervisor-housekeeping": 2,
+      "user-supervisor-maintenance": 3,
+      "user-frontoffice": 4,
+      "user-worker-maintenance": 5,
+      "user-worker-housekeeping": 6,
+    }
+    return (order[a.id] || 999) - (order[b.id] || 999)
+  })
+
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault()
 
@@ -63,9 +75,9 @@ export default function LoginPage() {
                   <SelectValue placeholder="Choose a user..." />
                 </SelectTrigger>
                 <SelectContent>
-                  {users.map((user) => (
+                  {sortedUsers.map((user) => (
                     <SelectItem key={user.id} value={user.id}>
-                      {user.name} ({user.role})
+                      {user.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -79,9 +91,9 @@ export default function LoginPage() {
             <div className="mt-4 text-sm text-muted-foreground">
               <p className="font-semibold mb-2">Available Users:</p>
               <ul className="space-y-1 text-xs">
-                {users.map((user) => (
+                {sortedUsers.map((user) => (
                   <li key={user.id}>
-                    {user.name} - {user.role} ({user.department})
+                    {user.name} - {user.department}
                   </li>
                 ))}
               </ul>

@@ -162,8 +162,7 @@ function WorkerDashboard() {
           status: t.status,
         })),
       },
-      workerStatus:
-        inProgressTasks.length > 0 || myActiveMaintenanceTasks.length > 0 ? "BUSY" : "AVAILABLE",
+      workerStatus: inProgressTasks.length > 0 || myActiveMaintenanceTasks.length > 0 ? "BUSY" : "AVAILABLE",
     })
   }, [myTasks, maintenanceTasks, user?.id])
 
@@ -337,10 +336,7 @@ function WorkerDashboard() {
       updateMaintenanceTask(taskId, {
         status: "completed",
         ac_location: data.acLocation,
-        photos: [
-          ...(data.categorizedPhotos.room_photos || []),
-          ...(data.categorizedPhotos.proof_photos || []),
-        ],
+        photos: [...(data.categorizedPhotos.room_photos || []), ...(data.categorizedPhotos.proof_photos || [])],
         categorized_photos: {
           before_photos: data.categorizedPhotos.room_photos,
           after_photos: data.categorizedPhotos.proof_photos,
@@ -420,8 +416,7 @@ function WorkerDashboard() {
   const totalScheduledTasks = myMaintenanceAssignments.length
   const totalAssignments = myTasks.length + totalScheduledTasks
   const totalCompletedAssignments = completedTasks.length + completedMaintenanceTasks.length
-  const completionRate =
-    totalAssignments > 0 ? Math.round((totalCompletedAssignments / totalAssignments) * 100) : 0
+  const completionRate = totalAssignments > 0 ? Math.round((totalCompletedAssignments / totalAssignments) * 100) : 0
   const onTimeRate = completedTasks.length > 0 ? Math.round((onTimeTasks.length / completedTasks.length) * 100) : 0
 
   const totalMaintenanceMinutes = completedMaintenanceTasks.reduce(
@@ -1016,9 +1011,7 @@ function WorkerDashboard() {
             {activeTab !== "scheduled" && (
               <p className="text-xs md:text-sm text-muted-foreground">
                 {user?.name}
-                {departmentDisplay && (
-                  <span className="ml-1 text-muted-foreground">- {departmentDisplay}</span>
-                )}
+                {departmentDisplay && <span className="ml-1 text-muted-foreground">- {departmentDisplay}</span>}
                 {(inProgressTasks.length > 0 || myActiveMaintenanceTasks.length > 0) && (
                   <span className="ml-2 text-accent font-medium">● Busy</span>
                 )}

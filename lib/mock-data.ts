@@ -13,7 +13,7 @@ export function createDualTimestamp(date?: Date): DualTimestamp {
 export const mockUsers: User[] = [
   {
     id: "user-worker-housekeeping",
-    name: "John Worker",
+    name: "HK Staff",
     role: "worker",
     department: "housekeeping",
     phone: "+1234567890",
@@ -24,7 +24,7 @@ export const mockUsers: User[] = [
   },
   {
     id: "user-worker-maintenance",
-    name: "Sarah Maintenance",
+    name: "Maintenance Staff",
     role: "worker",
     department: "maintenance",
     phone: "+1234567891",
@@ -35,7 +35,7 @@ export const mockUsers: User[] = [
   },
   {
     id: "user-supervisor-housekeeping",
-    name: "Mike Supervisor",
+    name: "HK Supervisor",
     role: "supervisor",
     department: "housekeeping",
     phone: "+1234567892",
@@ -46,7 +46,7 @@ export const mockUsers: User[] = [
   },
   {
     id: "user-supervisor-maintenance",
-    name: "Nina Supervisor",
+    name: "Maintenance Supervisor",
     role: "supervisor",
     department: "maintenance",
     phone: "+1234567893",
@@ -68,7 +68,7 @@ export const mockUsers: User[] = [
   },
   {
     id: "user-admin",
-    name: "Admin User",
+    name: "Admin",
     role: "admin",
     department: "front_desk",
     phone: "+1234567895",
