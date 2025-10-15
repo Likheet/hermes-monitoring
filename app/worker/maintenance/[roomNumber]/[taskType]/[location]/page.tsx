@@ -12,6 +12,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { ArrowLeft, Play, Pause, CheckCircle, Clock, MapPin, Camera, AlertTriangle, Home, Wrench } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { OfflineIndicator } from "@/components/timer/offline-indicator"
@@ -50,6 +58,8 @@ function MaintenanceTaskPage({ params }: MaintenanceTaskPageProps) {
   const [remark, setRemark] = useState("")
   const [photoModalOpen, setPhotoModalOpen] = useState(false)
   const [issueModalOpen, setIssueModalOpen] = useState(false)
+  const [ongoingTaskDialogOpen, setOngoingTaskDialogOpen] = useState(false)
+  const [ongoingTask, setOngoingTask] = useState<typeof task | null>(null)
   const [categorizedPhotos, setCategorizedPhotos] = useState<CategorizedPhotos>({
     room_photos: [],
     proof_photos: [],
@@ -136,35 +146,20 @@ function MaintenanceTaskPage({ params }: MaintenanceTaskPageProps) {
   const isStarted = task.status === "in_progress" || task.status === "paused"
 
   const handleStart = () => {
-    const inProgressTasks = maintenanceTasks.filter(
-      (t) => t.assigned_to === user?.id && t.status === "in_progress" && t.id !== task.id,
+    const activeTasks = maintenanceTasks.filter(
+      (t) => t.assigned_to === user?.id && (t.status === "in_progress" || t.status === "paused") && t.id !== task.id,
     )
 
-    if (inProgressTasks.length > 0) {
-      const inProgressTask = inProgressTasks[0]
-      toast({
-        title: "Another Task In Progress",
-        description: `You already have a task in progress (Room ${inProgressTask.room_number}). Please pause it before starting a new task.`,
-        variant: "destructive",
+    if (activeTasks.length > 0) {
+      const activeTask = activeTasks[0]
+      setOngoingTask(activeTask)
+      setOngoingTaskDialogOpen(true)
+      console.log("[v0] Blocked task start - ongoing task exists:", {
+        ongoingTaskId: activeTask.id,
+        ongoingTaskRoom: activeTask.room_number,
+        ongoingTaskStatus: activeTask.status,
       })
       return
-    }
-
-    // Check if we already have a paused task and trying to start another
-    const pausedTasks = maintenanceTasks.filter(
-      (t) => t.assigned_to === user?.id && t.status === "paused" && t.id !== task.id,
-    )
-
-    if (pausedTasks.length > 0) {
-      // Allow starting if we have only 1 paused task (max 2 tasks: 1 paused + 1 in progress)
-      if (pausedTasks.length >= 1) {
-        toast({
-          title: "Task Limit Reached",
-          description: `You can only have 1 task in progress and 1 paused task at a time. Please complete or resume your paused task first.`,
-          variant: "destructive",
-        })
-        return
-      }
     }
 
     const now = new Date().toISOString()
@@ -198,7 +193,6 @@ function MaintenanceTaskPage({ params }: MaintenanceTaskPageProps) {
 
   const handleResume = () => {
     const now = new Date().toISOString()
-    // Calculate new start time based on paused duration
     const newStartTime = new Date(Date.now() - elapsedTime * 1000).toISOString()
     updateMaintenanceTask(task.id, {
       status: "in_progress",
@@ -269,6 +263,14 @@ function MaintenanceTaskPage({ params }: MaintenanceTaskPageProps) {
       title: "Issue Raised",
       description: "Your issue has been recorded",
     })
+  }
+
+  const handleGoToOngoingTask = () => {
+    if (!ongoingTask) return
+    setOngoingTaskDialogOpen(false)
+    router.push(
+      `/worker/maintenance/${ongoingTask.room_number}/${ongoingTask.task_type}/${encodeURIComponent(ongoingTask.location)}`,
+    )
   }
 
   const totalPhotos = categorizedPhotos.room_photos.length + categorizedPhotos.proof_photos.length
@@ -517,6 +519,44 @@ function MaintenanceTaskPage({ params }: MaintenanceTaskPageProps) {
       />
 
       <RaiseIssueModal open={issueModalOpen} onOpenChange={setIssueModalOpen} onSubmit={handleRaiseIssue} />
+
+      <Dialog open={ongoingTaskDialogOpen} onOpenChange={setOngoingTaskDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>You Still Have an Ongoing Task</DialogTitle>
+            <DialogDescription>
+              You currently have a task {ongoingTask?.status === "paused" ? "paused" : "in progress"} in Room{" "}
+              {ongoingTask?.room_number}. Please complete or pause that task before starting a new one.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <Card>
+              <CardContent className="pt-6">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium">Room {ongoingTask?.room_number}</span>
+                    <Badge variant={ongoingTask?.status === "paused" ? "outline" : "default"}>
+                      {ongoingTask?.status === "paused" ? "Paused" : "In Progress"}
+                    </Badge>
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    {ongoingTask?.task_type && TASK_TYPE_LABELS[ongoingTask.task_type as keyof typeof TASK_TYPE_LABELS]}{" "}
+                    - {ongoingTask?.location}
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+          <DialogFooter className="flex-col sm:flex-row gap-2">
+            <Button variant="outline" onClick={() => setOngoingTaskDialogOpen(false)} className="w-full sm:w-auto">
+              Close
+            </Button>
+            <Button onClick={handleGoToOngoingTask} className="w-full sm:w-auto">
+              Take Me There
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

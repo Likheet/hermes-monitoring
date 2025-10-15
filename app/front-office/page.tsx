@@ -15,7 +15,7 @@ import { IssueCard } from "@/components/issue-card"
 
 function FrontOfficeDashboard() {
   const { user, logout } = useAuth()
-  const { tasks, issues, users } = useTasks()
+  const { tasks, issues, users, maintenanceTasks } = useTasks()
   const router = useRouter()
   const { isConnected } = useRealtimeTasks({ enabled: true })
 
@@ -31,9 +31,15 @@ function FrontOfficeDashboard() {
   )
 
   const getWorkerCurrentTask = (workerId: string) => {
-    return tasks.find(
+    const regularTask = tasks.find(
       (t) => t.assigned_to_user_id === workerId && (t.status === "IN_PROGRESS" || t.status === "PAUSED"),
     )
+    if (regularTask) return regularTask
+
+    const maintenanceTask = (maintenanceTasks || []).find(
+      (t) => t.assigned_to === workerId && (t.status === "in_progress" || t.status === "paused"),
+    )
+    return maintenanceTask
   }
 
   const availableWorkers = workers.filter((w) => !getWorkerCurrentTask(w.id))
