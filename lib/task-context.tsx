@@ -315,6 +315,20 @@ export function TaskProvider({ children }: { children: ReactNode }) {
       }
     }
 
+    if (taskData.task_type.includes("Other (Custom Task)") || taskData.task_type.startsWith("[CUSTOM]")) {
+      const adminUsers = users.filter((u) => u.role === "admin")
+      adminUsers.forEach((admin) => {
+        createNotification(
+          admin.id,
+          "system",
+          "Custom Task Created",
+          `Front office created a custom task: "${taskData.task_type}" at ${taskData.room_number || "N/A"}. Consider adding this as a permanent task type.`,
+          newTask.id,
+        )
+      })
+      console.log("[v0] Admin notified about custom task:", taskData.task_type)
+    }
+
     setTasks((prev) => [...prev, newTask])
   }
 

@@ -641,6 +641,20 @@ export const TASK_DEFINITIONS: TaskDefinition[] = [
     keywords: ["lift", "elevator", "b block", "maintenance"],
     requiresRoom: false,
   },
+
+  // OTHER (Custom Task)
+  {
+    id: "other-custom-task",
+    name: "Other (Custom Task)",
+    category: "GUEST_REQUEST",
+    department: "housekeeping",
+    duration: 30,
+    priority: "medium",
+    photoRequired: true,
+    photoCount: 1,
+    keywords: ["other", "custom", "miscellaneous", "misc"],
+    requiresRoom: false,
+  },
 ]
 
 // Helper function for category labels

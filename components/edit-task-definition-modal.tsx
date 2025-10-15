@@ -1,0 +1,284 @@
+"use client"
+
+import { useState, useEffect } from "react"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { CATEGORY_LABELS } from "@/lib/task-definitions"
+import type { TaskCategory, Department, Priority, TaskDefinition } from "@/lib/task-definitions"
+import type { CustomTaskDefinition } from "@/lib/custom-task-definitions"
+import { updateCustomTaskDefinition } from "@/lib/custom-task-definitions"
+import { useToast } from "@/hooks/use-toast"
+
+interface EditTaskDefinitionModalProps {
+  task: (TaskDefinition | CustomTaskDefinition) & { isCustom?: boolean }
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  onSuccess: () => void
+}
+
+export function EditTaskDefinitionModal({ task, open, onOpenChange, onSuccess }: EditTaskDefinitionModalProps) {
+  const { toast } = useToast()
+  const [formData, setFormData] = useState({
+    name: task.name,
+    category: task.category,
+    department: task.department,
+    duration: task.duration,
+    priority: task.priority,
+    photoRequired: task.photoRequired,
+    photoCount: task.photoCount,
+    keywords: task.keywords.join(", "),
+    requiresRoom: task.requiresRoom,
+    requiresACLocation: task.requiresACLocation,
+  })
+
+  useEffect(() => {
+    setFormData({
+      name: task.name,
+      category: task.category,
+      department: task.department,
+      duration: task.duration,
+      priority: task.priority,
+      photoRequired: task.photoRequired,
+      photoCount: task.photoCount,
+      keywords: task.keywords.join(", "),
+      requiresRoom: task.requiresRoom,
+      requiresACLocation: task.requiresACLocation,
+    })
+  }, [task])
+
+  const handleSave = () => {
+    if (!formData.name.trim()) {
+      toast({
+        title: "Error",
+        description: "Task name is required",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (!task.isCustom) {
+      toast({
+        title: "Cannot Edit",
+        description: "Built-in tasks cannot be edited. Create a custom task instead.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    const keywordsArray = formData.keywords
+      .split(",")
+      .map((k) => k.trim())
+      .filter((k) => k.length > 0)
+
+    const updated = updateCustomTaskDefinition(task.id, {
+      name: formData.name,
+      category: formData.category,
+      department: formData.department,
+      duration: formData.duration,
+      priority: formData.priority,
+      photoRequired: formData.photoRequired,
+      photoCount: formData.photoCount,
+      keywords: keywordsArray,
+      requiresRoom: formData.requiresRoom,
+      requiresACLocation: formData.requiresACLocation,
+    })
+
+    if (updated) {
+      toast({
+        title: "Success",
+        description: `"${updated.name}" has been updated`,
+      })
+      onSuccess()
+      onOpenChange(false)
+    } else {
+      toast({
+        title: "Error",
+        description: "Failed to update task",
+        variant: "destructive",
+      })
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Edit Task Definition</DialogTitle>
+          <DialogDescription>
+            {task.isCustom
+              ? "Update the task definition. Changes will apply to future task assignments."
+              : "Built-in tasks cannot be edited. Create a custom task instead."}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4 py-4">
+          <div className="space-y-2">
+            <Label htmlFor="edit-task-name">Task Name *</Label>
+            <Input
+              id="edit-task-name"
+              value={formData.name}
+              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              disabled={!task.isCustom}
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="edit-category">Category</Label>
+              <Select
+                value={formData.category}
+                onValueChange={(value) => setFormData({ ...formData, category: value as TaskCategory })}
+                disabled={!task.isCustom}
+              >
+                <SelectTrigger id="edit-category">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {Object.entries(CATEGORY_LABELS).map(([key, label]) => (
+                    <SelectItem key={key} value={key}>
+                      {label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="edit-department">Department</Label>
+              <Select
+                value={formData.department}
+                onValueChange={(value) => setFormData({ ...formData, department: value as Department })}
+                disabled={!task.isCustom}
+              >
+                <SelectTrigger id="edit-department">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="housekeeping">Housekeeping</SelectItem>
+                  <SelectItem value="maintenance">Maintenance</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="edit-duration">Expected Duration (minutes)</Label>
+              <Input
+                id="edit-duration"
+                type="number"
+                min="5"
+                value={formData.duration}
+                onChange={(e) => setFormData({ ...formData, duration: Number.parseInt(e.target.value) || 30 })}
+                disabled={!task.isCustom}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="edit-priority">Default Priority</Label>
+              <Select
+                value={formData.priority}
+                onValueChange={(value) => setFormData({ ...formData, priority: value as Priority })}
+                disabled={!task.isCustom}
+              >
+                <SelectTrigger id="edit-priority">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="urgent">Urgent</SelectItem>
+                  <SelectItem value="high">High</SelectItem>
+                  <SelectItem value="medium">Medium</SelectItem>
+                  <SelectItem value="low">Low</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="edit-keywords">Search Keywords (comma-separated)</Label>
+            <Textarea
+              id="edit-keywords"
+              value={formData.keywords}
+              onChange={(e) => setFormData({ ...formData, keywords: e.target.value })}
+              rows={2}
+              disabled={!task.isCustom}
+            />
+          </div>
+
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="edit-photo-required"
+                checked={formData.photoRequired}
+                onChange={(e) => setFormData({ ...formData, photoRequired: e.target.checked })}
+                className="h-4 w-4"
+                disabled={!task.isCustom}
+              />
+              <Label htmlFor="edit-photo-required" className="cursor-pointer">
+                Photo documentation required
+              </Label>
+            </div>
+
+            {formData.photoRequired && (
+              <div className="ml-6 space-y-2">
+                <Label htmlFor="edit-photo-count">Minimum photos required</Label>
+                <Input
+                  id="edit-photo-count"
+                  type="number"
+                  min="1"
+                  max="5"
+                  value={formData.photoCount}
+                  onChange={(e) => setFormData({ ...formData, photoCount: Number.parseInt(e.target.value) || 1 })}
+                  className="w-24"
+                  disabled={!task.isCustom}
+                />
+              </div>
+            )}
+
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="edit-requires-room"
+                checked={formData.requiresRoom}
+                onChange={(e) => setFormData({ ...formData, requiresRoom: e.target.checked })}
+                className="h-4 w-4"
+                disabled={!task.isCustom}
+              />
+              <Label htmlFor="edit-requires-room" className="cursor-pointer">
+                Requires room number
+              </Label>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="edit-requires-ac-location"
+                checked={formData.requiresACLocation}
+                onChange={(e) => setFormData({ ...formData, requiresACLocation: e.target.checked })}
+                className="h-4 w-4"
+                disabled={!task.isCustom}
+              />
+              <Label htmlFor="edit-requires-ac-location" className="cursor-pointer">
+                Requires AC location selection
+              </Label>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button onClick={handleSave} disabled={!task.isCustom}>
+            Save Changes
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}

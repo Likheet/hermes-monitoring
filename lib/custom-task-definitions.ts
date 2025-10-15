@@ -1,0 +1,81 @@
+import type { TaskDefinition } from "./task-definitions"
+import { TASK_DEFINITIONS } from "./task-definitions"
+
+export interface CustomTaskDefinition extends TaskDefinition {
+  isCustom: true
+  createdBy: string
+  createdAt: string
+}
+
+export function getCustomTaskDefinitions(): CustomTaskDefinition[] {
+  if (typeof window === "undefined") return []
+
+  const stored = localStorage.getItem("custom_task_definitions")
+  if (!stored) return []
+
+  try {
+    return JSON.parse(stored)
+  } catch (error) {
+    console.error("[v0] Error loading custom task definitions:", error)
+    return []
+  }
+}
+
+export function saveCustomTaskDefinition(
+  taskDef: Omit<CustomTaskDefinition, "id" | "isCustom" | "createdAt">,
+): CustomTaskDefinition {
+  const newTask: CustomTaskDefinition = {
+    ...taskDef,
+    id: `custom-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+    isCustom: true,
+    createdAt: new Date().toISOString(),
+  }
+
+  const existing = getCustomTaskDefinitions()
+  const updated = [...existing, newTask]
+
+  localStorage.setItem("custom_task_definitions", JSON.stringify(updated))
+  console.log("[v0] Saved custom task definition:", newTask.id)
+
+  window.dispatchEvent(new Event("customTasksUpdated"))
+
+  return newTask
+}
+
+export function updateCustomTaskDefinition(
+  id: string,
+  updates: Partial<CustomTaskDefinition>,
+): CustomTaskDefinition | null {
+  const existing = getCustomTaskDefinitions()
+  const taskIndex = existing.findIndex((task) => task.id === id)
+
+  if (taskIndex === -1) {
+    console.error("[v0] Task not found:", id)
+    return null
+  }
+
+  const updatedTask = { ...existing[taskIndex], ...updates }
+  const updated = [...existing.slice(0, taskIndex), updatedTask, ...existing.slice(taskIndex + 1)]
+
+  localStorage.setItem("custom_task_definitions", JSON.stringify(updated))
+  console.log("[v0] Updated custom task definition:", id)
+
+  window.dispatchEvent(new Event("customTasksUpdated"))
+
+  return updatedTask
+}
+
+export function deleteCustomTaskDefinition(id: string): void {
+  const existing = getCustomTaskDefinitions()
+  const updated = existing.filter((task) => task.id !== id)
+
+  localStorage.setItem("custom_task_definitions", JSON.stringify(updated))
+  console.log("[v0] Deleted custom task definition:", id)
+
+  window.dispatchEvent(new Event("customTasksUpdated"))
+}
+
+export function getAllTaskDefinitions(): (TaskDefinition | CustomTaskDefinition)[] {
+  const customTasks = getCustomTaskDefinitions()
+  return [...TASK_DEFINITIONS, ...customTasks]
+}

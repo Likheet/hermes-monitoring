@@ -51,8 +51,10 @@ function CreateTaskForm() {
 
     const priorityLevel = mapPriorityToPriorityLevel(data.priority as Priority, data.category)
 
+    const taskName = data.customTaskName || data.taskName
+
     createTask({
-      task_type: data.taskName,
+      task_type: taskName,
       priority_level: priorityLevel,
       status: "PENDING",
       department: data.department as Department,
@@ -75,6 +77,11 @@ function CreateTaskForm() {
       room_number: data.location || "",
     })
 
+    if (data.customTaskName) {
+      // This will be handled in the task context
+      console.log("[v0] Custom task created, admin will be notified:", data.customTaskName)
+    }
+
     const workerCurrentTask = tasks.find((t) => t.assigned_to_user_id === data.assignedTo && t.status === "IN_PROGRESS")
 
     if (priorityLevel === "GUEST_REQUEST" && workerCurrentTask) {
@@ -85,7 +92,9 @@ function CreateTaskForm() {
     } else {
       toast({
         title: "Task Created",
-        description: "Task has been assigned successfully",
+        description: data.customTaskName
+          ? "Custom task created and admin has been notified"
+          : "Task has been assigned successfully",
       })
     }
 

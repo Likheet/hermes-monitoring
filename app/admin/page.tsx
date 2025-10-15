@@ -94,6 +94,16 @@ function AdminDashboard() {
     return users.find((u) => u.id === userId)?.name || "Unknown"
   }
 
+  const customTasks = tasks.filter((t) => t.task_type === "Other (Custom Task)" || t.task_type.startsWith("[CUSTOM]"))
+
+  console.log("[v0] Admin dashboard - Custom tasks found:", {
+    total: customTasks.length,
+    taskTypes: customTasks.map((t) => t.task_type),
+    allTaskTypes: tasks.map((t) => t.task_type),
+  })
+
+  const recentCustomTasks = customTasks.slice(0, 10)
+
   return (
     <div className="min-h-screen bg-muted/30">
       <header className="border-b bg-background">
@@ -108,6 +118,12 @@ function AdminDashboard() {
               <Button variant="outline">
                 <Calendar className="mr-2 h-4 w-4" />
                 Maintenance Schedule
+              </Button>
+            </Link>
+            <Link href="/admin/task-management">
+              <Button variant="outline">
+                <ClipboardList className="mr-2 h-4 w-4" />
+                Task Management
               </Button>
             </Link>
             <Link href="/admin/reports">
@@ -131,6 +147,52 @@ function AdminDashboard() {
       </header>
 
       <main className="container mx-auto px-4 py-6 space-y-6">
+        {recentCustomTasks.length > 0 && (
+          <section>
+            <Card className="border-accent">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <AlertTriangle className="h-5 w-5 text-accent" />
+                  Custom Task Requests ({customTasks.length})
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  {recentCustomTasks.map((task) => (
+                    <div
+                      key={task.id}
+                      className="flex items-start justify-between p-3 bg-accent/10 rounded-lg border border-accent/20"
+                    >
+                      <div className="flex-1">
+                        <p className="text-sm font-medium">{task.task_type}</p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {task.room_number && `Room ${task.room_number} • `}
+                          {task.department} • Created by {getUserName(task.assigned_by_user_id)}
+                        </p>
+                        {task.worker_remark && (
+                          <p className="text-xs text-muted-foreground mt-1 italic">"{task.worker_remark}"</p>
+                        )}
+                      </div>
+                      <Link href="/admin/task-management">
+                        <Button size="sm" variant="outline">
+                          Review
+                        </Button>
+                      </Link>
+                    </div>
+                  ))}
+                  {customTasks.length > 10 && (
+                    <Link href="/admin/task-management">
+                      <Button variant="link" className="w-full">
+                        View all {customTasks.length} custom tasks →
+                      </Button>
+                    </Link>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          </section>
+        )}
+
         <section>
           <h2 className="text-lg font-semibold mb-4">System Overview</h2>
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -188,6 +250,14 @@ function AdminDashboard() {
             <TabsTrigger value="workers">Workers</TabsTrigger>
             <TabsTrigger value="audit">Audit Logs</TabsTrigger>
             <TabsTrigger value="alerts">Alerts</TabsTrigger>
+            <TabsTrigger value="custom">
+              Custom Tasks
+              {customTasks.length > 0 && (
+                <span className="ml-2 px-2 py-0.5 text-xs bg-accent text-accent-foreground rounded-full">
+                  {customTasks.length}
+                </span>
+              )}
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="workers" className="space-y-4">
@@ -374,6 +444,52 @@ function AdminDashboard() {
                     return elapsedMinutes >= 15
                   }).length === 0 && <p className="text-sm text-muted-foreground">No active alerts</p>}
                 </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="custom">
+            <Card>
+              <CardHeader>
+                <CardTitle>Custom Task Requests</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {customTasks.length > 0 ? (
+                  <div className="space-y-4">
+                    {customTasks.map((task, index) => (
+                      <div key={task.id}>
+                        <div className="flex items-start justify-between">
+                          <div className="space-y-1 flex-1">
+                            <p className="text-sm font-medium">{task.task_type}</p>
+                            <p className="text-sm text-muted-foreground">
+                              {task.room_number && `Room ${task.room_number} • `}
+                              Department: {task.department} • Priority: {task.priority_level}
+                            </p>
+                            {task.worker_remark && (
+                              <p className="text-xs text-muted-foreground italic mt-1">
+                                Details: "{task.worker_remark}"
+                              </p>
+                            )}
+                            <p className="text-xs text-muted-foreground">
+                              Created by {getUserName(task.assigned_by_user_id)} on{" "}
+                              {new Date(task.assigned_at.client).toLocaleString()}
+                            </p>
+                          </div>
+                          <div className="flex gap-2">
+                            <Link href="/admin/task-management">
+                              <Button size="sm" variant="outline">
+                                Add to Library
+                              </Button>
+                            </Link>
+                          </div>
+                        </div>
+                        {index < customTasks.length - 1 && <Separator className="mt-4" />}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">No custom task requests</p>
+                )}
               </CardContent>
             </Card>
           </TabsContent>

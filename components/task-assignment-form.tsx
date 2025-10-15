@@ -7,6 +7,7 @@ import { ALL_LOCATIONS, getACLocationsForRoom } from "@/lib/location-data"
 import { CATEGORY_COLORS, CATEGORY_LABELS } from "@/lib/task-definitions"
 import type { User as WorkerType } from "@/lib/types"
 import { getWorkersWithShiftStatusFromUsers } from "@/lib/shift-utils"
+import type { Department } from "@/lib/types"
 
 interface TaskAssignmentFormProps {
   task: TaskDefinition
@@ -18,6 +19,7 @@ interface TaskAssignmentFormProps {
 export interface TaskAssignmentData {
   taskId: string
   taskName: string
+  customTaskName?: string
   category: string
   department: string
   priority: string
@@ -42,12 +44,17 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers }: TaskAs
   const [assignedTo, setAssignedTo] = useState("")
   const [errors, setErrors] = useState<Record<string, string>>({})
 
+  const [customTaskName, setCustomTaskName] = useState("")
+  const [selectedDepartment, setSelectedDepartment] = useState<Department>(task.department)
+
   const locationRef = useRef<HTMLDivElement>(null)
+
+  const isOtherTask = task.id === "other-custom-task"
 
   // Filter workers by department
   const departmentWorkers = useMemo(() => {
-    return workers.filter((w) => w.department === task.department)
-  }, [workers, task.department])
+    return workers.filter((w) => w.department === selectedDepartment)
+  }, [workers, selectedDepartment])
 
   // Get workers with shift status
   const workersWithShifts = getWorkersWithShiftStatusFromUsers(departmentWorkers)
@@ -100,6 +107,10 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers }: TaskAs
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {}
 
+    if (isOtherTask && !customTaskName.trim()) {
+      newErrors.customTaskName = "Task name is required for custom tasks"
+    }
+
     if (task.requiresRoom && !location) {
       newErrors.location = "Room number or area is required"
     }
@@ -126,9 +137,10 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers }: TaskAs
 
     const data: TaskAssignmentData = {
       taskId: task.id,
-      taskName: task.name,
+      taskName: isOtherTask ? customTaskName : task.name,
+      customTaskName: isOtherTask ? customTaskName : undefined,
       category: task.category,
-      department: task.department,
+      department: selectedDepartment,
       priority,
       duration,
       location: task.requiresRoom ? location : undefined,
@@ -140,21 +152,6 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers }: TaskAs
     }
 
     onSubmit(data)
-  }
-
-  const getPriorityEmoji = (p: string) => {
-    switch (p) {
-      case "urgent":
-        return "🔴"
-      case "high":
-        return "🟠"
-      case "medium":
-        return "🟡"
-      case "low":
-        return "🟢"
-      default:
-        return ""
-    }
   }
 
   return (
@@ -169,7 +166,7 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers }: TaskAs
             </span>
           </div>
           <p className="text-sm text-muted-foreground">
-            Department: <span className="font-medium capitalize">{task.department}</span>
+            Department: <span className="font-medium capitalize">{selectedDepartment}</span>
           </p>
         </div>
         <button onClick={onCancel} className="p-2 hover:bg-muted rounded-lg transition-colors" aria-label="Cancel">
@@ -178,6 +175,50 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers }: TaskAs
       </div>
 
       <div className="space-y-5">
+        {isOtherTask && (
+          <div>
+            <label className="block text-sm font-semibold text-foreground mb-2">
+              Task Name <span className="text-destructive">*</span>
+            </label>
+            <input
+              type="text"
+              value={customTaskName}
+              onChange={(e) => setCustomTaskName(e.target.value)}
+              placeholder="Enter custom task name..."
+              maxLength={100}
+              className={`w-full px-4 py-3 border-2 rounded-lg focus:border-ring focus:outline-none bg-background text-foreground ${
+                errors.customTaskName ? "border-destructive" : "border-border"
+              }`}
+            />
+            {errors.customTaskName && (
+              <p className="mt-1 text-sm text-destructive flex items-center gap-1">
+                <AlertCircle className="w-4 h-4" />
+                {errors.customTaskName}
+              </p>
+            )}
+            <p className="mt-1 text-xs text-muted-foreground">
+              This will notify the admin to potentially add it as a permanent task type
+            </p>
+          </div>
+        )}
+
+        {isOtherTask && (
+          <div>
+            <label className="block text-sm font-semibold text-foreground mb-2">Department</label>
+            <select
+              value={selectedDepartment}
+              onChange={(e) => {
+                setSelectedDepartment(e.target.value as Department)
+                setAssignedTo("") // Reset worker selection when department changes
+              }}
+              className="w-full px-4 py-3 border-2 border-border rounded-lg focus:border-ring focus:outline-none bg-background text-foreground"
+            >
+              <option value="housekeeping">Housekeeping</option>
+              <option value="maintenance">Maintenance</option>
+            </select>
+          </div>
+        )}
+
         {/* Priority (Editable) */}
         <div>
           <label className="block text-sm font-semibold text-foreground mb-2">Priority Level</label>
@@ -186,10 +227,10 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers }: TaskAs
             onChange={(e) => setPriority(e.target.value as typeof priority)}
             className="w-full px-4 py-3 border-2 border-border rounded-lg focus:border-ring focus:outline-none bg-background text-foreground"
           >
-            <option value="urgent">{getPriorityEmoji("urgent")} Urgent</option>
-            <option value="high">{getPriorityEmoji("high")} High</option>
-            <option value="medium">{getPriorityEmoji("medium")} Medium</option>
-            <option value="low">{getPriorityEmoji("low")} Low</option>
+            <option value="urgent">Urgent</option>
+            <option value="high">High</option>
+            <option value="medium">Medium</option>
+            <option value="low">Low</option>
           </select>
         </div>
 
@@ -353,7 +394,7 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers }: TaskAs
               </span>
             </div>
             <div className="flex items-center gap-2 text-muted-foreground">
-              <span className="font-medium capitalize">{task.department}</span> Department
+              <span className="font-medium capitalize">{selectedDepartment}</span> Department
             </div>
           </div>
         </div>

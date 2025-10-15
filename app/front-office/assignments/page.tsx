@@ -7,10 +7,11 @@ import { mockUsers } from "@/lib/mock-data"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { ArrowLeft, Clock, MapPin, User, CalendarClock, Edit } from "lucide-react"
+import { ArrowLeft, Clock, MapPin, User, CalendarClock, Edit, Edit2 } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { formatFullTimestamp } from "@/lib/date-utils"
 import { ReassignTaskModal } from "@/components/reassign-task-modal"
+import { EditTaskModal } from "@/components/edit-task-modal"
 import { useState } from "react"
 import type { Task } from "@/lib/types"
 
@@ -34,6 +35,7 @@ function AssignmentsHistory() {
   const { tasks } = useTasks()
   const router = useRouter()
   const [reassignTask, setReassignTask] = useState<Task | null>(null)
+  const [editTask, setEditTask] = useState<Task | null>(null)
 
   const myAssignments = tasks
     .filter((t) => t.assigned_by_user_id === user?.id)
@@ -114,56 +116,73 @@ function AssignmentsHistory() {
           <CardContent>
             {myAssignments.length > 0 ? (
               <div className="space-y-3">
-                {myAssignments.map((task) => (
-                  <div
-                    key={task.id}
-                    className="flex items-start justify-between gap-4 p-4 border rounded-lg hover:bg-muted/50 transition-colors"
-                  >
-                    <div className="flex-1 space-y-2">
-                      <div className="flex items-start justify-between gap-2">
-                        <h3 className="font-semibold">{task.task_type}</h3>
-                        <Badge className={`${priorityColors[task.priority_level]} text-xs`} variant="secondary">
-                          {task.priority_level.replace(/_/g, " ")}
-                        </Badge>
-                      </div>
+                {myAssignments.map((task) => {
+                  const isOtherTask = task.task_type === "Other (Custom Task)" || task.custom_task_name
 
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm text-muted-foreground">
-                        <div className="flex items-center gap-2">
-                          <MapPin className="h-4 w-4" />
-                          <span>{task.room_number}</span>
+                  return (
+                    <div
+                      key={task.id}
+                      className="flex items-start justify-between gap-4 p-4 border rounded-lg hover:bg-muted/50 transition-colors"
+                    >
+                      <div className="flex-1 space-y-2">
+                        <div className="flex items-start justify-between gap-2">
+                          <h3 className="font-semibold">{task.custom_task_name || task.task_type}</h3>
+                          <Badge className={`${priorityColors[task.priority_level]} text-xs`} variant="secondary">
+                            {task.priority_level.replace(/_/g, " ")}
+                          </Badge>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <User className="h-4 w-4" />
-                          <span>{getWorkerName(task.assigned_to_user_id)}</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Clock className="h-4 w-4" />
-                          <span>{task.expected_duration_minutes} min</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <CalendarClock className="h-4 w-4" />
-                          <span>{formatFullTimestamp(task.assigned_at)}</span>
-                        </div>
-                      </div>
 
-                      <div className="flex items-center gap-2">
-                        <div className={`h-2 w-2 rounded-full ${statusColors[task.status]}`} />
-                        <span className="text-sm font-medium">{task.status.replace(/_/g, " ")}</span>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm text-muted-foreground">
+                          <div className="flex items-center gap-2">
+                            <MapPin className="h-4 w-4" />
+                            <span>{task.room_number}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <User className="h-4 w-4" />
+                            <span>{getWorkerName(task.assigned_to_user_id)}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Clock className="h-4 w-4" />
+                            <span>{task.expected_duration_minutes} min</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <CalendarClock className="h-4 w-4" />
+                            <span>{formatFullTimestamp(task.assigned_at)}</span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <div className={`h-2 w-2 rounded-full ${statusColors[task.status]}`} />
+                          <span className="text-sm font-medium">{task.status.replace(/_/g, " ")}</span>
+                        </div>
                       </div>
+                      {task.status === "PENDING" && (
+                        <div className="flex gap-2 shrink-0">
+                          {isOtherTask && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setEditTask(task)}
+                              className="min-h-[44px]"
+                            >
+                              <Edit2 className="h-4 w-4 mr-2" />
+                              Edit
+                            </Button>
+                          )}
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setReassignTask(task)}
+                            className="min-h-[44px]"
+                          >
+                            <Edit className="h-4 w-4 mr-2" />
+                            Re-assign
+                          </Button>
+                        </div>
+                      )}
                     </div>
-                    {task.status === "PENDING" && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setReassignTask(task)}
-                        className="min-h-[44px] shrink-0"
-                      >
-                        <Edit className="h-4 w-4 mr-2" />
-                        Re-assign
-                      </Button>
-                    )}
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             ) : (
               <div className="flex min-h-[200px] items-center justify-center">
@@ -177,6 +196,8 @@ function AssignmentsHistory() {
       {reassignTask && (
         <ReassignTaskModal task={reassignTask} open={!!reassignTask} onOpenChange={() => setReassignTask(null)} />
       )}
+
+      {editTask && <EditTaskModal task={editTask} open={!!editTask} onOpenChange={() => setEditTask(null)} />}
     </div>
   )
 }

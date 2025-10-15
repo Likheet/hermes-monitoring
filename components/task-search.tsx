@@ -11,6 +11,7 @@ import {
   type TaskDefinition,
   type TaskCategory,
 } from "@/lib/task-definitions"
+import { getAllTaskDefinitions } from "@/lib/custom-task-definitions"
 
 interface TaskSearchProps {
   onSelectTask: (task: TaskDefinition) => void
@@ -20,9 +21,27 @@ export function TaskSearch({ onSelectTask }: TaskSearchProps) {
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedCategory, setSelectedCategory] = useState<TaskCategory | null>(null)
   const [showSuggestions, setShowSuggestions] = useState(false)
+  const [allTasks, setAllTasks] = useState<TaskDefinition[]>(TASK_DEFINITIONS)
   const searchRef = useRef<HTMLDivElement>(null)
 
-  // Close suggestions when clicking outside
+  useEffect(() => {
+    const loadTasks = () => {
+      const tasks = getAllTaskDefinitions()
+      setAllTasks(tasks)
+      console.log("[v0] TaskSearch loaded", tasks.length, "task definitions (including custom)")
+    }
+
+    loadTasks()
+
+    window.addEventListener("storage", loadTasks)
+    window.addEventListener("customTasksUpdated", loadTasks)
+
+    return () => {
+      window.removeEventListener("storage", loadTasks)
+      window.removeEventListener("customTasksUpdated", loadTasks)
+    }
+  }, [])
+
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
@@ -33,26 +52,20 @@ export function TaskSearch({ onSelectTask }: TaskSearchProps) {
     return () => document.removeEventListener("mousedown", handleClickOutside)
   }, [])
 
-  // Filter tasks based on search query and category
   const filteredTasks = useMemo(() => {
-    let tasks = TASK_DEFINITIONS
+    let tasks = allTasks
 
-    // Filter by category if selected
     if (selectedCategory) {
       tasks = tasks.filter((task) => task.category === selectedCategory)
     }
 
-    // Filter by search query (minimum 2 characters)
     if (searchQuery.length >= 2) {
       const query = searchQuery.toLowerCase()
       tasks = tasks.filter((task) => {
-        // Check task name
         if (task.name.toLowerCase().includes(query)) return true
-        // Check keywords
         return task.keywords.some((keyword) => keyword.toLowerCase().includes(query))
       })
 
-      // Sort by relevance (exact match first, then partial match)
       tasks.sort((a, b) => {
         const aExact = a.name.toLowerCase().includes(query)
         const bExact = b.name.toLowerCase().includes(query)
@@ -62,21 +75,18 @@ export function TaskSearch({ onSelectTask }: TaskSearchProps) {
       })
     }
 
-    // Limit to top 8 results
     return tasks.slice(0, 8)
-  }, [searchQuery, selectedCategory])
+  }, [searchQuery, selectedCategory, allTasks])
 
-  // Handle category button click
   const handleCategoryClick = (category: TaskCategory) => {
     if (selectedCategory === category) {
-      setSelectedCategory(null) // Toggle off if same category clicked
+      setSelectedCategory(null)
     } else {
       setSelectedCategory(category)
-      setShowSuggestions(true) // Show suggestions when category selected
+      setShowSuggestions(true)
     }
   }
 
-  // Handle task selection
   const handleSelectTask = (task: TaskDefinition) => {
     onSelectTask(task)
     setSearchQuery("")
@@ -84,7 +94,6 @@ export function TaskSearch({ onSelectTask }: TaskSearchProps) {
     setSelectedCategory(null)
   }
 
-  // Handle search input change
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value
     setSearchQuery(value)
@@ -93,7 +102,6 @@ export function TaskSearch({ onSelectTask }: TaskSearchProps) {
 
   return (
     <div className="space-y-4" ref={searchRef}>
-      {/* Quick Category Filters */}
       <div className="flex flex-wrap gap-2">
         {Object.entries(CATEGORY_LABELS).map(([key, label]) => {
           const category = key as TaskCategory
@@ -114,7 +122,6 @@ export function TaskSearch({ onSelectTask }: TaskSearchProps) {
         })}
       </div>
 
-      {/* Search Bar */}
       <div className="relative">
         <div className="relative">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground w-5 h-5" />
@@ -128,7 +135,6 @@ export function TaskSearch({ onSelectTask }: TaskSearchProps) {
           />
         </div>
 
-        {/* Suggestions Dropdown */}
         {showSuggestions && filteredTasks.length > 0 && (
           <div className="absolute z-50 w-full mt-2 bg-card border-2 border-border rounded-xl shadow-lg max-h-96 overflow-y-auto">
             {filteredTasks.map((task) => (
@@ -165,7 +171,6 @@ export function TaskSearch({ onSelectTask }: TaskSearchProps) {
           </div>
         )}
 
-        {/* No Results Message */}
         {showSuggestions && searchQuery.length >= 2 && filteredTasks.length === 0 && (
           <div className="absolute z-50 w-full mt-2 bg-card border-2 border-border rounded-xl shadow-lg p-4 text-center text-muted-foreground">
             No tasks found for "{searchQuery}". Try different keywords or use the category filters above.
