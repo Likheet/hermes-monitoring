@@ -11,17 +11,62 @@ import { ArrowLeft, Award, Clock, CheckCircle2, TrendingUp, Star, XCircle, Alert
 import { useRouter } from "next/navigation"
 import { BottomNav } from "@/components/mobile/bottom-nav"
 import { calculateDuration, formatShiftRange } from "@/lib/date-utils"
+import { formatDistanceToNow } from "date-fns"
+import { useEffect } from "react"
 
 function ProfilePage() {
   console.log("[v0] Profile page loaded")
 
   const { user } = useAuth()
-  const { tasks } = useTasks()
+  const { tasks, maintenanceTasks } = useTasks()
   const router = useRouter()
 
   const myTasks = tasks.filter((task) => task.assigned_to_user_id === user?.id)
+  const myCompletedMaintenanceTasks = (maintenanceTasks || []).filter(
+    (t) => t.assigned_to === user?.id && t.status === "completed",
+  )
+
   const completedTasks = myTasks.filter((t) => t.status === "COMPLETED")
   const rejectedTasks = myTasks.filter((t) => t.status === "REJECTED")
+
+  useEffect(() => {
+    console.log("[v0] Profile page loaded with data:", {
+      userId: user?.id,
+      userName: user?.name,
+      totalTasks: tasks.length,
+      totalMaintenanceTasks: maintenanceTasks?.length || 0,
+      myRegularTasks: myTasks.length,
+      myCompletedRegularTasks: completedTasks.length,
+      myMaintenanceTasks: (maintenanceTasks || []).filter((t) => t.assigned_to === user?.id).length,
+      myCompletedMaintenanceTasks: myCompletedMaintenanceTasks.length,
+      completedMaintenanceTaskDetails: myCompletedMaintenanceTasks.map((t) => ({
+        id: t.id,
+        room: t.room_number,
+        type: t.task_type,
+        location: t.location,
+        status: t.status,
+        completedAt: t.completed_at,
+        duration: t.timer_duration,
+      })),
+    })
+  }, [user?.id, tasks.length, maintenanceTasks])
+
+  useEffect(() => {
+    if (myCompletedMaintenanceTasks.length > 0) {
+      console.log(
+        "[v0] Completed maintenance tasks:",
+        myCompletedMaintenanceTasks.map((t) => ({
+          id: t.id,
+          room: t.room_number,
+          type: t.task_type,
+          location: t.location,
+          completedAt: t.completed_at,
+          duration: t.timer_duration,
+        })),
+      )
+    }
+  }, [myCompletedMaintenanceTasks.length])
+
   const overdueTasks = myTasks.filter((t) => {
     if (t.status !== "IN_PROGRESS" && t.status !== "PAUSED") return false
     if (!t.started_at || !t.expected_duration_minutes) return false
@@ -45,8 +90,9 @@ function ProfilePage() {
       ? (tasksWithRating.reduce((sum, t) => sum + (t.rating || 0), 0) / tasksWithRating.length).toFixed(1)
       : "N/A"
 
-  const totalTasks = myTasks.length
-  const completionRate = totalTasks > 0 ? Math.round((completedTasks.length / totalTasks) * 100) : 0
+  const totalTasks = myTasks.length + (maintenanceTasks || []).filter((t) => t.assigned_to === user?.id).length
+  const totalCompletedTasks = completedTasks.length + myCompletedMaintenanceTasks.length
+  const completionRate = totalTasks > 0 ? Math.round((totalCompletedTasks / totalTasks) * 100) : 0
   const onTimeRate = completedTasks.length > 0 ? Math.round((onTimeTasks.length / completedTasks.length) * 100) : 0
 
   const avgCompletionTime =
@@ -54,11 +100,46 @@ function ProfilePage() {
       ? Math.round(completedTasks.reduce((sum, t) => sum + (t.actual_duration_minutes || 0), 0) / completedTasks.length)
       : 0
 
+  const avgMaintenanceTime =
+    myCompletedMaintenanceTasks.length > 0
+      ? Math.round(
+          myCompletedMaintenanceTasks.reduce((sum, t) => sum + (t.timer_duration || 0) / 60, 0) /
+            myCompletedMaintenanceTasks.length,
+        )
+      : 0
+
+  const combinedAvgTime =
+    totalCompletedTasks > 0
+      ? Math.round(
+          (avgCompletionTime * completedTasks.length + avgMaintenanceTime * myCompletedMaintenanceTasks.length) /
+            totalCompletedTasks,
+        )
+      : 0
+
   const initials = user?.name
     .split(" ")
     .map((n) => n[0])
     .join("")
     .toUpperCase()
+
+  const getMaintenanceTaskLabel = (taskType: string) => {
+    const labels: Record<string, string> = {
+      ac_indoor: "AC Indoor Unit",
+      ac_outdoor: "AC Outdoor Unit",
+      fan: "Fan",
+      exhaust: "Exhaust Fan",
+    }
+    return labels[taskType] || taskType.replace(/_/g, " ")
+  }
+
+  useEffect(() => {
+    console.log("[v0] Profile statistics:", {
+      totalTasks,
+      totalCompletedTasks,
+      completionRate,
+      willShowCompletedSection: completedTasks.length > 0 || myCompletedMaintenanceTasks.length > 0,
+    })
+  }, [totalTasks, totalCompletedTasks])
 
   return (
     <div className="min-h-screen bg-muted/30 pb-20 md:pb-0">
@@ -97,7 +178,7 @@ function ProfilePage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{totalTasks}</div>
-              <p className="text-xs text-muted-foreground">{completedTasks.length} completed</p>
+              <p className="text-xs text-muted-foreground">{totalCompletedTasks} completed</p>
             </CardContent>
           </Card>
 
@@ -124,12 +205,12 @@ function ProfilePage() {
           </Card>
 
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardHeader>
               <CardTitle className="text-sm font-medium">Avg. Time</CardTitle>
               <Clock className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{avgCompletionTime}m</div>
+              <div className="text-2xl font-bold">{combinedAvgTime}m</div>
               <p className="text-xs text-muted-foreground">Per task completion</p>
             </CardContent>
           </Card>
@@ -157,37 +238,89 @@ function ProfilePage() {
           </Card>
         </div>
 
-        {completedTasks.length > 0 && (
+        {(completedTasks.length > 0 || myCompletedMaintenanceTasks.length > 0) && (
           <Card>
             <CardHeader>
-              <CardTitle>Completed Tasks</CardTitle>
+              <CardTitle className="flex items-center justify-between">
+                <span>Completed Tasks</span>
+                <Badge variant="secondary" className="text-sm">
+                  {totalCompletedTasks} total
+                </Badge>
+              </CardTitle>
             </CardHeader>
             <CardContent>
               <div className="space-y-3">
-                {completedTasks.slice(0, 10).map((task) => (
-                  <div key={task.id} className="flex items-start justify-between gap-4 p-3 border rounded-lg">
-                    <div className="flex-1 space-y-1">
-                      <div className="flex items-center gap-2">
-                        <h4 className="font-medium">{task.task_type}</h4>
-                        {task.rating && (
-                          <div className="flex items-center gap-1">
-                            <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
-                            <span className="text-sm font-medium">{task.rating}</span>
-                          </div>
-                        )}
-                      </div>
-                      <p className="text-sm text-muted-foreground">Room: {task.room_number}</p>
-                      {task.completed_at && task.started_at && (
-                        <p className="text-xs text-muted-foreground">
-                          Completed in {calculateDuration(task.started_at, task.completed_at)}
-                        </p>
-                      )}
-                      {task.quality_comment && (
-                        <p className="text-sm text-muted-foreground italic">"{task.quality_comment}"</p>
-                      )}
+                {myCompletedMaintenanceTasks.length > 0 && (
+                  <>
+                    <div className="text-sm font-semibold text-muted-foreground mb-2">
+                      Scheduled Maintenance ({myCompletedMaintenanceTasks.length})
                     </div>
-                  </div>
-                ))}
+                    {myCompletedMaintenanceTasks.slice(0, 10).map((task) => (
+                      <div
+                        key={task.id}
+                        className="flex items-start justify-between gap-4 p-4 border-2 border-accent/30 rounded-lg bg-accent/10"
+                      >
+                        <div className="flex-1 space-y-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <h4 className="font-semibold text-base">{getMaintenanceTaskLabel(task.task_type)}</h4>
+                            <Badge variant="default" className="text-xs font-semibold">
+                              Maintenance
+                            </Badge>
+                          </div>
+                          <p className="text-sm font-medium text-muted-foreground">
+                            Room {task.room_number} • {task.location}
+                          </p>
+                          {task.completed_at && (
+                            <p className="text-xs text-muted-foreground">
+                              Completed {formatDistanceToNow(new Date(task.completed_at), { addSuffix: true })}
+                            </p>
+                          )}
+                          {task.timer_duration && (
+                            <p className="text-xs text-muted-foreground">
+                              Duration: {Math.round(task.timer_duration / 60)} minutes
+                            </p>
+                          )}
+                        </div>
+                        <CheckCircle2 className="h-5 w-5 text-accent shrink-0" />
+                      </div>
+                    ))}
+                  </>
+                )}
+
+                {completedTasks.length > 0 && (
+                  <>
+                    {myCompletedMaintenanceTasks.length > 0 && (
+                      <div className="text-sm font-semibold text-muted-foreground mt-4 mb-2">
+                        Regular Tasks ({completedTasks.length})
+                      </div>
+                    )}
+                    {completedTasks.slice(0, 10).map((task) => (
+                      <div key={task.id} className="flex items-start justify-between gap-4 p-4 border rounded-lg">
+                        <div className="flex-1 space-y-1">
+                          <div className="flex items-center gap-2">
+                            <h4 className="font-medium">{task.task_type}</h4>
+                            {task.rating && (
+                              <div className="flex items-center gap-1">
+                                <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
+                                <span className="text-sm font-medium">{task.rating}</span>
+                              </div>
+                            )}
+                          </div>
+                          <p className="text-sm text-muted-foreground">Room: {task.room_number}</p>
+                          {task.completed_at && task.started_at && (
+                            <p className="text-xs text-muted-foreground">
+                              Completed in {calculateDuration(task.started_at, task.completed_at)}
+                            </p>
+                          )}
+                          {task.quality_comment && (
+                            <p className="text-sm text-muted-foreground italic">"{task.quality_comment}"</p>
+                          )}
+                        </div>
+                        <CheckCircle2 className="h-5 w-5 text-green-600 shrink-0" />
+                      </div>
+                    ))}
+                  </>
+                )}
               </div>
             </CardContent>
           </Card>
