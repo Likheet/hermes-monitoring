@@ -75,6 +75,15 @@ function WorkerDashboard() {
     }
   }, [user?.id])
 
+  const normalizedDepartment = user?.department?.toLowerCase()
+  const isMaintenanceUser = normalizedDepartment === "maintenance"
+  const departmentDisplay = user?.department
+    ? user.department
+        .split("_")
+        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(" ")
+    : ""
+
   const myTasks = tasks.filter((task) => task.assigned_to_user_id === user?.id)
   const pendingTasks = myTasks.filter((t) => t.status === "PENDING")
   const inProgressTasks = myTasks.filter((t) => t.status === "IN_PROGRESS" || t.status === "PAUSED")
@@ -83,6 +92,10 @@ function WorkerDashboard() {
 
   const myMaintenanceTasks = (maintenanceTasks || []).filter(
     (t) => t.assigned_to === user?.id && (t.status === "in_progress" || t.status === "paused"),
+  )
+
+  const myCompletedMaintenanceTasks = (maintenanceTasks || []).filter(
+    (t) => t.assigned_to === user?.id && t.status === "completed",
   )
 
   const getMaintenanceTaskLabel = (task: MaintenanceTask) =>
@@ -105,14 +118,13 @@ function WorkerDashboard() {
   }
 
   const currentMaintenanceTask = myMaintenanceTasks.length
-    ? [...myMaintenanceTasks]
-        .sort((a, b) => {
-          const statusPriority = (status: MaintenanceTask["status"]) => (status === "in_progress" ? 0 : 1)
-          const statusDiff = statusPriority(a.status) - statusPriority(b.status)
-          if (statusDiff !== 0) return statusDiff
+    ? [...myMaintenanceTasks].sort((a, b) => {
+        const statusPriority = (status: MaintenanceTask["status"]) => (status === "in_progress" ? 0 : 1)
+        const statusDiff = statusPriority(a.status) - statusPriority(b.status)
+        if (statusDiff !== 0) return statusDiff
 
-          return getMaintenanceTaskTimestamp(b) - getMaintenanceTaskTimestamp(a)
-        })[0]
+        return getMaintenanceTaskTimestamp(b) - getMaintenanceTaskTimestamp(a)
+      })[0]
     : null
 
   const maintenanceTaskStatusLabel: Record<MaintenanceTask["status"], string> = {
@@ -125,9 +137,7 @@ function WorkerDashboard() {
   const handleNavigateToMaintenanceTask = (task: MaintenanceTask) => {
     if (!task.room_number) return
 
-    router.push(
-      `/worker/maintenance/${task.room_number}/${task.task_type}/${encodeURIComponent(task.location)}`,
-    )
+    router.push(`/worker/maintenance/${task.room_number}/${task.task_type}/${encodeURIComponent(task.location)}`)
   }
 
   useEffect(() => {
@@ -141,6 +151,7 @@ function WorkerDashboard() {
       maintenanceTasks: {
         total: maintenanceTasks?.length || 0,
         myActive: myMaintenanceTasks.length,
+        myCompleted: myCompletedMaintenanceTasks.length,
         details: myMaintenanceTasks.map((t) => ({
           id: t.id,
           room: t.room_number,
@@ -150,7 +161,7 @@ function WorkerDashboard() {
       },
       workerStatus: inProgressTasks.length > 0 || myMaintenanceTasks.length > 0 ? "BUSY" : "AVAILABLE",
     })
-  }, [myTasks, maintenanceTasks, user?.id])
+  }, [myTasks, maintenanceTasks, user?.id, myCompletedMaintenanceTasks.length])
 
   const activeMaintenanceByRoom = myMaintenanceTasks.reduce(
     (acc, task) => {
@@ -539,11 +550,9 @@ function WorkerDashboard() {
                   <Card key={note.id} className="hover:shadow-md transition-shadow">
                     <CardHeader>
                       <div className="flex items-start justify-between gap-4">
-                        <div className="flex-1 min-w-0">
-                          <CardTitle className="text-lg mb-1">{note.title}</CardTitle>
-                          <p className="text-xs text-muted-foreground">
-                            Updated {formatDistanceToNow(note.updated_at, { addSuffix: true })}
-                          </p>
+                        <div className="flex items-start gap-2 flex-1">
+                          <AlertCircle className="h-5 w-5 text-destructive shrink-0 mt-0.5" />
+                          <CardTitle className="text-lg">{note.title}</CardTitle>
                         </div>
                         <div className="flex gap-2">
                           <Button variant="outline" size="sm" onClick={() => handleEditNote(note)}>
@@ -583,7 +592,7 @@ function WorkerDashboard() {
                     <h2 className="text-2xl font-bold">{user?.name}</h2>
                     <p className="text-muted-foreground">{user?.role}</p>
                     <div className="mt-2 space-y-1">
-                      <Badge variant="secondary">{user?.department}</Badge>
+                      <Badge variant="secondary">{departmentDisplay}</Badge>
                       {user?.phone && <p className="text-sm text-muted-foreground">📞 {user.phone}</p>}
                       {user?.shift_start && user?.shift_end && (
                         <p className="text-sm text-muted-foreground">
@@ -679,34 +688,29 @@ function WorkerDashboard() {
               </Alert>
             )}
 
-            {user?.department === "Maintenance" && currentMaintenanceTask && currentMaintenanceTask.room_number && (
+            {isMaintenanceUser && currentMaintenanceTask && currentMaintenanceTask.room_number && (
               <Card
-                className="cursor-pointer border-accent/60 bg-accent/10 transition-colors hover:bg-accent/20"
+                className="cursor-pointer border-2 border-accent bg-accent/20 shadow-lg transition-all hover:shadow-xl hover:border-accent/80"
                 onClick={() => handleNavigateToMaintenanceTask(currentMaintenanceTask)}
               >
-                <CardContent className="p-6 flex flex-col gap-3">
-                  <div className="flex items-center justify-between gap-4 flex-wrap">
-                    <div>
-                      <p className="text-xs font-medium uppercase text-muted-foreground tracking-wide">
-                        {currentMaintenanceTask.status === "in_progress"
-                          ? "Currently Working On"
-                          : "Paused Maintenance Task"}
-                      </p>
-                      <h2 className="text-xl font-semibold text-foreground">
+                <CardContent className="p-6 flex flex-col gap-4">
+                  <div className="flex items-start justify-between gap-4 flex-wrap">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Badge
+                          variant={currentMaintenanceTask.status === "in_progress" ? "default" : "secondary"}
+                          className="text-sm font-semibold"
+                        >
+                          {currentMaintenanceTask.status === "in_progress" ? "● WORKING NOW" : "⏸ PAUSED"}
+                        </Badge>
+                      </div>
+                      <h2 className="text-2xl font-bold text-foreground mb-1">
                         {getMaintenanceTaskLabel(currentMaintenanceTask)}
                       </h2>
-                      <p className="text-sm text-muted-foreground">
+                      <p className="text-base font-medium text-muted-foreground">
                         Room {currentMaintenanceTask.room_number}
                         {currentMaintenanceTask.location && ` • ${currentMaintenanceTask.location}`}
                       </p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Badge
-                        variant={currentMaintenanceTask.status === "in_progress" ? "default" : "outline"}
-                        className="text-xs"
-                      >
-                        {maintenanceTaskStatusLabel[currentMaintenanceTask.status]}
-                      </Badge>
                       {(() => {
                         const timestamp = getPrimaryMaintenanceTimestamp(currentMaintenanceTask)
                         if (!timestamp) return null
@@ -715,31 +719,44 @@ function WorkerDashboard() {
                         if (Number.isNaN(date.getTime())) return null
 
                         return (
-                          <span className="text-xs text-muted-foreground">
+                          <p className="text-sm text-muted-foreground mt-2">
                             {currentMaintenanceTask.status === "paused" ? "Paused" : "Started"}{" "}
                             {formatDistanceToNow(date, { addSuffix: true })}
-                          </span>
+                          </p>
                         )
                       })()}
                     </div>
                   </div>
 
-                  <p className="text-sm text-muted-foreground">
+                  <p className="text-base font-medium text-foreground">
                     {currentMaintenanceTask.status === "in_progress"
-                      ? "Tap to jump back into your active maintenance task."
-                      : "This task is paused. Tap to resume when you're ready."}
+                      ? "👉 Tap to continue your active maintenance task"
+                      : "👉 Tap to resume this paused task"}
                   </p>
 
-                  <div>
-                    <Button size="sm" variant="secondary" className="pointer-events-none">
-                      Go to task
-                    </Button>
-                  </div>
+                  <Button size="lg" className="w-full sm:w-auto font-semibold">
+                    {currentMaintenanceTask.status === "in_progress" ? "Continue Task →" : "Resume Task →"}
+                  </Button>
                 </CardContent>
               </Card>
             )}
 
-            {user?.department === "Maintenance" && totalRooms > 0 && (
+            {(() => {
+              console.log("[v0] Home view state:", {
+                hasCurrentMaintenanceTask: !!currentMaintenanceTask,
+                currentMaintenanceTaskRoom: currentMaintenanceTask?.room_number,
+                myMaintenanceTasksCount: myMaintenanceTasks.length,
+                myTasksCount: myTasks.length,
+                inProgressTasksCount: inProgressTasks.length,
+                pendingTasksCount: pendingTasks.length,
+                completedTasksCount: completedTasks.length,
+                completedMaintenanceTasksCount: myCompletedMaintenanceTasks.length,
+                totalCompletedCount: completedTasks.length + myCompletedMaintenanceTasks.length,
+              })
+              return null
+            })()}
+
+            {isMaintenanceUser && totalRooms > 0 && (
               <Card className="bg-primary/5 border-primary/20">
                 <CardContent className="p-6">
                   <div className="flex items-center justify-between mb-3">
@@ -763,7 +780,7 @@ function WorkerDashboard() {
               </Card>
             )}
 
-            {user?.department === "Maintenance" && nearbyRooms.length > 0 && (
+            {isMaintenanceUser && nearbyRooms.length > 0 && (
               <section>
                 <h2 className="text-base md:text-lg font-semibold mb-3">💡 Smart Suggestions</h2>
                 <p className="text-sm text-muted-foreground mb-3">Rooms on the same floor as your current work</p>
@@ -801,9 +818,9 @@ function WorkerDashboard() {
               </section>
             )}
 
-            {user?.department === "Maintenance" && Object.keys(activeMaintenanceByRoom).length > 0 && (
+            {isMaintenanceUser && Object.keys(activeMaintenanceByRoom).length > 0 && (
               <section>
-                <h2 className="text-base md:text-lg font-semibold mb-3 text-accent">🔧 Active Maintenance Tasks</h2>
+                <h2 className="text-base md:text-lg font-semibold mb-3 text-black">🔧 Active Maintenance Tasks</h2>
                 <div className="space-y-3">
                   {Object.entries(activeMaintenanceByRoom).map(([roomNumber, tasks]) => {
                     const inProgressCount = tasks.filter((t) => t.status === "in_progress").length
@@ -850,7 +867,7 @@ function WorkerDashboard() {
                             </div>
                             <div className="text-right">
                               <div className="text-2xl font-bold text-accent">{tasks.length}</div>
-                              <p className="text-xs text-muted-foreground">Active</p>
+                              <p className="text-xs text-muted-foreground bg-background">Active</p>
                             </div>
                           </div>
                         </CardContent>
@@ -943,7 +960,14 @@ function WorkerDashboard() {
 
             {myTasks.length === 0 && myMaintenanceTasks.length === 0 && partiallyCompletedRooms.length === 0 && (
               <div className="flex min-h-[400px] items-center justify-center">
-                <p className="text-muted-foreground">No tasks assigned</p>
+                <div className="text-center space-y-2">
+                  <p className="text-muted-foreground">No tasks assigned</p>
+                  {(completedTasks.length > 0 || myCompletedMaintenanceTasks.length > 0) && (
+                    <p className="text-sm text-muted-foreground">
+                      You've completed {completedTasks.length + myCompletedMaintenanceTasks.length} task(s) today
+                    </p>
+                  )}
+                </div>
               </div>
             )}
           </main>
@@ -969,7 +993,10 @@ function WorkerDashboard() {
             </h1>
             {activeTab !== "scheduled" && (
               <p className="text-xs md:text-sm text-muted-foreground">
-                {user?.name} - {user?.department}
+                {user?.name}
+                {departmentDisplay && (
+                  <span className="ml-1 text-muted-foreground">- {departmentDisplay}</span>
+                )}
                 {(inProgressTasks.length > 0 || myMaintenanceTasks.length > 0) && (
                   <span className="ml-2 text-accent font-medium">● Busy</span>
                 )}
