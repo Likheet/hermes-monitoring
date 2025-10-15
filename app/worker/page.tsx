@@ -81,9 +81,12 @@ function WorkerDashboard() {
   const completedTasks = myTasks.filter((t) => t.status === "COMPLETED")
   const rejectedTasks = myTasks.filter((t) => t.status === "REJECTED")
 
-  const myMaintenanceTasks = (maintenanceTasks || []).filter(
-    (t) => t.assigned_to === user?.id && (t.status === "in_progress" || t.status === "paused"),
+  const myMaintenanceAssignments = (maintenanceTasks || []).filter((t) => t.assigned_to === user?.id)
+  const myActiveMaintenanceTasks = myMaintenanceAssignments.filter(
+    (t) => t.status === "in_progress" || t.status === "paused",
   )
+  const completedMaintenanceTasks = myMaintenanceAssignments.filter((t) => t.status === "completed")
+  const pendingMaintenanceTasks = myMaintenanceAssignments.filter((t) => t.status === "pending")
 
   const getMaintenanceTaskLabel = (task: MaintenanceTask) =>
     TASK_TYPE_LABELS[task.task_type] ?? task.task_type.replace(/_/g, " ")
@@ -104,8 +107,8 @@ function WorkerDashboard() {
     return task.created_at
   }
 
-  const currentMaintenanceTask = myMaintenanceTasks.length
-    ? [...myMaintenanceTasks]
+  const currentMaintenanceTask = myActiveMaintenanceTasks.length
+    ? [...myActiveMaintenanceTasks]
         .sort((a, b) => {
           const statusPriority = (status: MaintenanceTask["status"]) => (status === "in_progress" ? 0 : 1)
           const statusDiff = statusPriority(a.status) - statusPriority(b.status)
@@ -140,19 +143,20 @@ function WorkerDashboard() {
       },
       maintenanceTasks: {
         total: maintenanceTasks?.length || 0,
-        myActive: myMaintenanceTasks.length,
-        details: myMaintenanceTasks.map((t) => ({
+        myActive: myActiveMaintenanceTasks.length,
+        details: myActiveMaintenanceTasks.map((t) => ({
           id: t.id,
           room: t.room_number,
           type: t.task_type,
           status: t.status,
         })),
       },
-      workerStatus: inProgressTasks.length > 0 || myMaintenanceTasks.length > 0 ? "BUSY" : "AVAILABLE",
+      workerStatus:
+        inProgressTasks.length > 0 || myActiveMaintenanceTasks.length > 0 ? "BUSY" : "AVAILABLE",
     })
-  }, [myTasks, maintenanceTasks, user?.id])
+  }, [myTasks, myActiveMaintenanceTasks, maintenanceTasks, user?.id])
 
-  const activeMaintenanceByRoom = myMaintenanceTasks.reduce(
+  const activeMaintenanceByRoom = myActiveMaintenanceTasks.reduce(
     (acc, task) => {
       if (!acc[task.room_number]) {
         acc[task.room_number] = []
@@ -160,7 +164,7 @@ function WorkerDashboard() {
       acc[task.room_number].push(task)
       return acc
     },
-    {} as Record<string, typeof myMaintenanceTasks>,
+    {} as Record<string, typeof myActiveMaintenanceTasks>,
   )
 
   const partiallyCompletedRooms = Object.entries(
@@ -322,9 +326,17 @@ function WorkerDashboard() {
       updateMaintenanceTask(taskId, {
         status: "completed",
         ac_location: data.acLocation,
-        photos: data.photos,
+        photos: [
+          ...(data.categorizedPhotos.room_photos || []),
+          ...(data.categorizedPhotos.proof_photos || []),
+        ],
+        categorized_photos: {
+          before_photos: data.categorizedPhotos.room_photos,
+          after_photos: data.categorizedPhotos.proof_photos,
+        },
         timer_duration: data.timerDuration,
         completed_at: new Date().toISOString(),
+        notes: data.notes,
       })
       setSelectedTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, status: "completed" as const } : t)))
     } catch (error) {
@@ -394,13 +406,21 @@ function WorkerDashboard() {
       ? (tasksWithRating.reduce((sum, t) => sum + (t.rating || 0), 0) / tasksWithRating.length).toFixed(1)
       : "N/A"
 
-  const totalTasks = myTasks.length
-  const completionRate = totalTasks > 0 ? Math.round((completedTasks.length / totalTasks) * 100) : 0
+  const totalScheduledTasks = myMaintenanceAssignments.length
+  const totalAssignments = myTasks.length + totalScheduledTasks
+  const totalCompletedAssignments = completedTasks.length + completedMaintenanceTasks.length
+  const completionRate =
+    totalAssignments > 0 ? Math.round((totalCompletedAssignments / totalAssignments) * 100) : 0
   const onTimeRate = completedTasks.length > 0 ? Math.round((onTimeTasks.length / completedTasks.length) * 100) : 0
 
+  const totalMaintenanceMinutes = completedMaintenanceTasks.reduce(
+    (sum, task) => sum + (task.timer_duration || 0) / 60,
+    0,
+  )
+  const totalRegularMinutes = completedTasks.reduce((sum, t) => sum + (t.actual_duration_minutes || 0), 0)
   const avgCompletionTime =
-    completedTasks.length > 0
-      ? Math.round(completedTasks.reduce((sum, t) => sum + (t.actual_duration_minutes || 0), 0) / completedTasks.length)
+    totalCompletedAssignments > 0
+      ? Math.round((totalRegularMinutes + totalMaintenanceMinutes) / totalCompletedAssignments)
       : 0
 
   const initials = user?.name
@@ -599,12 +619,14 @@ function WorkerDashboard() {
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Total Tasks</CardTitle>
+                  <CardTitle className="text-sm font-medium">Total Assignments</CardTitle>
                   <CheckCircle2 className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold">{totalTasks}</div>
-                  <p className="text-xs text-muted-foreground">{completedTasks.length} completed</p>
+                  <div className="text-2xl font-bold">{totalAssignments}</div>
+                  <p className="text-xs text-muted-foreground">
+                    {totalCompletedAssignments} completed ({completedMaintenanceTasks.length} scheduled)
+                  </p>
                 </CardContent>
               </Card>
 
@@ -615,7 +637,7 @@ function WorkerDashboard() {
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold">{completionRate}%</div>
-                  <p className="text-xs text-muted-foreground">All time average</p>
+                  <p className="text-xs text-muted-foreground">Across guest & scheduled work</p>
                 </CardContent>
               </Card>
 
@@ -626,7 +648,22 @@ function WorkerDashboard() {
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold">{avgCompletionTime}m</div>
-                  <p className="text-xs text-muted-foreground">Per task</p>
+                  <p className="text-xs text-muted-foreground">Per assignment (including scheduled)</p>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">Scheduled Maintenance</CardTitle>
+                  <TrendingUp className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">
+                    {completedMaintenanceTasks.length}/{totalScheduledTasks}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {pendingMaintenanceTasks.length} pending • {myActiveMaintenanceTasks.length} active
+                  </p>
                 </CardContent>
               </Card>
 
@@ -679,7 +716,9 @@ function WorkerDashboard() {
               </Alert>
             )}
 
-            {user?.department === "Maintenance" && currentMaintenanceTask && currentMaintenanceTask.room_number && (
+            {user?.department?.toLowerCase() === "maintenance" &&
+              currentMaintenanceTask &&
+              currentMaintenanceTask.room_number && (
               <Card
                 className="cursor-pointer border-accent/60 bg-accent/10 transition-colors hover:bg-accent/20"
                 onClick={() => handleNavigateToMaintenanceTask(currentMaintenanceTask)}
@@ -739,7 +778,7 @@ function WorkerDashboard() {
               </Card>
             )}
 
-            {user?.department === "Maintenance" && totalRooms > 0 && (
+            {user?.department?.toLowerCase() === "maintenance" && totalRooms > 0 && (
               <Card className="bg-primary/5 border-primary/20">
                 <CardContent className="p-6">
                   <div className="flex items-center justify-between mb-3">
@@ -763,7 +802,7 @@ function WorkerDashboard() {
               </Card>
             )}
 
-            {user?.department === "Maintenance" && nearbyRooms.length > 0 && (
+            {user?.department?.toLowerCase() === "maintenance" && nearbyRooms.length > 0 && (
               <section>
                 <h2 className="text-base md:text-lg font-semibold mb-3">💡 Smart Suggestions</h2>
                 <p className="text-sm text-muted-foreground mb-3">Rooms on the same floor as your current work</p>
@@ -801,7 +840,7 @@ function WorkerDashboard() {
               </section>
             )}
 
-            {user?.department === "Maintenance" && Object.keys(activeMaintenanceByRoom).length > 0 && (
+            {user?.department?.toLowerCase() === "maintenance" && Object.keys(activeMaintenanceByRoom).length > 0 && (
               <section>
                 <h2 className="text-base md:text-lg font-semibold mb-3 text-accent">🔧 Active Maintenance Tasks</h2>
                 <div className="space-y-3">
@@ -941,7 +980,7 @@ function WorkerDashboard() {
               </section>
             )}
 
-            {myTasks.length === 0 && myMaintenanceTasks.length === 0 && partiallyCompletedRooms.length === 0 && (
+            {myTasks.length === 0 && myActiveMaintenanceTasks.length === 0 && partiallyCompletedRooms.length === 0 && (
               <div className="flex min-h-[400px] items-center justify-center">
                 <p className="text-muted-foreground">No tasks assigned</p>
               </div>
@@ -970,10 +1009,10 @@ function WorkerDashboard() {
             {activeTab !== "scheduled" && (
               <p className="text-xs md:text-sm text-muted-foreground">
                 {user?.name} - {user?.department}
-                {(inProgressTasks.length > 0 || myMaintenanceTasks.length > 0) && (
+                {(inProgressTasks.length > 0 || myActiveMaintenanceTasks.length > 0) && (
                   <span className="ml-2 text-accent font-medium">● Busy</span>
                 )}
-                {inProgressTasks.length === 0 && myMaintenanceTasks.length === 0 && (
+                {inProgressTasks.length === 0 && myActiveMaintenanceTasks.length === 0 && (
                   <span className="ml-2 text-muted-foreground">○ Available</span>
                 )}
               </p>

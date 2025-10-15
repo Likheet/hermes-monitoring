@@ -292,6 +292,7 @@ export function TaskProvider({ children }: { children: ReactNode }) {
     const newTask: Task = {
       ...taskData,
       id: `t${Date.now()}`,
+      department: taskData.department,
       audit_log: [
         {
           timestamp: createDualTimestamp(),
@@ -366,6 +367,7 @@ export function TaskProvider({ children }: { children: ReactNode }) {
         task_type: `[REWORK] ${task.task_type}`,
         priority_level: task.priority_level,
         status: "PENDING",
+        department: task.department,
         assigned_to_user_id: "",
         assigned_by_user_id: userId,
         assigned_at: createDualTimestamp(),
@@ -434,10 +436,12 @@ export function TaskProvider({ children }: { children: ReactNode }) {
     if (!task || task.status !== "PENDING") return
 
     const oldWorkerId = task.assigned_to_user_id
+    const newWorker = users.find((u) => u.id === newWorkerId)
 
     updateTask(taskId, {
       assigned_to_user_id: newWorkerId,
       assigned_at: createDualTimestamp(),
+      department: newWorker?.department || task.department,
     })
 
     addAuditLog(taskId, {

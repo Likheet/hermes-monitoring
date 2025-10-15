@@ -19,10 +19,12 @@ import { useRealtimeTasks } from "@/lib/use-realtime-tasks"
 import { ConnectionStatus } from "@/components/connection-status"
 import { detectEscalationLevel, type Escalation } from "@/lib/escalation-utils"
 import { createDualTimestamp } from "@/lib/mock-data"
+import { TASK_TYPE_LABELS } from "@/lib/maintenance-types"
+import { formatDistanceToNow } from "date-fns"
 
 function SupervisorDashboard() {
   const { user, logout } = useAuth()
-  const { tasks, issues, users } = useTasks()
+  const { tasks, issues, users, maintenanceTasks } = useTasks()
   const router = useRouter()
   const { isConnected } = useRealtimeTasks({
     enabled: true,
@@ -94,7 +96,9 @@ function SupervisorDashboard() {
 
   const departmentTasks = tasks.filter((task) => {
     const worker = users.find((u) => u.id === task.assigned_to_user_id)
-    return worker?.department === user?.department
+    const taskDepartment = task.department || worker?.department
+    if (!user?.department) return true
+    return taskDepartment === user.department
   })
 
   const filteredTasks = departmentTasks.filter((task) => {
@@ -121,6 +125,24 @@ function SupervisorDashboard() {
   console.log("[v0] Supervisor dashboard - Other tasks:", otherTasks.length)
   console.log("[v0] Supervisor dashboard - Total filtered tasks:", filteredTasks.length)
 
+  const isMaintenanceSupervisor = user?.department?.toLowerCase() === "maintenance"
+
+  const departmentMaintenanceTasks =
+    isMaintenanceSupervisor
+      ? (maintenanceTasks || []).filter((task) => {
+          if (!task.assigned_to) return true
+          const assignedWorker = users.find((u) => u.id === task.assigned_to)
+          if (!assignedWorker) return true
+          return assignedWorker.department === "maintenance"
+        })
+      : []
+
+  const completedMaintenanceTasks = departmentMaintenanceTasks.filter((task) => task.status === "completed")
+  const activeMaintenanceTasks = departmentMaintenanceTasks.filter((task) =>
+    task.status === "in_progress" || task.status === "paused",
+  )
+  const pendingMaintenanceTasks = departmentMaintenanceTasks.filter((task) => task.status === "pending")
+
   const getTaskEscalation = (taskId: string): 1 | 2 | 3 | null => {
     const taskEscalations = escalations.filter((esc) => esc.task_id === taskId && !esc.resolved)
     if (taskEscalations.length === 0) return null
@@ -130,6 +152,14 @@ function SupervisorDashboard() {
   const getWorkerName = (userId: string) => {
     return users.find((u) => u.id === userId)?.name || "Unknown"
   }
+
+  const getMaintenanceWorkerName = (userId?: string) => {
+    if (!userId) return "Unassigned"
+    return users.find((u) => u.id === userId)?.name || "Unknown"
+  }
+
+  const getMaintenanceTaskLabel = (taskType: string) =>
+    TASK_TYPE_LABELS[taskType as keyof typeof TASK_TYPE_LABELS] || taskType.replace(/_/g, " ")
 
   const priorityColors = {
     GUEST_REQUEST: "bg-red-500 text-white",
@@ -234,6 +264,57 @@ function SupervisorDashboard() {
                 </Link>
               ))}
             </div>
+          </section>
+        )}
+
+        {isMaintenanceSupervisor && (
+          <section>
+            <h2 className="text-lg font-semibold mb-3">Scheduled Maintenance</h2>
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base font-semibold">Team Progress</CardTitle>
+                <p className="text-sm text-muted-foreground">
+                  {completedMaintenanceTasks.length} completed • {activeMaintenanceTasks.length} in progress •
+                  {" "}
+                  {pendingMaintenanceTasks.length} pending
+                </p>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {completedMaintenanceTasks.length > 0 ? (
+                  completedMaintenanceTasks.map((task) => {
+                    const completedAtDate = task.completed_at ? new Date(task.completed_at) : null
+                    const completedAtLabel =
+                      completedAtDate && !Number.isNaN(completedAtDate.getTime())
+                        ? formatDistanceToNow(completedAtDate, { addSuffix: true })
+                        : "just now"
+
+                    return (
+                      <div key={task.id} className="flex items-start justify-between gap-4">
+                        <div className="space-y-1">
+                          <p className="font-medium leading-tight">
+                            {getMaintenanceTaskLabel(task.task_type)} — Room {task.room_number}
+                            {task.location ? ` • ${task.location}` : ""}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            Completed by {getMaintenanceWorkerName(task.assigned_to)} {completedAtLabel}
+                          </p>
+                          {task.notes && (
+                            <p className="text-xs text-muted-foreground line-clamp-2">Notes: {task.notes}</p>
+                          )}
+                        </div>
+                        <Badge variant="outline" className="whitespace-nowrap">
+                          Completed
+                        </Badge>
+                      </div>
+                    )
+                  })
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    No scheduled maintenance tasks have been completed yet.
+                  </p>
+                )}
+              </CardContent>
+            </Card>
           </section>
         )}
 
