@@ -30,9 +30,17 @@ function MaintenanceCalendarContent() {
       updateMaintenanceTask(taskId, {
         status: "completed",
         ac_location: data.acLocation,
-        photos: data.photos,
+        photos: [
+          ...(data.categorizedPhotos.room_photos || []),
+          ...(data.categorizedPhotos.proof_photos || []),
+        ],
+        categorized_photos: {
+          before_photos: data.categorizedPhotos.room_photos,
+          after_photos: data.categorizedPhotos.proof_photos,
+        },
         timer_duration: data.timerDuration,
         completed_at: new Date().toISOString(),
+        notes: data.notes,
       })
 
       // Update local state

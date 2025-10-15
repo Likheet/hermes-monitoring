@@ -14,7 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ArrowLeft, UserPlus } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { useToast } from "@/hooks/use-toast"
-import type { Department } from "@/lib/types"
+import type { Department, UserRole } from "@/lib/types"
 import { calculateShiftHours } from "@/lib/date-utils"
 
 function AddWorker() {
@@ -26,15 +26,40 @@ function AddWorker() {
   const [formData, setFormData] = useState({
     name: "",
     phone: "",
+    role: "worker" as UserRole,
     department: "" as Department | "",
     shift_start: "09:00",
     shift_end: "17:00",
   })
 
+  const handleRoleChange = (value: UserRole) => {
+    setFormData((prev) => {
+      let nextDepartment: Department | "" = prev.department
+      if (value === "front_office") {
+        nextDepartment = "front_desk"
+      } else if (prev.department === "front_desk") {
+        nextDepartment = ""
+      }
+
+      return {
+        ...prev,
+        role: value,
+        department: nextDepartment,
+      }
+    })
+  }
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
 
-    if (!formData.name || !formData.phone || !formData.department || !formData.shift_start || !formData.shift_end) {
+    if (
+      !formData.name ||
+      !formData.phone ||
+      !formData.department ||
+      !formData.shift_start ||
+      !formData.shift_end ||
+      !formData.role
+    ) {
       toast({
         title: "Error",
         description: "Please fill in all fields",
@@ -45,15 +70,16 @@ function AddWorker() {
 
     addWorker({
       name: formData.name,
-      role: "worker",
+      role: formData.role,
       phone: formData.phone,
       department: formData.department as Department,
       shift_start: formData.shift_start,
       shift_end: formData.shift_end,
+      has_break: false,
     })
 
     toast({
-      title: "Worker Added",
+      title: "Staff Member Added",
       description: `${formData.name} has been added successfully`,
     })
 
@@ -61,6 +87,13 @@ function AddWorker() {
   }
 
   const shiftHours = calculateShiftHours(formData.shift_start, formData.shift_end)
+  const departmentOptions: Array<{ value: Department; label: string }> =
+    formData.role === "front_office"
+      ? [{ value: "front_desk", label: "Front Desk" }]
+      : [
+          { value: "housekeeping", label: "Housekeeping" },
+          { value: "maintenance", label: "Maintenance" },
+        ]
 
   return (
     <div className="min-h-screen bg-muted/30">
@@ -71,7 +104,7 @@ function AddWorker() {
           </Button>
           <div>
             <h1 className="text-2xl font-bold">Add Worker</h1>
-            <p className="text-sm text-muted-foreground">Add a new housekeeping or maintenance staff member</p>
+            <p className="text-sm text-muted-foreground">Add housekeeping, maintenance, or front office staff</p>
           </div>
         </div>
       </header>
@@ -107,6 +140,20 @@ function AddWorker() {
               </div>
 
               <div>
+                <Label htmlFor="role">Role</Label>
+                <Select value={formData.role} onValueChange={(value) => handleRoleChange(value as UserRole)}>
+                  <SelectTrigger className="mt-2">
+                    <SelectValue placeholder="Select role" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="worker">Worker</SelectItem>
+                    <SelectItem value="supervisor">Supervisor</SelectItem>
+                    <SelectItem value="front_office">Front Office</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
                 <Label htmlFor="department">Department</Label>
                 <Select
                   value={formData.department}
@@ -116,10 +163,18 @@ function AddWorker() {
                     <SelectValue placeholder="Select department" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="housekeeping">Housekeeping</SelectItem>
-                    <SelectItem value="maintenance">Maintenance</SelectItem>
+                    {departmentOptions.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
+                {formData.role === "front_office" && (
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    Front office staff are automatically assigned to the Front Desk.
+                  </p>
+                )}
               </div>
 
               <div className="space-y-3">
