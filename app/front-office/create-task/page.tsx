@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { ArrowLeft } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
-import type { PriorityLevel, Priority } from "@/lib/types"
+import type { PriorityLevel, Priority, Department } from "@/lib/types"
 import { TaskSearch } from "@/components/task-search"
 import type { TaskDefinition } from "@/lib/task-definitions"
 import { TaskAssignmentForm, type TaskAssignmentData } from "@/components/task-assignment-form"
@@ -55,6 +55,7 @@ function CreateTaskForm() {
       task_type: data.taskName,
       priority_level: priorityLevel,
       status: "PENDING",
+      department: data.department as Department,
       assigned_to_user_id: data.assignedTo,
       assigned_by_user_id: user.id,
       assigned_at: createDualTimestamp(),
@@ -62,7 +63,6 @@ function CreateTaskForm() {
       completed_at: null,
       expected_duration_minutes: data.duration,
       actual_duration_minutes: null,
-      photo_url: null,
       photo_urls: [],
       categorized_photos: null,
       photo_required: data.photoRequired,
@@ -72,7 +72,7 @@ function CreateTaskForm() {
       quality_comment: null,
       rating_proof_photo_url: null,
       rejection_proof_photo_url: null,
-      room_number: data.location || null,
+      room_number: data.location || "",
     })
 
     const workerCurrentTask = tasks.find((t) => t.assigned_to_user_id === data.assignedTo && t.status === "IN_PROGRESS")
