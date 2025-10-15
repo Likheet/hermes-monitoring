@@ -35,9 +35,10 @@ function AddWorker() {
   const handleRoleChange = (value: UserRole) => {
     setFormData((prev) => {
       let nextDepartment: Department | "" = prev.department
+
       if (value === "front_office") {
         nextDepartment = "front_desk"
-      } else if (prev.department === "front_desk") {
+      } else if (prev.department === "front_desk" && value !== "supervisor") {
         nextDepartment = ""
       }
 
@@ -87,13 +88,22 @@ function AddWorker() {
   }
 
   const shiftHours = calculateShiftHours(formData.shift_start, formData.shift_end)
-  const departmentOptions: Array<{ value: Department; label: string }> =
-    formData.role === "front_office"
-      ? [{ value: "front_desk", label: "Front Desk" }]
-      : [
-          { value: "housekeeping", label: "Housekeeping" },
-          { value: "maintenance", label: "Maintenance" },
-        ]
+  const departmentOptions: Array<{ value: Department; label: string }> = (() => {
+    if (formData.role === "front_office") {
+      return [{ value: "front_desk", label: "Front Desk" }]
+    }
+
+    const options: Array<{ value: Department; label: string }> = [
+      { value: "housekeeping", label: "Housekeeping" },
+      { value: "maintenance", label: "Maintenance" },
+    ]
+
+    if (formData.role === "supervisor") {
+      options.push({ value: "front_desk", label: "Front Desk" })
+    }
+
+    return options
+  })()
 
   return (
     <div className="min-h-screen bg-muted/30">
