@@ -1,0 +1,47 @@
+"use client"
+
+import { Dialog, DialogContent } from "@/components/ui/dialog"
+import { useState } from "react"
+import { Loader2, AlertCircle } from "lucide-react"
+
+interface PhotoZoomModalProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  photoUrl: string
+  alt?: string
+}
+
+export function PhotoZoomModal({ open, onOpenChange, photoUrl, alt = "Task photo" }: PhotoZoomModalProps) {
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(false)
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-4xl p-0">
+        <div className="relative min-h-[400px] flex items-center justify-center bg-black">
+          {loading && (
+            <div className="absolute inset-0 flex items-center justify-center">
+              <Loader2 className="h-8 w-8 animate-spin text-white" />
+            </div>
+          )}
+          {error && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-white">
+              <AlertCircle className="h-8 w-8" />
+              <p className="text-sm">Failed to load image</p>
+            </div>
+          )}
+          <img
+            src={photoUrl || "/placeholder.svg"}
+            alt={alt}
+            className="max-h-[80vh] w-auto object-contain"
+            onLoad={() => setLoading(false)}
+            onError={() => {
+              setLoading(false)
+              setError(true)
+            }}
+          />
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}

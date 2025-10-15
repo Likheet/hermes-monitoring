@@ -1,0 +1,79 @@
+// Core type definitions for the resort task management system
+
+export type UserRole = "worker" | "supervisor" | "front_office" | "admin"
+export type Department = "housekeeping" | "maintenance" | "front_desk"
+export type TaskStatus = "PENDING" | "IN_PROGRESS" | "PAUSED" | "COMPLETED" | "REJECTED"
+export type PriorityLevel = "GUEST_REQUEST" | "TIME_SENSITIVE" | "DAILY_TASK" | "PREVENTIVE_MAINTENANCE"
+
+// Dual timestamp structure for anti-tampering
+export interface DualTimestamp {
+  client: string
+  server: string
+}
+
+export interface User {
+  id: string
+  name: string
+  role: UserRole
+  phone: string
+  department: Department
+  shift_start: string // Format: "HH:MM" (24-hour format)
+  shift_end: string // Format: "HH:MM" (24-hour format)
+  is_available: boolean
+}
+
+export interface PauseRecord {
+  paused_at: DualTimestamp
+  resumed_at: DualTimestamp | null
+  reason: string
+}
+
+export interface Task {
+  id: string
+  task_type: string
+  priority_level: PriorityLevel
+  status: TaskStatus
+  assigned_to_user_id: string
+  assigned_by_user_id: string
+  assigned_at: DualTimestamp
+  started_at: DualTimestamp | null
+  completed_at: DualTimestamp | null
+  expected_duration_minutes: number
+  actual_duration_minutes: number | null
+  photo_url: string | null
+  photo_required: boolean
+  worker_remark: string
+  supervisor_remark: string
+  rating: number | null
+  quality_comment: string | null
+  rating_proof_photo_url: string | null
+  rejection_proof_photo_url: string | null
+  room_number: string
+  pause_history: PauseRecord[]
+  audit_log: AuditLogEntry[]
+}
+
+export interface AuditLogEntry {
+  timestamp: DualTimestamp
+  user_id: string
+  action: string
+  old_status: TaskStatus | null
+  new_status: TaskStatus | null
+  details: string
+}
+
+export interface EscalationAlert {
+  task_id: string
+  alert_type: "15_MIN" | "20_MIN" | "50_PERCENT_OVERTIME"
+  triggered_at: DualTimestamp
+  acknowledged: boolean
+}
+
+export interface TaskIssue {
+  id: string
+  task_id: string
+  reported_by_user_id: string
+  reported_at: DualTimestamp
+  issue_description: string
+  status: "OPEN" | "RESOLVED"
+}

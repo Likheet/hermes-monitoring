@@ -1,0 +1,297 @@
+"use client"
+
+import { useState, useRef } from "react"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogDescription,
+} from "@/components/ui/dialog"
+import { Button } from "@/components/ui/button"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
+import { Star, Camera, X } from "lucide-react"
+import { useToast } from "@/hooks/use-toast"
+import { uploadTaskPhoto } from "@/lib/storage-utils"
+
+interface RatingModalProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  onSubmit: (rating: number, qualityComment: string, proofPhotoUrl: string | null) => void
+  taskId: string
+}
+
+export function RatingModal({ open, onOpenChange, onSubmit, taskId }: RatingModalProps) {
+  const [rating, setRating] = useState(0)
+  const [hoveredRating, setHoveredRating] = useState(0)
+  const [qualityComment, setQualityComment] = useState("")
+  const [proofPhoto, setProofPhoto] = useState<string | null>(null)
+  const [uploading, setUploading] = useState(false)
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const [stream, setStream] = useState<MediaStream | null>(null)
+  const [showCamera, setShowCamera] = useState(false)
+  const { toast } = useToast()
+
+  const startCamera = async () => {
+    console.log("[v0] Starting camera...")
+    try {
+      const mediaStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "environment" },
+      })
+      console.log("[v0] Camera stream obtained:", mediaStream)
+      if (videoRef.current) {
+        videoRef.current.srcObject = mediaStream
+        await videoRef.current.play()
+      }
+      setStream(mediaStream)
+      setShowCamera(true)
+    } catch (error) {
+      console.error("[v0] Camera error:", error)
+      toast({
+        title: "Camera Error",
+        description: "Could not access camera. Please check permissions.",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const stopCamera = () => {
+    console.log("[v0] Stopping camera...")
+    if (stream) {
+      stream.getTracks().forEach((track) => track.stop())
+      setStream(null)
+    }
+    setShowCamera(false)
+  }
+
+  const capturePhoto = async () => {
+    console.log("[v0] Capturing photo...")
+    if (!videoRef.current) {
+      console.error("[v0] Video ref not available")
+      toast({
+        title: "Capture Failed",
+        description: "Video element not ready",
+        variant: "destructive",
+      })
+      return
+    }
+
+    const videoWidth = videoRef.current.videoWidth
+    const videoHeight = videoRef.current.videoHeight
+
+    console.log("[v0] Video dimensions:", { videoWidth, videoHeight })
+
+    if (videoWidth === 0 || videoHeight === 0) {
+      console.error("[v0] Invalid video dimensions")
+      toast({
+        title: "Capture Failed",
+        description: "Video not ready. Please wait a moment and try again.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    const canvas = document.createElement("canvas")
+    canvas.width = videoWidth
+    canvas.height = videoHeight
+    const ctx = canvas.getContext("2d")
+
+    if (!ctx) {
+      console.error("[v0] Canvas context not available")
+      toast({
+        title: "Capture Failed",
+        description: "Could not create canvas context",
+        variant: "destructive",
+      })
+      return
+    }
+
+    ctx.drawImage(videoRef.current, 0, 0, videoWidth, videoHeight)
+
+    setUploading(true)
+
+    try {
+      canvas.toBlob(
+        async (blob) => {
+          try {
+            if (!blob) {
+              console.error("[v0] Blob creation failed - blob is null")
+              toast({
+                title: "Capture Failed",
+                description: "Could not create image from video. Please try again.",
+                variant: "destructive",
+              })
+              setUploading(false)
+              return
+            }
+
+            console.log("[v0] Blob created successfully, size:", blob.size)
+            console.log("[v0] Uploading photo...")
+            const photoUrl = await uploadTaskPhoto(blob, taskId)
+            console.log("[v0] Photo uploaded:", photoUrl)
+            setProofPhoto(photoUrl)
+            stopCamera()
+            toast({
+              title: "Photo Captured",
+              description: "Proof photo uploaded successfully",
+            })
+          } catch (error) {
+            console.error("[v0] Upload error:", error)
+            toast({
+              title: "Upload Failed",
+              description: "Could not upload proof photo",
+              variant: "destructive",
+            })
+          } finally {
+            setUploading(false)
+          }
+        },
+        "image/jpeg",
+        0.8,
+      )
+    } catch (error) {
+      console.error("[v0] Canvas toBlob error:", error)
+      toast({
+        title: "Capture Failed",
+        description: "Could not capture photo",
+        variant: "destructive",
+      })
+      setUploading(false)
+    }
+  }
+
+  const handleSubmit = () => {
+    if (rating === 0) {
+      toast({
+        title: "Rating Required",
+        description: "Please select a rating",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (rating < 5 && !proofPhoto) {
+      toast({
+        title: "Proof Required",
+        description: "Please attach a photo showing why the rating is not 5 stars",
+        variant: "destructive",
+      })
+      return
+    }
+
+    onSubmit(rating, qualityComment, proofPhoto)
+    onOpenChange(false)
+    // Reset state
+    setRating(0)
+    setQualityComment("")
+    setProofPhoto(null)
+    stopCamera()
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Rate Task Quality</DialogTitle>
+          <DialogDescription>
+            Rate the quality of work completed. Ratings below 5 stars require photo proof.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-6 py-4">
+          <div className="space-y-2">
+            <Label>Quality Rating</Label>
+            <div className="flex gap-2 justify-center">
+              {[1, 2, 3, 4, 5].map((star) => (
+                <button
+                  key={star}
+                  type="button"
+                  onClick={() => setRating(star)}
+                  onMouseEnter={() => setHoveredRating(star)}
+                  onMouseLeave={() => setHoveredRating(0)}
+                  className="transition-transform hover:scale-110"
+                >
+                  <Star
+                    className={`h-10 w-10 ${
+                      star <= (hoveredRating || rating) ? "fill-yellow-400 text-yellow-400" : "text-gray-300"
+                    }`}
+                  />
+                </button>
+              ))}
+            </div>
+            <p className="text-center text-sm text-muted-foreground">
+              {rating === 0 ? "Select a rating" : `${rating} star${rating !== 1 ? "s" : ""}`}
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Quality Comment</Label>
+            <Textarea
+              placeholder="Add comments about the work quality..."
+              value={qualityComment}
+              onChange={(e) => setQualityComment(e.target.value)}
+              rows={3}
+              className="resize-none"
+            />
+          </div>
+
+          {rating > 0 && rating < 5 && (
+            <div className="space-y-2">
+              <Label className="text-destructive">Proof Required (Rating below 5 stars)</Label>
+              <p className="text-sm text-muted-foreground">
+                Please attach a photo showing the issue that prevented a 5-star rating
+              </p>
+
+              {!proofPhoto && !showCamera && (
+                <Button onClick={startCamera} variant="outline" className="w-full bg-transparent">
+                  <Camera className="mr-2 h-4 w-4" />
+                  Take Proof Photo
+                </Button>
+              )}
+
+              {showCamera && (
+                <div className="space-y-2">
+                  <video ref={videoRef} autoPlay playsInline className="w-full rounded-lg bg-black" />
+                  <div className="flex gap-2">
+                    <Button onClick={capturePhoto} disabled={uploading} className="flex-1">
+                      <Camera className="mr-2 h-4 w-4" />
+                      {uploading ? "Uploading..." : "Capture"}
+                    </Button>
+                    <Button onClick={stopCamera} variant="outline">
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {proofPhoto && (
+                <div className="relative">
+                  <img src={proofPhoto || "/placeholder.svg"} alt="Proof" className="w-full rounded-lg" />
+                  <Button
+                    size="icon"
+                    variant="destructive"
+                    className="absolute top-2 right-2"
+                    onClick={() => setProofPhoto(null)}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button onClick={handleSubmit} disabled={uploading}>
+            Submit Rating
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
