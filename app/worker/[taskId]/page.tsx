@@ -19,6 +19,17 @@ import { PauseTimeline } from "@/components/timer/pause-timeline"
 import { saveTimerState, getTimerState, clearTimerState, addToOfflineQueue, isOnline } from "@/lib/timer-utils"
 import { formatExactTimestamp } from "@/lib/date-utils"
 import type { CategorizedPhotos } from "@/lib/types"
+import { startPauseMonitoring, stopPauseMonitoring } from "@/lib/pause-monitoring"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 
 interface TaskDetailProps {
   params: { taskId: string } | Promise<{ taskId: string }>
@@ -29,13 +40,25 @@ function TaskDetail({ params }: TaskDetailProps) {
   const { taskId } = resolvedParams
   const router = useRouter()
   const { user } = useAuth()
-  const { getTaskById, startTask, pauseTask, resumeTask, completeTask, raiseIssue } = useTasks()
+  const {
+    getTaskById,
+    startTask,
+    pauseTask,
+    resumeTask,
+    completeTask,
+    raiseIssue,
+    tasks,
+    maintenanceTasks,
+    swapTasks,
+  } = useTasks()
   const { toast } = useToast()
 
   const task = getTaskById(taskId)
   const [remark, setRemark] = useState("")
   const [photoModalOpen, setPhotoModalOpen] = useState(false)
   const [issueModalOpen, setIssueModalOpen] = useState(false)
+  const [swapDialogOpen, setSwapDialogOpen] = useState(false)
+  const [pausedTaskToSwap, setPausedTaskToSwap] = useState<{ id: string; name: string } | null>(null)
   const [categorizedPhotos, setCategorizedPhotos] = useState<CategorizedPhotos>({
     room_photos: [],
     proof_photos: [],
@@ -129,7 +152,16 @@ function TaskDetail({ params }: TaskDetailProps) {
       return
     }
 
-    startTask(taskId, user!.id)
+    const result = startTask(taskId, user!.id)
+    if (result && "error" in result) {
+      toast({
+        title: "Cannot Start Task",
+        description: result.error,
+        variant: "destructive",
+      })
+      return
+    }
+
     toast({
       title: "Task Started",
       description: "Timer is now running",
@@ -137,6 +169,15 @@ function TaskDetail({ params }: TaskDetailProps) {
   }
 
   const handlePause = () => {
+    if (!canPauseTask()) {
+      toast({
+        title: "Cannot Pause",
+        description: "You need at least 2 tasks to pause one. Complete this task or wait for another assignment.",
+        variant: "destructive",
+      })
+      return
+    }
+
     if (!isOnline()) {
       addToOfflineQueue({
         type: "PAUSE",
@@ -152,7 +193,22 @@ function TaskDetail({ params }: TaskDetailProps) {
       return
     }
 
-    pauseTask(taskId, user!.id, "Worker paused task")
+    const result = pauseTask(taskId, user!.id, "Worker paused task")
+    if (result && "error" in result) {
+      if (result.pausedTaskId && result.pausedTaskName) {
+        setPausedTaskToSwap({ id: result.pausedTaskId, name: result.pausedTaskName })
+        setSwapDialogOpen(true)
+      } else {
+        toast({
+          title: "Cannot Pause Task",
+          description: result.error,
+          variant: "destructive",
+        })
+      }
+      return
+    }
+
+    startPauseMonitoring(taskId, user!.id)
     toast({
       title: "Task Paused",
       description: "Timer has been paused",
@@ -174,7 +230,17 @@ function TaskDetail({ params }: TaskDetailProps) {
       return
     }
 
-    resumeTask(taskId, user!.id)
+    const result = resumeTask(taskId, user!.id)
+    if (result && "error" in result) {
+      toast({
+        title: "Cannot Resume Task",
+        description: result.error,
+        variant: "destructive",
+      })
+      return
+    }
+
+    stopPauseMonitoring()
     toast({
       title: "Task Resumed",
       description: "Timer is running again",
@@ -207,6 +273,7 @@ function TaskDetail({ params }: TaskDetailProps) {
     }
 
     completeTask(taskId, user!.id, categorizedPhotos, remark)
+    stopPauseMonitoring()
     toast({
       title: "Task Completed",
       description: "Task has been submitted for verification",
@@ -231,7 +298,42 @@ function TaskDetail({ params }: TaskDetailProps) {
     })
   }
 
+  const handleSwapConfirm = () => {
+    if (!pausedTaskToSwap || !user) return
+
+    const result = swapTasks(taskId, pausedTaskToSwap.id, user.id)
+    if (result && "error" in result) {
+      toast({
+        title: "Cannot Swap Tasks",
+        description: result.error,
+        variant: "destructive",
+      })
+    } else {
+      stopPauseMonitoring()
+      startPauseMonitoring(taskId, user.id)
+      toast({
+        title: "Tasks Swapped",
+        description: `Paused this task and resumed "${pausedTaskToSwap.name}"`,
+      })
+      router.push(`/worker/${pausedTaskToSwap.id}`)
+    }
+    setSwapDialogOpen(false)
+    setPausedTaskToSwap(null)
+  }
+
   const totalPhotos = categorizedPhotos.room_photos.length + categorizedPhotos.proof_photos.length
+
+  const canPauseTask = () => {
+    if (!user) return false
+
+    if (user.department !== "housekeeping") return false
+
+    const myTasks = tasks.filter((t) => t.assigned_to_user_id === user.id && t.status !== "COMPLETED")
+    const myMaintenanceTasks = maintenanceTasks.filter((t) => t.assigned_to === user.id && t.status !== "completed")
+    const totalTasks = myTasks.length + myMaintenanceTasks.length
+
+    return totalTasks >= 2
+  }
 
   return (
     <div className="min-h-screen bg-muted/30">
@@ -394,10 +496,19 @@ function TaskDetail({ params }: TaskDetailProps) {
 
           {task.status === "IN_PROGRESS" && (
             <>
-              <Button onClick={handlePause} variant="outline" size="lg" className="w-full bg-transparent">
-                <Pause className="mr-2 h-5 w-5" />
-                Pause Task
-              </Button>
+              {user?.department === "housekeeping" && (
+                <Button
+                  onClick={handlePause}
+                  variant="outline"
+                  size="lg"
+                  className="w-full bg-transparent"
+                  disabled={!canPauseTask()}
+                >
+                  <Pause className="mr-2 h-5 w-5" />
+                  Pause Task
+                  {!canPauseTask() && <span className="ml-2 text-xs">(Need 2+ tasks)</span>}
+                </Button>
+              )}
               {totalPhotos === 0 && task.photo_required && (
                 <Button
                   onClick={() => setPhotoModalOpen(true)}
@@ -433,7 +544,7 @@ function TaskDetail({ params }: TaskDetailProps) {
                   size="lg"
                   className="w-full bg-transparent"
                 >
-                  <Camera className="mr-2 h-5 w-5" />
+                  <Camera className="mr-2 h-4 w-4" />
                   Capture Photos
                 </Button>
               )}
@@ -467,6 +578,31 @@ function TaskDetail({ params }: TaskDetailProps) {
       />
 
       <RaiseIssueModal open={issueModalOpen} onOpenChange={setIssueModalOpen} onSubmit={handleRaiseIssue} />
+
+      <AlertDialog open={swapDialogOpen} onOpenChange={setSwapDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Can't Pause Multiple Tasks</AlertDialogTitle>
+            <AlertDialogDescription>
+              You already have a paused task: <strong>{pausedTaskToSwap?.name}</strong>
+              <br />
+              <br />
+              Would you like to pause this task and resume the other one instead?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              onClick={() => {
+                setSwapDialogOpen(false)
+                setPausedTaskToSwap(null)
+              }}
+            >
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={handleSwapConfirm}>Yes, Swap Tasks</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

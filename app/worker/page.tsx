@@ -26,6 +26,7 @@ import { cn } from "@/lib/utils"
 import { useToast } from "@/hooks/use-toast"
 import { formatShiftRange } from "@/lib/date-utils"
 import { ALL_ROOMS } from "@/lib/location-data"
+import { initializePauseMonitoring } from "@/lib/pause-monitoring"
 
 interface Note {
   id: string
@@ -37,7 +38,7 @@ interface Note {
 
 function WorkerDashboard() {
   const { user, logout } = useAuth()
-  const { tasks, dismissRejectedTask, updateMaintenanceTask, maintenanceTasks } = useTasks()
+  const { tasks, dismissRejectedTask, updateMaintenanceTask, maintenanceTasks, users } = useTasks()
   const router = useRouter()
   const { toast } = useToast()
   const { isConnected } = useRealtimeTasks({
@@ -74,6 +75,13 @@ function WorkerDashboard() {
       }
     }
   }, [user?.id])
+
+  useEffect(() => {
+    if (!user?.id) return
+
+    const cleanup = initializePauseMonitoring(tasks, maintenanceTasks, users, user.id)
+    return cleanup
+  }, [tasks, maintenanceTasks, users, user?.id])
 
   const normalizedDepartment = user?.department?.toLowerCase()
   const isMaintenanceUser = normalizedDepartment === "maintenance"

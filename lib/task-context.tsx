@@ -17,9 +17,13 @@ interface TaskContextType {
   maintenanceTasks: MaintenanceTask[]
   updateTask: (taskId: string, updates: Partial<Task>) => void
   addAuditLog: (taskId: string, entry: Omit<AuditLogEntry, "timestamp">) => void
-  startTask: (taskId: string, userId: string) => void
-  pauseTask: (taskId: string, userId: string, reason: string) => void
-  resumeTask: (taskId: string, userId: string) => void
+  startTask: (taskId: string, userId: string) => { success: boolean; error?: string }
+  pauseTask: (
+    taskId: string,
+    userId: string,
+    reason: string,
+  ) => { success: boolean; error?: string; pausedTaskId?: string; pausedTaskName?: string }
+  resumeTask: (taskId: string, userId: string) => { success: boolean; error?: string }
   completeTask: (taskId: string, userId: string, categorizedPhotos: CategorizedPhotos, remark: string) => void
   getTaskById: (taskId: string) => Task | undefined
   createTask: (task: Omit<Task, "id" | "audit_log" | "pause_history">) => void
@@ -51,6 +55,7 @@ interface TaskContextType {
   deleteSchedule: (scheduleId: string) => void
   toggleSchedule: (scheduleId: string) => void
   updateMaintenanceTask: (taskId: string, updates: Partial<MaintenanceTask>) => void
+  swapTasks: (pauseTaskId: string, resumeTaskId: string, userId: string) => { success: boolean; error?: string }
 }
 
 const TaskContext = createContext<TaskContextType | undefined>(undefined)
@@ -171,7 +176,19 @@ export function TaskProvider({ children }: { children: ReactNode }) {
 
   const startTask = (taskId: string, userId: string) => {
     const task = tasks.find((t) => t.id === taskId)
-    if (!task) return
+    if (!task) return { success: false, error: "Task not found." }
+
+    const hasActiveTask = tasks.some(
+      (t) => t.assigned_to_user_id === userId && t.status === "IN_PROGRESS" && t.id !== taskId,
+    )
+
+    if (hasActiveTask) {
+      console.log("[v0] Cannot start task - user already has an active task")
+      return {
+        success: false,
+        error: "You already have a task in progress. Please pause it first before starting another task.",
+      }
+    }
 
     const now = createDualTimestamp()
     updateTask(taskId, {
@@ -185,11 +202,25 @@ export function TaskProvider({ children }: { children: ReactNode }) {
       new_status: "IN_PROGRESS",
       details: "Worker started task",
     })
+
+    return { success: true }
   }
 
   const pauseTask = (taskId: string, userId: string, reason: string) => {
     const task = tasks.find((t) => t.id === taskId)
-    if (!task) return
+    if (!task) return { success: false, error: "Task not found." }
+
+    const pausedTask = tasks.find((t) => t.assigned_to_user_id === userId && t.status === "PAUSED" && t.id !== taskId)
+
+    if (pausedTask) {
+      console.log("[v0] Cannot pause task - user already has a paused task")
+      return {
+        success: false,
+        error: "You already have a paused task. Please resume or complete it first.",
+        pausedTaskId: pausedTask.id,
+        pausedTaskName: pausedTask.task_type,
+      }
+    }
 
     const now = createDualTimestamp()
     const newPauseRecord: PauseRecord = {
@@ -209,11 +240,25 @@ export function TaskProvider({ children }: { children: ReactNode }) {
       new_status: "PAUSED",
       details: `Task paused: ${reason}`,
     })
+
+    return { success: true }
   }
 
   const resumeTask = (taskId: string, userId: string) => {
     const task = tasks.find((t) => t.id === taskId)
-    if (!task) return
+    if (!task) return { success: false, error: "Task not found." }
+
+    const hasActiveTask = tasks.some(
+      (t) => t.assigned_to_user_id === userId && t.status === "IN_PROGRESS" && t.id !== taskId,
+    )
+
+    if (hasActiveTask) {
+      console.log("[v0] Cannot resume task - user already has an active task")
+      return {
+        success: false,
+        error: "You already have a task in progress. Please pause it first before resuming another task.",
+      }
+    }
 
     const now = createDualTimestamp()
     const updatedPauseHistory = [...task.pause_history]
@@ -233,6 +278,8 @@ export function TaskProvider({ children }: { children: ReactNode }) {
       new_status: "IN_PROGRESS",
       details: "Task resumed",
     })
+
+    return { success: true }
   }
 
   const completeTask = (taskId: string, userId: string, categorizedPhotos: CategorizedPhotos, remark: string) => {
@@ -313,7 +360,7 @@ export function TaskProvider({ children }: { children: ReactNode }) {
       const workerCurrentTask = tasks.find(
         (t) => t.assigned_to_user_id === taskData.assigned_to_user_id && t.status === "IN_PROGRESS",
       )
-      if (workerCurrentTask) {
+      if (workerCurrentTask && workerCurrentTask.priority_level !== "GUEST_REQUEST") {
         pauseTask(workerCurrentTask.id, taskData.assigned_by_user_id, "Auto-paused for urgent guest request")
       }
     }
@@ -730,6 +777,65 @@ export function TaskProvider({ children }: { children: ReactNode }) {
     })
   }
 
+  const swapTasks = (pauseTaskId: string, resumeTaskId: string, userId: string) => {
+    const taskToPause = tasks.find((t) => t.id === pauseTaskId)
+    const taskToResume = tasks.find((t) => t.id === resumeTaskId)
+
+    if (!taskToPause || !taskToResume) {
+      return { success: false, error: "One or both tasks not found." }
+    }
+
+    if (taskToPause.status !== "IN_PROGRESS") {
+      return { success: false, error: "Task to pause is not in progress." }
+    }
+
+    if (taskToResume.status !== "PAUSED") {
+      return { success: false, error: "Task to resume is not paused." }
+    }
+
+    const now = createDualTimestamp()
+
+    // Pause the current task
+    const newPauseRecord: PauseRecord = {
+      paused_at: now,
+      resumed_at: null,
+      reason: "Swapped to work on another task",
+    }
+
+    updateTask(pauseTaskId, {
+      status: "PAUSED",
+      pause_history: [...taskToPause.pause_history, newPauseRecord],
+    })
+    addAuditLog(pauseTaskId, {
+      user_id: userId,
+      action: "TASK_PAUSED",
+      old_status: "IN_PROGRESS",
+      new_status: "PAUSED",
+      details: "Task paused to resume another task",
+    })
+
+    // Resume the paused task
+    const updatedPauseHistory = [...taskToResume.pause_history]
+    const lastPause = updatedPauseHistory[updatedPauseHistory.length - 1]
+    if (lastPause && !lastPause.resumed_at) {
+      lastPause.resumed_at = now
+    }
+
+    updateTask(resumeTaskId, {
+      status: "IN_PROGRESS",
+      pause_history: updatedPauseHistory,
+    })
+    addAuditLog(resumeTaskId, {
+      user_id: userId,
+      action: "TASK_RESUMED",
+      old_status: "PAUSED",
+      new_status: "IN_PROGRESS",
+      details: "Task resumed via swap",
+    })
+
+    return { success: true }
+  }
+
   return (
     <TaskContext.Provider
       value={{
@@ -757,6 +863,7 @@ export function TaskProvider({ children }: { children: ReactNode }) {
         deleteSchedule,
         toggleSchedule,
         updateMaintenanceTask,
+        swapTasks,
       }}
     >
       {children}

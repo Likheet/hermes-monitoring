@@ -11,7 +11,7 @@ import { ArrowLeft, Award, Clock, CheckCircle2, TrendingUp, Star, XCircle, Alert
 import { useRouter } from "next/navigation"
 import { BottomNav } from "@/components/mobile/bottom-nav"
 import { calculateDuration, formatShiftRange } from "@/lib/date-utils"
-import { formatDistanceToNow } from "date-fns"
+import { formatDistanceToNow, startOfMonth, endOfMonth } from "date-fns"
 import { useEffect } from "react"
 
 function ProfilePage() {
@@ -33,6 +33,26 @@ function ProfilePage() {
     (t) => t.assigned_to === user?.id && t.status === "rejected",
   )
   const totalRejectedTasks = rejectedTasks.length + rejectedMaintenanceTasks.length
+
+  const now = new Date()
+  const monthStart = startOfMonth(now)
+  const monthEnd = endOfMonth(now)
+
+  const rejectedThisMonth =
+    rejectedTasks.filter((t) => {
+      if (!t.completed_at) return false
+      const completedDate = new Date(t.completed_at.client || t.completed_at.server)
+      return completedDate >= monthStart && completedDate <= monthEnd
+    }).length +
+    rejectedMaintenanceTasks.filter((t) => {
+      if (!t.completed_at) return false
+      const completedDate = new Date(t.completed_at)
+      return completedDate >= monthStart && completedDate <= monthEnd
+    }).length
+
+  const REJECTION_QUOTA = 5
+  const quotaRemaining = REJECTION_QUOTA - rejectedThisMonth
+  const isOverQuota = rejectedThisMonth >= REJECTION_QUOTA
 
   useEffect(() => {
     console.log("[v0] Profile page loaded with data:", {
@@ -146,6 +166,8 @@ function ProfilePage() {
     })
   }, [totalTasks, totalCompletedTasks])
 
+  const isMaintenanceWorker = user?.department === "Maintenance"
+
   return (
     <div className="min-h-screen bg-muted/30 pb-20 md:pb-0">
       <header className="border-b bg-background sticky top-0 z-40">
@@ -160,16 +182,46 @@ function ProfilePage() {
       <main className="container mx-auto px-4 py-6 space-y-6">
         <Card>
           <CardContent className="pt-6">
-            <div className="flex items-center gap-4">
+            <div className="flex items-start gap-4">
               <Avatar className="h-20 w-20">
                 <AvatarFallback className="text-2xl">{initials}</AvatarFallback>
               </Avatar>
               <div className="flex-1">
                 <h2 className="text-2xl font-bold">{user?.name}</h2>
                 <p className="text-muted-foreground">{user?.role}</p>
-                <Badge variant="secondary" className="mt-2">
-                  {user?.department}
+                <div className="flex items-center gap-2 mt-2">
+                  <Badge variant="secondary">{user?.department}</Badge>
+                  <div className="flex justify-between">
+                    <span className="text-sm text-muted-foreground">{user?.phone || "Not set"}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-sm text-muted-foreground">
+                      {user?.shift_start && user?.shift_end
+                        ? formatShiftRange(user.shift_start, user.shift_end)
+                        : "Not set"}
+                    </span>
+                  </div>
+                </div>
+              </div>
+              <div className="flex flex-col items-end gap-2">
+                <Badge
+                  variant={isOverQuota ? "destructive" : quotaRemaining <= 2 ? "outline" : "secondary"}
+                  className={`text-sm font-semibold ${
+                    isOverQuota
+                      ? "bg-red-100 text-red-900 border-red-300"
+                      : quotaRemaining <= 2
+                        ? "bg-orange-100 text-orange-900 border-orange-300"
+                        : ""
+                  }`}
+                >
+                  {rejectedThisMonth}/{REJECTION_QUOTA} Rejections
                 </Badge>
+                {isOverQuota && (
+                  <span className="text-xs text-red-600 font-medium text-right">Retraining Required</span>
+                )}
+                {!isOverQuota && quotaRemaining <= 2 && (
+                  <span className="text-xs text-orange-600 font-medium text-right">{quotaRemaining} remaining</span>
+                )}
               </div>
             </div>
           </CardContent>
@@ -255,7 +307,7 @@ function ProfilePage() {
             </CardHeader>
             <CardContent>
               <div className="space-y-3">
-                {myCompletedMaintenanceTasks.length > 0 && (
+                {isMaintenanceWorker && myCompletedMaintenanceTasks.length > 0 && (
                   <>
                     <div className="text-sm font-semibold text-muted-foreground mb-2">
                       Scheduled Maintenance ({myCompletedMaintenanceTasks.length})
@@ -294,7 +346,7 @@ function ProfilePage() {
 
                 {completedTasks.length > 0 && (
                   <>
-                    {myCompletedMaintenanceTasks.length > 0 && (
+                    {isMaintenanceWorker && myCompletedMaintenanceTasks.length > 0 && (
                       <div className="text-sm font-semibold text-muted-foreground mt-4 mb-2">
                         Regular Tasks ({completedTasks.length})
                       </div>

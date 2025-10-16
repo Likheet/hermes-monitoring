@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Separator } from "@/components/ui/separator"
 import { Badge } from "@/components/ui/badge"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import {
   LogOut,
   ClipboardList,
@@ -20,9 +21,9 @@ import {
   TrendingUp,
   Activity,
   UserPlus,
-  BarChart3,
   Calendar,
   CalendarRange,
+  Star,
 } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { useRealtimeTasks } from "@/lib/use-realtime-tasks"
@@ -220,6 +221,27 @@ function AdminDashboard() {
     return isOvertime || isRejected || isLowRated
   })
 
+  const reworkTasks = discrepancyTasks.filter((t) => t.status === "REJECTED").length
+  const avgOvertime =
+    discrepancyTasks.length > 0
+      ? discrepancyTasks
+          .filter((t) => t.actual_duration_minutes && t.actual_duration_minutes > t.expected_duration_minutes)
+          .reduce((sum, t) => {
+            const overtime =
+              ((t.actual_duration_minutes! - t.expected_duration_minutes) / t.expected_duration_minutes) * 100
+            return sum + overtime
+          }, 0) /
+        discrepancyTasks.filter(
+          (t) => t.actual_duration_minutes && t.actual_duration_minutes > t.expected_duration_minutes,
+        ).length
+      : 0
+
+  const getRatingColor = (rating: number) => {
+    if (rating >= 4) return "text-green-500"
+    if (rating >= 3) return "text-yellow-500"
+    return "text-red-500"
+  }
+
   return (
     <div className="min-h-screen bg-muted/30">
       <header className="border-b bg-background">
@@ -240,12 +262,6 @@ function AdminDashboard() {
               <Button variant="outline">
                 <ClipboardList className="mr-2 h-4 w-4" />
                 Task Management
-              </Button>
-            </Link>
-            <Link href="/admin/reports">
-              <Button variant="outline">
-                <BarChart3 className="mr-2 h-4 w-4" />
-                Reports
               </Button>
             </Link>
             <Link href="/admin/add-worker">
@@ -581,82 +597,155 @@ function AdminDashboard() {
           </TabsContent>
 
           <TabsContent value="discrepancy">
-            <Card>
-              <CardHeader>
-                <CardTitle>Task Discrepancies</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {discrepancyTasks.length > 0 ? (
-                    discrepancyTasks.map((task, index) => {
-                      const isOvertime =
-                        task.status === "COMPLETED" &&
-                        task.actual_duration_minutes &&
-                        task.actual_duration_minutes > task.expected_duration_minutes
-                      const isRejected = task.status === "REJECTED"
-                      const isLowRated = task.status === "COMPLETED" && task.rating && task.rating < 3
+            <div className="space-y-4">
+              <div className="grid gap-4 md:grid-cols-3">
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-sm font-medium">Total Discrepancies</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold">{discrepancyTasks.length}</div>
+                    <p className="text-xs text-muted-foreground mt-1">Tasks requiring attention</p>
+                  </CardContent>
+                </Card>
 
-                      let discrepancyType = ""
-                      let discrepancyColor = "text-yellow-500"
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-sm font-medium">Rework Tasks</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold">{reworkTasks}</div>
+                    <p className="text-xs text-muted-foreground mt-1">Rejected and reassigned</p>
+                  </CardContent>
+                </Card>
 
-                      if (isRejected) {
-                        discrepancyType = "REJECTED"
-                        discrepancyColor = "text-red-500"
-                      } else if (isLowRated) {
-                        discrepancyType = `LOW RATING (${task.rating}⭐)`
-                        discrepancyColor = "text-orange-500"
-                      } else if (isOvertime) {
-                        const overtimePercent = (
-                          ((task.actual_duration_minutes! - task.expected_duration_minutes) /
-                            task.expected_duration_minutes) *
-                          100
-                        ).toFixed(0)
-                        discrepancyType = `OVERTIME (+${overtimePercent}%)`
-                        discrepancyColor = "text-red-500"
-                      }
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-sm font-medium">Avg Overtime</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold flex items-center gap-2">
+                      <Clock className="h-5 w-5 text-orange-500" />
+                      {avgOvertime.toFixed(1)}%
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">Above expected time</p>
+                  </CardContent>
+                </Card>
+              </div>
 
-                      return (
-                        <div key={task.id}>
-                          <div className="flex items-start gap-3">
-                            <AlertTriangle className={`h-5 w-5 mt-0.5 ${discrepancyColor}`} />
-                            <div className="flex-1 space-y-1">
-                              <div className="flex items-center gap-2">
-                                <p className="text-sm font-medium">{task.task_type}</p>
-                                <Badge variant="outline" className={discrepancyColor}>
-                                  {discrepancyType}
-                                </Badge>
-                              </div>
-                              <p className="text-sm text-muted-foreground">
-                                Room {task.room_number} • Worker: {getUserName(task.assigned_to_user_id)}
-                              </p>
-                              {isOvertime && (
-                                <p className="text-xs text-muted-foreground">
-                                  Expected: {task.expected_duration_minutes} min • Actual:{" "}
-                                  {task.actual_duration_minutes} min
-                                </p>
-                              )}
-                              {isRejected && task.supervisor_remark && (
-                                <p className="text-xs text-muted-foreground italic">
-                                  Reason: "{task.supervisor_remark}"
-                                </p>
-                              )}
-                              {isLowRated && (
-                                <p className="text-xs text-muted-foreground">
-                                  Completed in {task.actual_duration_minutes} min • Rated {task.rating}/5 stars
-                                </p>
-                              )}
-                            </div>
-                          </div>
-                          {index < discrepancyTasks.length - 1 && <Separator className="mt-4" />}
-                        </div>
-                      )
-                    })
-                  ) : (
-                    <p className="text-sm text-muted-foreground">No task discrepancies found</p>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
+              <Card>
+                <CardHeader>
+                  <CardTitle>Discrepancy Jobs Report</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Task Type</TableHead>
+                          <TableHead>Room</TableHead>
+                          <TableHead>Worker</TableHead>
+                          <TableHead className="text-right">Expected</TableHead>
+                          <TableHead className="text-right">Actual</TableHead>
+                          <TableHead className="text-right">Overtime</TableHead>
+                          <TableHead className="text-right">Rating</TableHead>
+                          <TableHead>Issues</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {discrepancyTasks.length > 0 ? (
+                          discrepancyTasks.map((task) => {
+                            const isOvertime =
+                              task.status === "COMPLETED" &&
+                              task.actual_duration_minutes &&
+                              task.actual_duration_minutes > task.expected_duration_minutes
+                            const isRejected = task.status === "REJECTED"
+                            const isLowRated = task.status === "COMPLETED" && task.rating && task.rating < 3
+
+                            const overtimePercent = isOvertime
+                              ? (
+                                  ((task.actual_duration_minutes! - task.expected_duration_minutes) /
+                                    task.expected_duration_minutes) *
+                                  100
+                                ).toFixed(0)
+                              : "0"
+
+                            return (
+                              <TableRow key={task.id}>
+                                <TableCell className="font-medium">{task.task_type}</TableCell>
+                                <TableCell>{task.room_number}</TableCell>
+                                <TableCell>{getUserName(task.assigned_to_user_id)}</TableCell>
+                                <TableCell className="text-right">{task.expected_duration_minutes}m</TableCell>
+                                <TableCell className="text-right">
+                                  {task.actual_duration_minutes ? `${task.actual_duration_minutes}m` : "-"}
+                                </TableCell>
+                                <TableCell className="text-right">
+                                  {isOvertime ? (
+                                    <div className="flex items-center justify-end gap-2">
+                                      {Number.parseInt(overtimePercent) > 50 && (
+                                        <AlertTriangle className="h-4 w-4 text-red-500" />
+                                      )}
+                                      <span
+                                        className={
+                                          Number.parseInt(overtimePercent) > 50
+                                            ? "text-red-500"
+                                            : Number.parseInt(overtimePercent) > 20
+                                              ? "text-orange-500"
+                                              : "text-yellow-500"
+                                        }
+                                      >
+                                        +{overtimePercent}%
+                                      </span>
+                                    </div>
+                                  ) : (
+                                    <span className="text-muted-foreground">-</span>
+                                  )}
+                                </TableCell>
+                                <TableCell className="text-right">
+                                  {task.rating ? (
+                                    <div className="flex items-center justify-end gap-1">
+                                      <Star className={`h-4 w-4 ${getRatingColor(task.rating)}`} />
+                                      <span className={getRatingColor(task.rating)}>{task.rating}</span>
+                                    </div>
+                                  ) : (
+                                    <span className="text-muted-foreground">-</span>
+                                  )}
+                                </TableCell>
+                                <TableCell>
+                                  <div className="flex gap-1 flex-wrap">
+                                    {isRejected && (
+                                      <Badge variant="destructive" className="text-xs">
+                                        Rework
+                                      </Badge>
+                                    )}
+                                    {isLowRated && (
+                                      <Badge variant="outline" className="text-xs text-orange-500">
+                                        Low Quality
+                                      </Badge>
+                                    )}
+                                    {isOvertime && Number.parseInt(overtimePercent) > 50 && (
+                                      <Badge variant="outline" className="text-xs text-red-500">
+                                        Excessive Time
+                                      </Badge>
+                                    )}
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            )
+                          })
+                        ) : (
+                          <TableRow>
+                            <TableCell colSpan={8} className="text-center text-muted-foreground">
+                              No discrepancy jobs found for the selected period
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
           </TabsContent>
 
           <TabsContent value="custom">

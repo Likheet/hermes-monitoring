@@ -20,10 +20,21 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { ArrowLeft, Play, Pause, CheckCircle, Clock, MapPin, Camera, AlertTriangle, Home, Wrench } from "lucide-react"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import { ArrowLeft, Play, CheckCircle, Clock, MapPin, Camera, AlertTriangle, Home, Wrench } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { OfflineIndicator } from "@/components/timer/offline-indicator"
 import type { CategorizedPhotos } from "@/lib/types"
+import { startPauseMonitoring, stopPauseMonitoring } from "@/lib/pause-monitoring"
 
 interface MaintenanceTaskPageProps {
   params:
@@ -60,6 +71,8 @@ function MaintenanceTaskPage({ params }: MaintenanceTaskPageProps) {
   const [issueModalOpen, setIssueModalOpen] = useState(false)
   const [ongoingTaskDialogOpen, setOngoingTaskDialogOpen] = useState(false)
   const [ongoingTask, setOngoingTask] = useState<typeof task | null>(null)
+  const [swapDialogOpen, setSwapDialogOpen] = useState(false)
+  const [taskToSwap, setTaskToSwap] = useState<typeof task | null>(null)
   const [categorizedPhotos, setCategorizedPhotos] = useState<CategorizedPhotos>({
     room_photos: [],
     proof_photos: [],
@@ -153,7 +166,8 @@ function MaintenanceTaskPage({ params }: MaintenanceTaskPageProps) {
     if (activeTasks.length > 0) {
       const activeTask = activeTasks[0]
       setOngoingTask(activeTask)
-      setOngoingTaskDialogOpen(true)
+      setTaskToSwap(activeTask)
+      setSwapDialogOpen(true)
       console.log("[v0] Blocked task start - ongoing task exists:", {
         ongoingTaskId: activeTask.id,
         ongoingTaskRoom: activeTask.room_number,
@@ -184,6 +198,7 @@ function MaintenanceTaskPage({ params }: MaintenanceTaskPageProps) {
       timer_duration: elapsedTime,
     })
     setIsRunning(false)
+    startPauseMonitoring(task.id, user!.id)
     console.log("[v0] Task paused:", task.id, "duration:", elapsedTime)
     toast({
       title: "Task Paused",
@@ -200,6 +215,7 @@ function MaintenanceTaskPage({ params }: MaintenanceTaskPageProps) {
       paused_at: undefined,
     })
     setIsRunning(true)
+    stopPauseMonitoring()
     console.log("[v0] Task resumed:", task.id)
     toast({
       title: "Task Resumed",
@@ -271,6 +287,52 @@ function MaintenanceTaskPage({ params }: MaintenanceTaskPageProps) {
     router.push(
       `/worker/maintenance/${ongoingTask.room_number}/${ongoingTask.task_type}/${encodeURIComponent(ongoingTask.location)}`,
     )
+  }
+
+  const handleSwapConfirm = () => {
+    if (!taskToSwap || !user) return
+
+    const now = new Date().toISOString()
+
+    // If the other task is in progress, pause it
+    if (taskToSwap.status === "in_progress") {
+      const startTime = new Date(taskToSwap.started_at!).getTime()
+      const elapsed = Math.floor((Date.now() - startTime) / 1000)
+      updateMaintenanceTask(taskToSwap.id, {
+        status: "paused",
+        paused_at: now,
+        timer_duration: elapsed,
+      })
+      startPauseMonitoring(taskToSwap.id, user.id)
+    }
+    // If the other task is paused, resume it
+    else if (taskToSwap.status === "paused") {
+      const newStartTime = new Date(Date.now() - (taskToSwap.timer_duration || 0) * 1000).toISOString()
+      updateMaintenanceTask(taskToSwap.id, {
+        status: "in_progress",
+        started_at: newStartTime,
+        paused_at: undefined,
+      })
+      stopPauseMonitoring()
+    }
+
+    // Start the current task
+    updateMaintenanceTask(task.id, {
+      status: "in_progress",
+      started_at: now,
+      assigned_to: user.id,
+    })
+    setIsRunning(true)
+
+    const actionText = taskToSwap.status === "in_progress" ? "paused" : "resumed"
+    toast({
+      title: "Tasks Swapped",
+      description: `Started this task and ${actionText} the other task`,
+    })
+
+    setSwapDialogOpen(false)
+    setTaskToSwap(null)
+    setOngoingTask(null)
   }
 
   const totalPhotos = categorizedPhotos.room_photos.length + categorizedPhotos.proof_photos.length
@@ -446,10 +508,6 @@ function MaintenanceTaskPage({ params }: MaintenanceTaskPageProps) {
 
           {isStarted && isRunning && !isCompleted && (
             <>
-              <Button onClick={handlePause} variant="outline" size="lg" className="w-full bg-transparent">
-                <Pause className="mr-2 h-5 w-5" />
-                Pause Task
-              </Button>
               {totalPhotos === 0 && (
                 <Button
                   onClick={() => setPhotoModalOpen(true)}
@@ -520,13 +578,45 @@ function MaintenanceTaskPage({ params }: MaintenanceTaskPageProps) {
 
       <RaiseIssueModal open={issueModalOpen} onOpenChange={setIssueModalOpen} onSubmit={handleRaiseIssue} />
 
+      <AlertDialog open={swapDialogOpen} onOpenChange={setSwapDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>You Have Another Task Active</AlertDialogTitle>
+            <AlertDialogDescription>
+              You currently have a task <strong>{taskToSwap?.status === "paused" ? "paused" : "in progress"}</strong> in
+              Room {taskToSwap?.room_number}:{" "}
+              <strong>
+                {taskToSwap?.task_type && TASK_TYPE_LABELS[taskToSwap.task_type as keyof typeof TASK_TYPE_LABELS]} -{" "}
+                {taskToSwap?.location}
+              </strong>
+              <br />
+              <br />
+              Would you like to start this task and {taskToSwap?.status === "paused" ? "resume" : "pause"} the other one
+              instead?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              onClick={() => {
+                setSwapDialogOpen(false)
+                setTaskToSwap(null)
+                setOngoingTask(null)
+              }}
+            >
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={handleSwapConfirm}>Yes, Swap Tasks</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <Dialog open={ongoingTaskDialogOpen} onOpenChange={setOngoingTaskDialogOpen}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>You Still Have an Ongoing Task</DialogTitle>
             <DialogDescription>
               You currently have a task {ongoingTask?.status === "paused" ? "paused" : "in progress"} in Room{" "}
-              {ongoingTask?.room_number}. Please complete or pause that task before starting a new one.
+              {ongoingTask?.room_number}. Please complete that task before starting a new one.
             </DialogDescription>
           </DialogHeader>
           <div className="py-4">
