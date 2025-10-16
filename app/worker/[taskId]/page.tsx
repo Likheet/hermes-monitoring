@@ -5,20 +5,19 @@ import { useRouter } from "next/navigation"
 import { ProtectedRoute } from "@/components/protected-route"
 import { useAuth } from "@/lib/auth-context"
 import { useTasks } from "@/lib/task-context"
-import { CategorizedPhotoCaptureModal } from "@/components/categorized-photo-capture-modal"
+import { SimplePhotoCapture } from "@/components/simple-photo-capture"
 import { RaiseIssueModal } from "@/components/raise-issue-modal"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
-import { ArrowLeft, Play, Pause, CheckCircle, Clock, MapPin, Camera, AlertTriangle, Home, Wrench } from "lucide-react"
+import { ArrowLeft, Play, Pause, CheckCircle, Clock, MapPin, Camera, AlertTriangle } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { OfflineIndicator } from "@/components/timer/offline-indicator"
 import { PauseTimeline } from "@/components/timer/pause-timeline"
 import { saveTimerState, getTimerState, clearTimerState, addToOfflineQueue, isOnline } from "@/lib/timer-utils"
 import { formatExactTimestamp } from "@/lib/date-utils"
-import type { CategorizedPhotos } from "@/lib/types"
 import { startPauseMonitoring, stopPauseMonitoring } from "@/lib/pause-monitoring"
 import {
   AlertDialog,
@@ -55,14 +54,10 @@ function TaskDetail({ params }: TaskDetailProps) {
 
   const task = getTaskById(taskId)
   const [remark, setRemark] = useState("")
-  const [photoModalOpen, setPhotoModalOpen] = useState(false)
   const [issueModalOpen, setIssueModalOpen] = useState(false)
   const [swapDialogOpen, setSwapDialogOpen] = useState(false)
   const [pausedTaskToSwap, setPausedTaskToSwap] = useState<{ id: string; name: string } | null>(null)
-  const [categorizedPhotos, setCategorizedPhotos] = useState<CategorizedPhotos>({
-    room_photos: [],
-    proof_photos: [],
-  })
+  const [photos, setPhotos] = useState<string[]>([])
   const [elapsedTime, setElapsedTime] = useState(0)
 
   useEffect(() => {
@@ -117,6 +112,12 @@ function TaskDetail({ params }: TaskDetailProps) {
       clearTimerState()
     }
   }, [task, user])
+
+  useEffect(() => {
+    if (task?.photo_urls && task.photo_urls.length > 0) {
+      setPhotos(task.photo_urls)
+    }
+  }, [task?.id])
 
   console.log("[v0] TaskDetail page loaded with taskId:", taskId)
   console.log("[v0] Task found:", !!task)
@@ -248,11 +249,12 @@ function TaskDetail({ params }: TaskDetailProps) {
   }
 
   const handleComplete = () => {
-    if (
-      task.photo_required &&
-      (categorizedPhotos.room_photos.length === 0 || categorizedPhotos.proof_photos.length === 0)
-    ) {
-      setPhotoModalOpen(true)
+    if (task.photo_required && photos.length < (task.custom_task_photo_count || 2)) {
+      toast({
+        title: "Photos Required",
+        description: `Please capture at least ${task.custom_task_photo_count || 2} photos before completing`,
+        variant: "destructive",
+      })
       return
     }
 
@@ -262,7 +264,13 @@ function TaskDetail({ params }: TaskDetailProps) {
         taskId,
         userId: user!.id,
         timestamp: new Date().toISOString(),
-        data: { categorizedPhotos, remark },
+        data: {
+          categorizedPhotos: {
+            room_photos: photos.slice(0, Math.ceil(photos.length / 2)),
+            proof_photos: photos.slice(Math.ceil(photos.length / 2)),
+          },
+          remark,
+        },
       })
       toast({
         title: "Queued Offline",
@@ -270,6 +278,11 @@ function TaskDetail({ params }: TaskDetailProps) {
       })
       router.push("/worker")
       return
+    }
+
+    const categorizedPhotos = {
+      room_photos: photos.slice(0, Math.ceil(photos.length / 2)),
+      proof_photos: photos.slice(Math.ceil(photos.length / 2)),
     }
 
     completeTask(taskId, user!.id, categorizedPhotos, remark)
@@ -281,47 +294,10 @@ function TaskDetail({ params }: TaskDetailProps) {
     router.push("/worker")
   }
 
-  const handlePhotosCapture = (photos: CategorizedPhotos) => {
-    setCategorizedPhotos(photos)
-    const totalPhotos = photos.room_photos.length + photos.proof_photos.length
-    toast({
-      title: "Photos Captured",
-      description: `${totalPhotos} photo(s) attached (${photos.room_photos.length} room, ${photos.proof_photos.length} proof)`,
-    })
+  const handlePhotosChange = (newPhotos: string[]) => {
+    setPhotos(newPhotos)
+    console.log("[v0] Photos updated:", newPhotos.length)
   }
-
-  const handleRaiseIssue = (issue: string) => {
-    raiseIssue(taskId, user!.id, issue)
-    toast({
-      title: "Issue Raised",
-      description: "Your issue has been recorded",
-    })
-  }
-
-  const handleSwapConfirm = () => {
-    if (!pausedTaskToSwap || !user) return
-
-    const result = swapTasks(taskId, pausedTaskToSwap.id, user.id)
-    if (result && "error" in result) {
-      toast({
-        title: "Cannot Swap Tasks",
-        description: result.error,
-        variant: "destructive",
-      })
-    } else {
-      stopPauseMonitoring()
-      startPauseMonitoring(taskId, user.id)
-      toast({
-        title: "Tasks Swapped",
-        description: `Paused this task and resumed "${pausedTaskToSwap.name}"`,
-      })
-      router.push(`/worker/${pausedTaskToSwap.id}`)
-    }
-    setSwapDialogOpen(false)
-    setPausedTaskToSwap(null)
-  }
-
-  const totalPhotos = categorizedPhotos.room_photos.length + categorizedPhotos.proof_photos.length
 
   const canPauseTask = () => {
     if (!user) return false
@@ -334,6 +310,8 @@ function TaskDetail({ params }: TaskDetailProps) {
 
     return totalTasks >= 2
   }
+
+  const totalPhotos = photos.length
 
   return (
     <div className="min-h-screen bg-muted/30">
@@ -384,6 +362,16 @@ function TaskDetail({ params }: TaskDetailProps) {
                 <span>Photo required upon completion</span>
               </div>
             )}
+            {task.task_type === "Housekeeping" && (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <span>Housekeeping Task</span>
+              </div>
+            )}
+            {task.task_type === "Maintenance" && (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <span>Maintenance Task</span>
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -409,63 +397,31 @@ function TaskDetail({ params }: TaskDetailProps) {
           </Card>
         )}
 
-        {totalPhotos > 0 && (
+        {(task.status === "IN_PROGRESS" || task.status === "PAUSED") && task.photo_required && (
+          <SimplePhotoCapture
+            taskId={taskId}
+            existingPhotos={photos}
+            onPhotosChange={handlePhotosChange}
+            minPhotos={task.custom_task_photo_count || 2}
+          />
+        )}
+
+        {task.status === "COMPLETED" && totalPhotos > 0 && (
           <Card>
             <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle>Photo Documentation ({totalPhotos})</CardTitle>
-                <Button variant="outline" size="sm" onClick={() => setPhotoModalOpen(true)}>
-                  <Camera className="mr-2 h-4 w-4" />
-                  Manage
-                </Button>
-              </div>
+              <CardTitle>Photos Submitted ({totalPhotos})</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
-              {categorizedPhotos.room_photos.length > 0 && (
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <Home className="h-4 w-4 text-primary" />
-                    <span className="text-sm font-medium">Room Photos ({categorizedPhotos.room_photos.length})</span>
-                  </div>
-                  <div className="grid grid-cols-3 gap-2">
-                    {categorizedPhotos.room_photos.map((photo, index) => (
-                      <div key={index} className="relative">
-                        <img
-                          src={photo || "/placeholder.svg"}
-                          alt={`Room photo ${index + 1}`}
-                          className="w-full aspect-square object-cover rounded-lg border-2 border-primary"
-                        />
-                        <div className="absolute bottom-1 left-1 bg-primary text-primary-foreground text-xs px-2 py-0.5 rounded">
-                          R{index + 1}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {categorizedPhotos.proof_photos.length > 0 && (
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <Wrench className="h-4 w-4 text-secondary-foreground" />
-                    <span className="text-sm font-medium">Proof Photos ({categorizedPhotos.proof_photos.length})</span>
-                  </div>
-                  <div className="grid grid-cols-3 gap-2">
-                    {categorizedPhotos.proof_photos.map((photo, index) => (
-                      <div key={index} className="relative">
-                        <img
-                          src={photo || "/placeholder.svg"}
-                          alt={`Proof photo ${index + 1}`}
-                          className="w-full aspect-square object-cover rounded-lg border-2 border-secondary"
-                        />
-                        <div className="absolute bottom-1 left-1 bg-secondary text-secondary-foreground text-xs px-2 py-0.5 rounded">
-                          P{index + 1}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
+            <CardContent>
+              <div className="grid grid-cols-3 gap-2">
+                {photos.map((photo, index) => (
+                  <img
+                    key={index}
+                    src={photo || "/placeholder.svg"}
+                    alt={`Photo ${index + 1}`}
+                    className="w-full aspect-square object-cover rounded-lg border"
+                  />
+                ))}
+              </div>
             </CardContent>
           </Card>
         )}
@@ -513,17 +469,6 @@ function TaskDetail({ params }: TaskDetailProps) {
                   <span className="truncate">Pause Task{!canPauseTask() && " (Need 2+ tasks)"}</span>
                 </Button>
               )}
-              {totalPhotos === 0 && task.photo_required && (
-                <Button
-                  onClick={() => setPhotoModalOpen(true)}
-                  variant="outline"
-                  size="lg"
-                  className="w-full min-h-[48px] sm:min-h-[52px]"
-                >
-                  <Camera className="mr-2 h-5 w-5" />
-                  Capture Photos
-                </Button>
-              )}
               <Button onClick={handleComplete} size="lg" className="w-full min-h-[48px] sm:min-h-[52px]">
                 <CheckCircle className="mr-2 h-5 w-5" />
                 Complete Task
@@ -546,17 +491,6 @@ function TaskDetail({ params }: TaskDetailProps) {
                 <Play className="mr-2 h-5 w-5" />
                 Resume Task
               </Button>
-              {totalPhotos === 0 && task.photo_required && (
-                <Button
-                  onClick={() => setPhotoModalOpen(true)}
-                  variant="outline"
-                  size="lg"
-                  className="w-full min-h-[48px] sm:min-h-[52px]"
-                >
-                  <Camera className="mr-2 h-4 w-4" />
-                  Capture Photos
-                </Button>
-              )}
               <Button
                 onClick={handleComplete}
                 variant="outline"
@@ -588,17 +522,7 @@ function TaskDetail({ params }: TaskDetailProps) {
         </div>
       </main>
 
-      <CategorizedPhotoCaptureModal
-        open={photoModalOpen}
-        onOpenChange={setPhotoModalOpen}
-        onPhotosCapture={handlePhotosCapture}
-        taskId={taskId}
-        existingPhotos={categorizedPhotos}
-        minRoomPhotos={task.custom_task_photo_count ? Math.ceil(task.custom_task_photo_count / 2) : 1}
-        minProofPhotos={task.custom_task_photo_count ? Math.floor(task.custom_task_photo_count / 2) : 1}
-      />
-
-      <RaiseIssueModal open={issueModalOpen} onOpenChange={setIssueModalOpen} onSubmit={handleRaiseIssue} />
+      <RaiseIssueModal open={issueModalOpen} onOpenChange={setIssueModalOpen} onSubmit={raiseIssue} />
 
       <AlertDialog open={swapDialogOpen} onOpenChange={setSwapDialogOpen}>
         <AlertDialogContent>
@@ -620,7 +544,9 @@ function TaskDetail({ params }: TaskDetailProps) {
             >
               Cancel
             </AlertDialogCancel>
-            <AlertDialogAction onClick={handleSwapConfirm}>Yes, Swap Tasks</AlertDialogAction>
+            <AlertDialogAction onClick={() => swapTasks(taskId, pausedTaskToSwap!.id)}>
+              Yes, Swap Tasks
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
