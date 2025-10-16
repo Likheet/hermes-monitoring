@@ -15,7 +15,7 @@ import { useRouter } from "next/navigation"
 import { useRealtimeTasks } from "@/lib/use-realtime-tasks"
 import { ConnectionStatus } from "@/components/connection-status"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { BottomNav } from "@/components/mobile/bottom-nav"
 import { MaintenanceCalendar } from "@/components/maintenance/maintenance-calendar"
 import type { MaintenanceTask } from "@/lib/maintenance-types"
@@ -101,6 +101,37 @@ function WorkerDashboard() {
   const completedTasks = myTasks.filter((t) => t.status === "COMPLETED")
   const rejectedTasks = myTasks.filter((t) => t.status === "REJECTED")
 
+  const now = new Date()
+  const currentMonth = now.getMonth() + 1
+  const currentYear = now.getFullYear()
+
+  const monthlyMaintenanceTasks = useMemo(() => {
+    return (maintenanceTasks || []).filter((task) => {
+      if (task.period_month && task.period_year) {
+        return task.period_month === currentMonth && task.period_year === currentYear
+      }
+
+      if (!task.created_at) return true
+
+      const createdAt = new Date(task.created_at)
+      if (Number.isNaN(createdAt.getTime())) return true
+
+      return createdAt.getMonth() + 1 === currentMonth && createdAt.getFullYear() === currentYear
+    })
+  }, [maintenanceTasks, currentMonth, currentYear])
+
+  const maintenanceTasksForDisplay = monthlyMaintenanceTasks.length > 0 ? monthlyMaintenanceTasks : maintenanceTasks || []
+  const maintenanceTaskIdsForDisplay = useMemo(
+    () => new Set(maintenanceTasksForDisplay.map((task) => task.id)),
+    [maintenanceTasksForDisplay],
+  )
+  const completedMaintenanceTasksForDisplay = maintenanceTasksForDisplay.filter((task) => task.status === "completed")
+  const maintenanceProgressRatio =
+    maintenanceTasksForDisplay.length > 0
+      ? completedMaintenanceTasksForDisplay.length / maintenanceTasksForDisplay.length
+      : 0
+  const maintenanceProgressPercentage = Math.round(maintenanceProgressRatio * 100)
+
   const myMaintenanceAssignments = (maintenanceTasks || []).filter((t) => t.assigned_to === user?.id)
   const myActiveMaintenanceTasks = myMaintenanceAssignments.filter(
     (t) => t.status === "in_progress" || t.status === "paused",
@@ -110,6 +141,9 @@ function WorkerDashboard() {
 
   const myCompletedMaintenanceTasks = (maintenanceTasks || []).filter(
     (t) => t.assigned_to === user?.id && t.status === "completed",
+  )
+  const myCompletedMaintenanceTasksForDisplay = myCompletedMaintenanceTasks.filter((task) =>
+    maintenanceTaskIdsForDisplay.has(task.id),
   )
 
   const getMaintenanceTaskLabel = (task: MaintenanceTask) =>
@@ -702,31 +736,6 @@ function WorkerDashboard() {
                 </CardContent>
               </Card>
 
-              {isMaintenanceUser && totalScheduledTasks > 0 && (
-                <Card className="bg-primary/5 border-primary/20">
-                  <CardContent className="p-6">
-                    <div className="flex items-center justify-between mb-3">
-                      <h2 className="text-lg font-semibold text-foreground">
-                        {new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" })} Progress
-                      </h2>
-                      <div className="text-2xl font-bold text-primary">
-                        {completedMaintenanceTasks.length}/{totalScheduledTasks}
-                      </div>
-                    </div>
-                    <div className="w-full bg-muted rounded-full h-3">
-                      <div
-                        className="bg-primary h-3 rounded-full transition-all"
-                        style={{ width: `${(completedMaintenanceTasks.length / totalScheduledTasks) * 100}%` }}
-                      />
-                    </div>
-                    <p className="text-sm text-muted-foreground mt-2">
-                      {Math.round((completedMaintenanceTasks.length / totalScheduledTasks) * 100)}% of tasks completed
-                      this month
-                    </p>
-                  </CardContent>
-                </Card>
-              )}
-
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium">Average Rating</CardTitle>
@@ -750,14 +759,14 @@ function WorkerDashboard() {
               </Card>
             </div>
 
-            {isMaintenanceUser && myCompletedMaintenanceTasks.length > 0 && (
+            {isMaintenanceUser && myCompletedMaintenanceTasksForDisplay.length > 0 && (
               <section>
                 <h2 className="text-base md:text-lg font-semibold mb-3">✅ Recently Completed Tasks</h2>
                 <p className="text-sm text-muted-foreground mb-3">
                   Tap to view room details and complete remaining tasks
                 </p>
                 <div className="space-y-3">
-                  {myCompletedMaintenanceTasks
+                  {myCompletedMaintenanceTasksForDisplay
                     .sort((a, b) => {
                       const aTime = new Date(a.completed_at || a.updated_at).getTime()
                       const bTime = new Date(b.completed_at || b.updated_at).getTime()
@@ -765,11 +774,11 @@ function WorkerDashboard() {
                     })
                     .slice(0, 10)
                     .map((task) => {
-                      const roomTasks = (maintenanceTasks || []).filter(
-                        (t) => t.room_number === task.room_number && t.assigned_to === user?.id,
+                      const roomTasks = maintenanceTasksForDisplay.filter(
+                        (t) => t.room_number === task.room_number,
                       )
                       const completedCount = roomTasks.filter((t) => t.status === "completed").length
-                      const remainingCount = roomTasks.length - completedCount
+                      const remainingCount = Math.max(roomTasks.length - completedCount, 0)
 
                       return (
                         <Card
@@ -899,7 +908,7 @@ function WorkerDashboard() {
             )}
 
             {/* Progress card showing task completion */}
-            {isMaintenanceUser && totalScheduledTasks > 0 && (
+            {isMaintenanceUser && maintenanceTasksForDisplay.length > 0 && (
               <Card className="bg-primary/5 border-primary/20">
                 <CardContent className="p-6">
                   <div className="flex items-center justify-between mb-3">
@@ -907,18 +916,17 @@ function WorkerDashboard() {
                       {new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" })} Progress
                     </h2>
                     <div className="text-2xl font-bold text-primary">
-                      {completedMaintenanceTasks.length}/{totalScheduledTasks}
+                      {completedMaintenanceTasksForDisplay.length}/{maintenanceTasksForDisplay.length}
                     </div>
                   </div>
                   <div className="w-full bg-muted rounded-full h-3">
                     <div
                       className="bg-primary h-3 rounded-full transition-all"
-                      style={{ width: `${(completedMaintenanceTasks.length / totalScheduledTasks) * 100}%` }}
+                      style={{ width: `${maintenanceProgressRatio * 100}%` }}
                     />
                   </div>
                   <p className="text-sm text-muted-foreground mt-2">
-                    {Math.round((completedMaintenanceTasks.length / totalScheduledTasks) * 100)}% of tasks completed
-                    this month
+                    {maintenanceProgressPercentage}% of tasks completed this month
                   </p>
                 </CardContent>
               </Card>
@@ -930,8 +938,8 @@ function WorkerDashboard() {
                 <p className="text-sm text-muted-foreground mb-3">Rooms on the same floor as your current work</p>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                   {nearbyRooms.map((room) => {
-                    const roomTasks = (maintenanceTasks || []).filter(
-                      (t) => t.room_number === room.roomNumber && t.assigned_to === user?.id,
+                    const roomTasks = maintenanceTasksForDisplay.filter(
+                      (t) => t.room_number === room.roomNumber,
                     )
                     const completedCount = roomTasks.filter((t) => t.status === "completed").length
 
@@ -1106,9 +1114,9 @@ function WorkerDashboard() {
               <div className="flex min-h-[400px] items-center justify-center">
                 <div className="text-center space-y-2">
                   <p className="text-muted-foreground">No tasks assigned</p>
-                  {(completedTasks.length > 0 || myCompletedMaintenanceTasks.length > 0) && (
+                  {(completedTasks.length > 0 || myCompletedMaintenanceTasksForDisplay.length > 0) && (
                     <p className="text-sm text-muted-foreground">
-                      You've completed {completedTasks.length + myCompletedMaintenanceTasks.length} task(s) today
+                      You've completed {completedTasks.length + myCompletedMaintenanceTasksForDisplay.length} task(s) today
                     </p>
                   )}
                 </div>
