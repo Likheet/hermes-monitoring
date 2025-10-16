@@ -49,7 +49,7 @@ function MaintenanceTaskPage({ params }: MaintenanceTaskPageProps) {
 
   const router = useRouter()
   const { user } = useAuth()
-  const { maintenanceTasks, updateMaintenanceTask } = useTasks()
+  const { maintenanceTasks, updateMaintenanceTask, tasks } = useTasks()
   const { toast } = useToast()
 
   const task = maintenanceTasks.find(
@@ -158,29 +158,69 @@ function MaintenanceTaskPage({ params }: MaintenanceTaskPageProps) {
   const isCompleted = task.status === "completed"
   const isStarted = task.status === "in_progress" || task.status === "paused"
 
+  const pauseOtherActiveMaintenanceTasks = (currentTaskId: string) => {
+    if (!user) return
+
+    const now = new Date()
+    const nowIso = now.toISOString()
+
+    maintenanceTasks
+      .filter((t) => t.assigned_to === user.id && t.id !== currentTaskId && t.status === "in_progress")
+      .forEach((activeTask) => {
+        const elapsedSeconds = activeTask.started_at
+          ? Math.floor((now.getTime() - new Date(activeTask.started_at).getTime()) / 1000)
+          : activeTask.timer_duration || 0
+
+        updateMaintenanceTask(activeTask.id, {
+          status: "paused",
+          paused_at: nowIso,
+          timer_duration: elapsedSeconds,
+        })
+        startPauseMonitoring(activeTask.id, user.id)
+        console.log("[v0] Auto-paused other maintenance task to enforce single active:", activeTask.id)
+      })
+  }
+
   const handleStart = () => {
-    const activeTasks = maintenanceTasks.filter(
-      (t) => t.assigned_to === user?.id && (t.status === "in_progress" || t.status === "paused") && t.id !== task.id,
+    const blockingRegularTask = tasks.find(
+      (t) => t.assigned_to_user_id === user?.id && t.status === "IN_PROGRESS",
     )
 
-    if (activeTasks.length > 0) {
-      const activeTask = activeTasks[0]
-      setOngoingTask(activeTask)
-      setTaskToSwap(activeTask)
-      setSwapDialogOpen(true)
-      console.log("[v0] Blocked task start - ongoing task exists:", {
-        ongoingTaskId: activeTask.id,
-        ongoingTaskRoom: activeTask.room_number,
-        ongoingTaskStatus: activeTask.status,
+    if (blockingRegularTask) {
+      toast({
+        title: "Cannot Start Task",
+        description: "Pause or complete your other active task before starting scheduled maintenance.",
+        variant: "destructive",
+      })
+      console.log("[v0] Blocked maintenance start - regular task active:", {
+        blockingTaskId: blockingRegularTask.id,
+        blockingTaskType: blockingRegularTask.task_type,
       })
       return
     }
 
-    const now = new Date().toISOString()
+    const activeMaintenanceTask = maintenanceTasks.find(
+      (t) => t.assigned_to === user?.id && t.status === "in_progress" && t.id !== task.id,
+    )
+
+    if (activeMaintenanceTask) {
+      setOngoingTask(activeMaintenanceTask)
+      setTaskToSwap(activeMaintenanceTask)
+      setSwapDialogOpen(true)
+      console.log("[v0] Blocked task start - another maintenance task active:", {
+        ongoingTaskId: activeMaintenanceTask.id,
+        ongoingTaskRoom: activeMaintenanceTask.room_number,
+      })
+      return
+    }
+
+    const now = new Date()
+    pauseOtherActiveMaintenanceTasks(task.id)
     updateMaintenanceTask(task.id, {
       status: "in_progress",
-      started_at: now,
+      started_at: now.toISOString(),
       assigned_to: user.id,
+      paused_at: undefined,
     })
     setIsRunning(true)
     console.log("[v0] Task started:", task.id)
@@ -207,7 +247,25 @@ function MaintenanceTaskPage({ params }: MaintenanceTaskPageProps) {
   }
 
   const handleResume = () => {
-    const now = new Date().toISOString()
+    const blockingRegularTask = tasks.find(
+      (t) => t.assigned_to_user_id === user?.id && t.status === "IN_PROGRESS",
+    )
+
+    if (blockingRegularTask) {
+      toast({
+        title: "Cannot Resume Task",
+        description: "Pause or complete your other active task before resuming this one.",
+        variant: "destructive",
+      })
+      console.log("[v0] Blocked maintenance resume - regular task active:", {
+        blockingTaskId: blockingRegularTask.id,
+        blockingTaskType: blockingRegularTask.task_type,
+      })
+      return
+    }
+
+    pauseOtherActiveMaintenanceTasks(task.id)
+
     const newStartTime = new Date(Date.now() - elapsedTime * 1000).toISOString()
     updateMaintenanceTask(task.id, {
       status: "in_progress",
@@ -298,38 +356,37 @@ function MaintenanceTaskPage({ params }: MaintenanceTaskPageProps) {
   const handleSwapConfirm = () => {
     if (!taskToSwap || !user) return
 
-    const now = new Date().toISOString()
+    const blockingRegularTask = tasks.find(
+      (t) => t.assigned_to_user_id === user.id && t.status === "IN_PROGRESS",
+    )
 
-    if (taskToSwap.status === "in_progress") {
-      const startTime = new Date(taskToSwap.started_at!).getTime()
-      const elapsed = Math.floor((Date.now() - startTime) / 1000)
-      updateMaintenanceTask(taskToSwap.id, {
-        status: "paused",
-        paused_at: now,
-        timer_duration: elapsed,
+    if (blockingRegularTask) {
+      toast({
+        title: "Cannot Swap Tasks",
+        description: "Pause or complete your other active task before starting this one.",
+        variant: "destructive",
       })
-      startPauseMonitoring(taskToSwap.id, user.id)
-    } else if (taskToSwap.status === "paused") {
-      const newStartTime = new Date(Date.now() - (taskToSwap.timer_duration || 0) * 1000).toISOString()
-      updateMaintenanceTask(taskToSwap.id, {
-        status: "in_progress",
-        started_at: newStartTime,
-        paused_at: undefined,
+      console.log("[v0] Blocked maintenance swap - regular task active:", {
+        blockingTaskId: blockingRegularTask.id,
+        blockingTaskType: blockingRegularTask.task_type,
       })
-      stopPauseMonitoring()
+      return
     }
 
+    pauseOtherActiveMaintenanceTasks(task.id)
+
+    const now = new Date().toISOString()
     updateMaintenanceTask(task.id, {
       status: "in_progress",
       started_at: now,
       assigned_to: user.id,
+      paused_at: undefined,
     })
     setIsRunning(true)
 
-    const actionText = taskToSwap.status === "in_progress" ? "paused" : "resumed"
     toast({
       title: "Tasks Swapped",
-      description: `Started this task and ${actionText} the other task`,
+      description: "Started this task and paused the other active task",
     })
 
     setSwapDialogOpen(false)
@@ -629,16 +686,14 @@ function MaintenanceTaskPage({ params }: MaintenanceTaskPageProps) {
           <AlertDialogHeader>
             <AlertDialogTitle>You Have Another Task Active</AlertDialogTitle>
             <AlertDialogDescription>
-              You currently have a task <strong>{taskToSwap?.status === "paused" ? "paused" : "in progress"}</strong> in
-              Room {taskToSwap?.room_number}:{" "}
+              You currently have a task <strong>in progress</strong> in Room {taskToSwap?.room_number}:{" "}
               <strong>
                 {taskToSwap?.task_type && TASK_TYPE_LABELS[taskToSwap.task_type as keyof typeof TASK_TYPE_LABELS]} -{" "}
                 {taskToSwap?.location}
               </strong>
               <br />
               <br />
-              Would you like to start this task and {taskToSwap?.status === "paused" ? "resume" : "pause"} the other one
-              instead?
+              Starting this task will automatically pause the other one so that only one task runs at a time. Continue?
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
