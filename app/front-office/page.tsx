@@ -53,39 +53,54 @@ function FrontOfficeDashboard() {
     router.push("/login")
   }
 
+  const navButtonClassName = "min-h-[44px] px-3 sm:px-4"
+
   return (
     <div className="min-h-screen bg-muted/30">
       <header className="border-b bg-background">
-        <div className="container mx-auto flex items-center justify-between px-4 py-4">
-          <div>
+        <div className="container mx-auto flex flex-col gap-4 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-1">
             <h1 className="text-2xl font-bold">Front Office</h1>
             <p className="text-sm text-muted-foreground">{user?.name}</p>
           </div>
-          <div className="flex items-center gap-2">
-            <ConnectionStatus isConnected={isConnected} />
-            <Link href="/front-office/shifts">
-              <Button variant="outline">
+          <nav className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
+            <div className="shrink-0">
+              <ConnectionStatus isConnected={isConnected} />
+            </div>
+            <Button
+              asChild
+              variant="outline"
+              size="sm"
+              className={`${navButtonClassName} flex-1 sm:flex-none w-full sm:w-auto`}
+            >
+              <Link href="/front-office/shifts">
                 <Clock className="mr-2 h-4 w-4" />
                 Shifts
-              </Button>
-            </Link>
-            <Link href="/front-office/assignments">
-              <Button variant="outline">
+              </Link>
+            </Button>
+            <Button
+              asChild
+              variant="outline"
+              size="sm"
+              className={`${navButtonClassName} flex-1 sm:flex-none w-full sm:w-auto`}
+            >
+              <Link href="/front-office/assignments">
                 <ClipboardList className="mr-2 h-4 w-4" />
                 My Assignments
-              </Button>
-            </Link>
-            <Link href="/front-office/create-task">
-              <Button>
+              </Link>
+            </Button>
+            <Button asChild size="sm" className={`${navButtonClassName} flex-1 sm:flex-none w-full sm:w-auto`}>
+              <Link href="/front-office/create-task">
                 <Plus className="mr-2 h-4 w-4" />
                 Create Task
-              </Button>
-            </Link>
-            <Button variant="outline" size="sm" onClick={handleLogout}>
+              </Link>
+            </Button>
+            <Button variant="outline" size="sm" onClick={handleLogout} className={`${navButtonClassName} w-full sm:w-auto`}
+            >
               <LogOut className="mr-2 h-4 w-4" />
               Logout
             </Button>
-          </div>
+          </nav>
         </div>
       </header>
 
