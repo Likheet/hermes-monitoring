@@ -124,7 +124,7 @@ function MaintenanceTaskPage({ params }: MaintenanceTaskPageProps) {
       setIsRunning(false)
       console.log("[v0] Restored paused task, duration:", task.timer_duration)
     }
-  }, [task, maintenanceTasks, roomNumber]) // Updated to use task directly
+  }, [task, maintenanceTasks, roomNumber])
 
   useEffect(() => {
     if (!isRunning || !task?.started_at) return
@@ -224,10 +224,16 @@ function MaintenanceTaskPage({ params }: MaintenanceTaskPageProps) {
   }
 
   const handleComplete = () => {
-    if (categorizedPhotos.room_photos.length === 0 || categorizedPhotos.proof_photos.length === 0) {
+    const minRoomPhotos = task.photo_count ? Math.ceil(task.photo_count / 2) : 1
+    const minProofPhotos = task.photo_count ? Math.floor(task.photo_count / 2) : 1
+
+    if (
+      categorizedPhotos.room_photos.length < minRoomPhotos ||
+      categorizedPhotos.proof_photos.length < minProofPhotos
+    ) {
       toast({
         title: "Photos Required",
-        description: "Please upload at least 1 room photo and 1 proof photo",
+        description: `Please upload at least ${minRoomPhotos} room photo${minRoomPhotos > 1 ? "s" : ""} and ${minProofPhotos} proof photo${minProofPhotos > 1 ? "s" : ""}`,
         variant: "destructive",
       })
       setPhotoModalOpen(true)
@@ -294,7 +300,6 @@ function MaintenanceTaskPage({ params }: MaintenanceTaskPageProps) {
 
     const now = new Date().toISOString()
 
-    // If the other task is in progress, pause it
     if (taskToSwap.status === "in_progress") {
       const startTime = new Date(taskToSwap.started_at!).getTime()
       const elapsed = Math.floor((Date.now() - startTime) / 1000)
@@ -304,9 +309,7 @@ function MaintenanceTaskPage({ params }: MaintenanceTaskPageProps) {
         timer_duration: elapsed,
       })
       startPauseMonitoring(taskToSwap.id, user.id)
-    }
-    // If the other task is paused, resume it
-    else if (taskToSwap.status === "paused") {
+    } else if (taskToSwap.status === "paused") {
       const newStartTime = new Date(Date.now() - (taskToSwap.timer_duration || 0) * 1000).toISOString()
       updateMaintenanceTask(taskToSwap.id, {
         status: "in_progress",
@@ -316,7 +319,6 @@ function MaintenanceTaskPage({ params }: MaintenanceTaskPageProps) {
       stopPauseMonitoring()
     }
 
-    // Start the current task
     updateMaintenanceTask(task.id, {
       status: "in_progress",
       started_at: now,
@@ -616,6 +618,8 @@ function MaintenanceTaskPage({ params }: MaintenanceTaskPageProps) {
         onPhotosCapture={handlePhotosCapture}
         taskId={task.id}
         existingPhotos={categorizedPhotos}
+        minRoomPhotos={task.photo_count ? Math.ceil(task.photo_count / 2) : 1}
+        minProofPhotos={task.photo_count ? Math.floor(task.photo_count / 2) : 1}
       />
 
       <RaiseIssueModal open={issueModalOpen} onOpenChange={setIssueModalOpen} onSubmit={handleRaiseIssue} />

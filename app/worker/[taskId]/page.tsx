@@ -594,6 +594,8 @@ function TaskDetail({ params }: TaskDetailProps) {
         onPhotosCapture={handlePhotosCapture}
         taskId={taskId}
         existingPhotos={categorizedPhotos}
+        minRoomPhotos={task.custom_task_photo_count ? Math.ceil(task.custom_task_photo_count / 2) : 1}
+        minProofPhotos={task.custom_task_photo_count ? Math.floor(task.custom_task_photo_count / 2) : 1}
       />
 
       <RaiseIssueModal open={issueModalOpen} onOpenChange={setIssueModalOpen} onSubmit={handleRaiseIssue} />

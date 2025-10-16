@@ -702,18 +702,26 @@ function WorkerDashboard() {
                 </CardContent>
               </Card>
 
-              {isMaintenanceUser && (
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Scheduled Maintenance</CardTitle>
-                    <TrendingUp className="h-4 w-4 text-muted-foreground" />
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">
-                      {completedMaintenanceTasks.length}/{totalScheduledTasks}
+              {isMaintenanceUser && totalScheduledTasks > 0 && (
+                <Card className="bg-primary/5 border-primary/20">
+                  <CardContent className="p-6">
+                    <div className="flex items-center justify-between mb-3">
+                      <h2 className="text-lg font-semibold text-foreground">
+                        {new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" })} Progress
+                      </h2>
+                      <div className="text-2xl font-bold text-primary">
+                        {completedMaintenanceTasks.length}/{totalScheduledTasks}
+                      </div>
                     </div>
-                    <p className="text-xs text-muted-foreground">
-                      {pendingMaintenanceTasks.length} pending • {myActiveMaintenanceTasks.length} active
+                    <div className="w-full bg-muted rounded-full h-3">
+                      <div
+                        className="bg-primary h-3 rounded-full transition-all"
+                        style={{ width: `${(completedMaintenanceTasks.length / totalScheduledTasks) * 100}%` }}
+                      />
+                    </div>
+                    <p className="text-sm text-muted-foreground mt-2">
+                      {Math.round((completedMaintenanceTasks.length / totalScheduledTasks) * 100)}% of tasks completed
+                      this month
                     </p>
                   </CardContent>
                 </Card>
@@ -741,6 +749,75 @@ function WorkerDashboard() {
                 </CardContent>
               </Card>
             </div>
+
+            {isMaintenanceUser && myCompletedMaintenanceTasks.length > 0 && (
+              <section>
+                <h2 className="text-base md:text-lg font-semibold mb-3">✅ Recently Completed Tasks</h2>
+                <p className="text-sm text-muted-foreground mb-3">
+                  Tap to view room details and complete remaining tasks
+                </p>
+                <div className="space-y-3">
+                  {myCompletedMaintenanceTasks
+                    .sort((a, b) => {
+                      const aTime = new Date(a.completed_at || a.updated_at).getTime()
+                      const bTime = new Date(b.completed_at || b.updated_at).getTime()
+                      return bTime - aTime
+                    })
+                    .slice(0, 10)
+                    .map((task) => {
+                      const roomTasks = (maintenanceTasks || []).filter(
+                        (t) => t.room_number === task.room_number && t.assigned_to === user?.id,
+                      )
+                      const completedCount = roomTasks.filter((t) => t.status === "completed").length
+                      const remainingCount = roomTasks.length - completedCount
+
+                      return (
+                        <Card
+                          key={task.id}
+                          className="cursor-pointer hover:shadow-md transition-shadow border-accent/30 bg-accent/5"
+                          onClick={() => router.push(`/worker/maintenance/${task.room_number}`)}
+                        >
+                          <CardContent className="p-4">
+                            <div className="flex items-center justify-between gap-4">
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <h3 className="font-semibold text-lg">Room {task.room_number}</h3>
+                                  <Badge
+                                    variant="outline"
+                                    className="text-xs bg-green-50 text-green-700 border-green-300"
+                                  >
+                                    ✓ Completed
+                                  </Badge>
+                                </div>
+                                <p className="text-sm text-muted-foreground mb-2">
+                                  {getMaintenanceTaskLabel(task)}
+                                  {task.location && ` • ${task.location}`}
+                                </p>
+                                <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                                  <span>
+                                    {completedCount}/{roomTasks.length} tasks done
+                                  </span>
+                                  {remainingCount > 0 && (
+                                    <span className="text-orange-600 font-medium">{remainingCount} remaining</span>
+                                  )}
+                                  {task.completed_at && (
+                                    <span>{formatDistanceToNow(new Date(task.completed_at), { addSuffix: true })}</span>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="text-right shrink-0">
+                                <Button size="sm" variant={remainingCount > 0 ? "default" : "outline"}>
+                                  {remainingCount > 0 ? "Continue" : "View"}
+                                </Button>
+                              </div>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      )
+                    })}
+                </div>
+              </section>
+            )}
           </main>
         )
 
@@ -821,7 +898,8 @@ function WorkerDashboard() {
               </Card>
             )}
 
-            {isMaintenanceUser && totalRooms > 0 && (
+            {/* Progress card showing task completion */}
+            {isMaintenanceUser && totalScheduledTasks > 0 && (
               <Card className="bg-primary/5 border-primary/20">
                 <CardContent className="p-6">
                   <div className="flex items-center justify-between mb-3">
@@ -829,17 +907,18 @@ function WorkerDashboard() {
                       {new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" })} Progress
                     </h2>
                     <div className="text-2xl font-bold text-primary">
-                      {completedRooms}/{totalRooms}
+                      {completedMaintenanceTasks.length}/{totalScheduledTasks}
                     </div>
                   </div>
                   <div className="w-full bg-muted rounded-full h-3">
                     <div
                       className="bg-primary h-3 rounded-full transition-all"
-                      style={{ width: `${(completedRooms / totalRooms) * 100}%` }}
+                      style={{ width: `${(completedMaintenanceTasks.length / totalScheduledTasks) * 100}%` }}
                     />
                   </div>
                   <p className="text-sm text-muted-foreground mt-2">
-                    {Math.round((completedRooms / totalRooms) * 100)}% of rooms completed this month
+                    {Math.round((completedMaintenanceTasks.length / totalScheduledTasks) * 100)}% of tasks completed
+                    this month
                   </p>
                 </CardContent>
               </Card>

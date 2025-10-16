@@ -19,6 +19,8 @@ interface CategorizedPhotoCaptureModalProps {
   onPhotosCapture: (photos: CategorizedPhotos) => void
   taskId: string
   existingPhotos?: CategorizedPhotos
+  minRoomPhotos?: number
+  minProofPhotos?: number
 }
 
 type PhotoCategory = "room_photos" | "proof_photos"
@@ -29,6 +31,8 @@ export function CategorizedPhotoCaptureModal({
   onPhotosCapture,
   taskId,
   existingPhotos,
+  minRoomPhotos = 1,
+  minProofPhotos = 1,
 }: CategorizedPhotoCaptureModalProps) {
   const [roomPhotos, setRoomPhotos] = useState<string[]>(existingPhotos?.room_photos || [])
   const [proofPhotos, setProofPhotos] = useState<string[]>(existingPhotos?.proof_photos || [])
@@ -46,14 +50,14 @@ export function CategorizedPhotoCaptureModal({
       description: "Full-room photos post-service to verify cleanliness",
       icon: Home,
       color: "bg-primary",
-      minRequired: 1,
+      minRequired: minRoomPhotos,
     },
     proof_photos: {
       label: "Proof Photos",
       description: "Proof-of-completion photos showing work done",
       icon: Wrench,
       color: "bg-secondary",
-      minRequired: 1,
+      minRequired: minProofPhotos,
     },
   }
 
@@ -140,12 +144,14 @@ export function CategorizedPhotoCaptureModal({
   }
 
   const isValidForSubmission = () => {
-    return roomPhotos.length >= 1 && proofPhotos.length >= 1
+    return roomPhotos.length >= minRoomPhotos && proofPhotos.length >= minProofPhotos
   }
 
   const handleConfirm = () => {
     if (!isValidForSubmission()) {
-      setError("Please capture at least 1 Room Photo and 1 Proof Photo")
+      setError(
+        `Please capture at least ${minRoomPhotos} Room Photo${minRoomPhotos > 1 ? "s" : ""} and ${minProofPhotos} Proof Photo${minProofPhotos > 1 ? "s" : ""}`,
+      )
       triggerErrorHaptic()
       return
     }
@@ -168,6 +174,7 @@ export function CategorizedPhotoCaptureModal({
   const config = categoryConfig[activeCategory]
   const currentPhotos = getCurrentPhotos()
   const CategoryIcon = config.icon
+  const totalRequired = minRoomPhotos + minProofPhotos
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -175,7 +182,8 @@ export function CategorizedPhotoCaptureModal({
         <DialogHeader>
           <DialogTitle>Photo Documentation</DialogTitle>
           <DialogDescription>
-            Capture photos for maintenance task completion. Minimum 2 photos required (1 room + 1 proof).
+            Capture photos for task completion. Minimum {totalRequired} photo{totalRequired > 1 ? "s" : ""} required (
+            {minRoomPhotos} room + {minProofPhotos} proof).
           </DialogDescription>
         </DialogHeader>
 
@@ -189,7 +197,6 @@ export function CategorizedPhotoCaptureModal({
             </Alert>
           )}
 
-          {/* Category Tabs */}
           <div className="grid grid-cols-2 gap-3">
             {(Object.keys(categoryConfig) as PhotoCategory[]).map((category) => {
               const cat = categoryConfig[category]
@@ -229,7 +236,6 @@ export function CategorizedPhotoCaptureModal({
             })}
           </div>
 
-          {/* Active Category Info */}
           <div className="bg-muted/50 p-4 rounded-lg border">
             <div className="flex items-start gap-3">
               <div className={`p-2 rounded-lg ${config.color} text-white`}>
@@ -250,7 +256,6 @@ export function CategorizedPhotoCaptureModal({
             </div>
           </div>
 
-          {/* Photo Grid */}
           {currentPhotos.length > 0 && (
             <div className="space-y-2">
               <p className="text-sm font-medium">Captured {config.label}:</p>
@@ -279,7 +284,6 @@ export function CategorizedPhotoCaptureModal({
             </div>
           )}
 
-          {/* Camera Interface */}
           {!currentPhoto ? (
             <div className="space-y-3">
               <input
@@ -348,7 +352,6 @@ export function CategorizedPhotoCaptureModal({
             </div>
           )}
 
-          {/* Action Buttons */}
           {!currentPhoto && (roomPhotos.length > 0 || proofPhotos.length > 0) && (
             <div className="flex gap-2 pt-4 border-t">
               <Button onClick={handleCancel} variant="outline" className="flex-1 min-h-[48px] bg-transparent" size="lg">
@@ -372,7 +375,6 @@ export function CategorizedPhotoCaptureModal({
             </div>
           )}
 
-          {/* Validation Summary */}
           {!currentPhoto && (roomPhotos.length > 0 || proofPhotos.length > 0) && (
             <div className="bg-muted/30 p-3 rounded-lg text-sm">
               <div className="flex items-center justify-between mb-2">
@@ -389,14 +391,14 @@ export function CategorizedPhotoCaptureModal({
               <div className="space-y-1 text-xs text-muted-foreground">
                 <div className="flex items-center justify-between">
                   <span>Room Photos:</span>
-                  <span className={roomPhotos.length >= 1 ? "text-primary font-medium" : ""}>
-                    {roomPhotos.length >= 1 ? "✓" : "✗"} {roomPhotos.length}/1 required
+                  <span className={roomPhotos.length >= minRoomPhotos ? "text-primary font-medium" : ""}>
+                    {roomPhotos.length >= minRoomPhotos ? "✓" : "✗"} {roomPhotos.length}/{minRoomPhotos} required
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span>Proof Photos:</span>
-                  <span className={proofPhotos.length >= 1 ? "text-primary font-medium" : ""}>
-                    {proofPhotos.length >= 1 ? "✓" : "✗"} {proofPhotos.length}/1 required
+                  <span className={proofPhotos.length >= minProofPhotos ? "text-primary font-medium" : ""}>
+                    {proofPhotos.length >= minProofPhotos ? "✓" : "✗"} {proofPhotos.length}/{minProofPhotos} required
                   </span>
                 </div>
               </div>
