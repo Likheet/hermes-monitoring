@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-import { useState, useRef } from "react"
+import { useState, useRef, useEffect } from "react"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Camera, Loader2, AlertCircle, X, Plus, CheckCircle2, Home, Wrench } from "lucide-react"
@@ -43,6 +43,11 @@ export function CategorizedPhotoCaptureModal({
   const [uploadProgress, setUploadProgress] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    setRoomPhotos(existingPhotos?.room_photos || [])
+    setProofPhotos(existingPhotos?.proof_photos || [])
+  }, [existingPhotos?.room_photos, existingPhotos?.proof_photos, open])
 
   const categoryConfig = {
     room_photos: {
