@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useRef, useEffect } from "react"
 import { X, MapPin, Clock, Camera, AlertCircle, User } from "lucide-react"
-import type { TaskDefinition } from "@/lib/task-definitions"
+import type { TaskDefinition, TaskCategory, Priority } from "@/lib/task-definitions"
 import { ALL_LOCATIONS, getACLocationsForRoom } from "@/lib/location-data"
 import { CATEGORY_COLORS, CATEGORY_LABELS } from "@/lib/task-definitions"
 import type { User as WorkerType } from "@/lib/types"
@@ -20,9 +20,9 @@ export interface TaskAssignmentData {
   taskId: string
   taskName: string
   customTaskName?: string
-  category: string
-  department: string
-  priority: string
+  category: TaskCategory
+  department: Department
+  priority: Priority
   duration: number
   location?: string
   acLocation?: string
@@ -30,11 +30,12 @@ export interface TaskAssignmentData {
   assignedTo: string
   photoRequired: boolean
   photoCount: number
+  isCustomTask: boolean
 }
 
 export function TaskAssignmentForm({ task, onCancel, onSubmit, workers }: TaskAssignmentFormProps) {
   // Form state
-  const [priority, setPriority] = useState(task.priority)
+  const [priority, setPriority] = useState<Priority>(task.priority)
   const [duration, setDuration] = useState(task.duration)
   const [location, setLocation] = useState("")
   const [locationInput, setLocationInput] = useState("")
@@ -46,7 +47,7 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers }: TaskAs
 
   const [customTaskName, setCustomTaskName] = useState("")
   const [selectedDepartment, setSelectedDepartment] = useState<Department>(task.department)
-  const [customCategory, setCustomCategory] = useState(task.category)
+  const [customCategory, setCustomCategory] = useState<TaskCategory>(task.category)
   const [photoRequired, setPhotoRequired] = useState(task.photoRequired)
   const [photoCount, setPhotoCount] = useState(task.photoCount)
 
@@ -152,6 +153,7 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers }: TaskAs
       assignedTo,
       photoRequired: isOtherTask ? photoRequired : task.photoRequired,
       photoCount: isOtherTask ? photoCount : task.photoCount,
+      isCustomTask: isOtherTask,
     }
 
     onSubmit(data)
@@ -214,7 +216,7 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers }: TaskAs
             </label>
             <select
               value={customCategory}
-              onChange={(e) => setCustomCategory(e.target.value)}
+              onChange={(e) => setCustomCategory(e.target.value as TaskCategory)}
               className="w-full px-4 py-3 border-2 border-border rounded-lg focus:border-ring focus:outline-none bg-background text-foreground"
             >
               <option value="GUEST_REQUEST">Guest Issue</option>
@@ -293,7 +295,7 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers }: TaskAs
           <label className="block text-sm font-semibold text-foreground mb-2">Priority Level</label>
           <select
             value={priority}
-            onChange={(e) => setPriority(e.target.value as typeof priority)}
+            onChange={(e) => setPriority(e.target.value as Priority)}
             className="w-full px-4 py-3 border-2 border-border rounded-lg focus:border-ring focus:outline-none bg-background text-foreground"
           >
             <option value="urgent">Urgent</option>
