@@ -26,6 +26,7 @@ import { useRouter } from "next/navigation"
 import { useRealtimeTasks } from "@/lib/use-realtime-tasks"
 import { ConnectionStatus } from "@/components/connection-status"
 import Link from "next/link"
+import { CATEGORY_LABELS } from "@/lib/task-definitions"
 
 function AdminDashboard() {
   const { user, logout } = useAuth()
@@ -94,7 +95,13 @@ function AdminDashboard() {
     return users.find((u) => u.id === userId)?.name || "Unknown"
   }
 
-  const customTasks = tasks.filter((t) => t.task_type === "Other (Custom Task)" || t.task_type.startsWith("[CUSTOM]"))
+  const customTasks = tasks.filter(
+    (t) =>
+      t.is_custom_task ||
+      t.custom_task_name ||
+      t.task_type === "Other (Custom Task)" ||
+      t.task_type.startsWith("[CUSTOM]"),
+  )
 
   console.log("[v0] Admin dashboard - Custom tasks found:", {
     total: customTasks.length,
@@ -158,28 +165,42 @@ function AdminDashboard() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
-                  {recentCustomTasks.map((task) => (
-                    <div
-                      key={task.id}
-                      className="flex items-start justify-between p-3 bg-accent/10 rounded-lg border border-accent/20"
-                    >
-                      <div className="flex-1">
-                        <p className="text-sm font-medium">{task.task_type}</p>
-                        <p className="text-xs text-muted-foreground mt-1">
-                          {task.room_number && `Room ${task.room_number} • `}
-                          {task.department} • Created by {getUserName(task.assigned_by_user_id)}
-                        </p>
-                        {task.worker_remark && (
-                          <p className="text-xs text-muted-foreground mt-1 italic">"{task.worker_remark}"</p>
-                        )}
+                  {recentCustomTasks.map((task) => {
+                    const displayName = task.custom_task_name || task.task_type
+                    const categoryLabel =
+                      task.custom_task_category && CATEGORY_LABELS[task.custom_task_category]
+                        ? CATEGORY_LABELS[task.custom_task_category]
+                        : "Custom Request"
+                    const displayPriority = task.custom_task_priority
+                      ? task.custom_task_priority.toUpperCase()
+                      : task.priority_level.replace(/_/g, " ")
+
+                    return (
+                      <div
+                        key={task.id}
+                        className="flex items-start justify-between p-3 bg-accent/10 rounded-lg border border-accent/20"
+                      >
+                        <div className="flex-1">
+                          <p className="text-sm font-medium">{displayName}</p>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            {task.room_number && `Room ${task.room_number} • `}
+                            {task.department} • {categoryLabel}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            Priority: {displayPriority} • Created by {getUserName(task.assigned_by_user_id)}
+                          </p>
+                          {task.worker_remark && (
+                            <p className="text-xs text-muted-foreground mt-1 italic">"{task.worker_remark}"</p>
+                          )}
+                        </div>
+                        <Link href="/admin/task-management">
+                          <Button size="sm" variant="outline">
+                            Review
+                          </Button>
+                        </Link>
                       </div>
-                      <Link href="/admin/task-management">
-                        <Button size="sm" variant="outline">
-                          Review
-                        </Button>
-                      </Link>
-                    </div>
-                  ))}
+                    )
+                  })}
                   {customTasks.length > 10 && (
                     <Link href="/admin/task-management">
                       <Button variant="link" className="w-full">
@@ -456,36 +477,50 @@ function AdminDashboard() {
               <CardContent>
                 {customTasks.length > 0 ? (
                   <div className="space-y-4">
-                    {customTasks.map((task, index) => (
-                      <div key={task.id}>
-                        <div className="flex items-start justify-between">
-                          <div className="space-y-1 flex-1">
-                            <p className="text-sm font-medium">{task.task_type}</p>
-                            <p className="text-sm text-muted-foreground">
-                              {task.room_number && `Room ${task.room_number} • `}
-                              Department: {task.department} • Priority: {task.priority_level}
-                            </p>
-                            {task.worker_remark && (
-                              <p className="text-xs text-muted-foreground italic mt-1">
-                                Details: "{task.worker_remark}"
+                    {customTasks.map((task, index) => {
+                      const displayName = task.custom_task_name || task.task_type
+                      const categoryLabel =
+                        task.custom_task_category && CATEGORY_LABELS[task.custom_task_category]
+                          ? CATEGORY_LABELS[task.custom_task_category]
+                          : "Custom Request"
+                      const displayPriority = task.custom_task_priority
+                        ? task.custom_task_priority.toUpperCase()
+                        : task.priority_level.replace(/_/g, " ")
+
+                      return (
+                        <div key={task.id}>
+                          <div className="flex items-start justify-between">
+                            <div className="space-y-1 flex-1">
+                              <p className="text-sm font-medium">{displayName}</p>
+                              <p className="text-sm text-muted-foreground">
+                                {task.room_number && `Room ${task.room_number} • `}
+                                Department: {task.department} • Category: {categoryLabel}
                               </p>
-                            )}
-                            <p className="text-xs text-muted-foreground">
-                              Created by {getUserName(task.assigned_by_user_id)} on{" "}
-                              {new Date(task.assigned_at.client).toLocaleString()}
-                            </p>
+                              <p className="text-xs text-muted-foreground uppercase tracking-wide">
+                                Priority: {displayPriority}
+                              </p>
+                              {task.worker_remark && (
+                                <p className="text-xs text-muted-foreground italic mt-1">
+                                  Details: "{task.worker_remark}"
+                                </p>
+                              )}
+                              <p className="text-xs text-muted-foreground">
+                                Created by {getUserName(task.assigned_by_user_id)} on{" "}
+                                {new Date(task.assigned_at.client).toLocaleString()}
+                              </p>
+                            </div>
+                            <div className="flex gap-2">
+                              <Link href="/admin/task-management">
+                                <Button size="sm" variant="outline">
+                                  Add to Library
+                                </Button>
+                              </Link>
+                            </div>
                           </div>
-                          <div className="flex gap-2">
-                            <Link href="/admin/task-management">
-                              <Button size="sm" variant="outline">
-                                Add to Library
-                              </Button>
-                            </Link>
-                          </div>
+                          {index < customTasks.length - 1 && <Separator className="mt-4" />}
                         </div>
-                        {index < customTasks.length - 1 && <Separator className="mt-4" />}
-                      </div>
-                    ))}
+                      )
+                    })}
                   </div>
                 ) : (
                   <p className="text-sm text-muted-foreground">No custom task requests</p>

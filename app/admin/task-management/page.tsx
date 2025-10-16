@@ -24,6 +24,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ArrowLeft, Plus, Trash2, Search, AlertCircle, CheckCircle, Clock, MapPin, Camera, Edit } from "lucide-react"
 import { CATEGORY_LABELS, CATEGORY_COLORS } from "@/lib/task-definitions"
 import type { TaskCategory, Department, Priority } from "@/lib/task-definitions"
+import type { Task } from "@/lib/types"
 import {
   getCustomTaskDefinitions,
   saveCustomTaskDefinition,
@@ -37,19 +38,17 @@ import { EditTaskDefinitionModal } from "@/components/edit-task-definition-modal
 function TaskManagementPage() {
   const router = useRouter()
   const { user } = useAuth()
-  const { tasks } = useTasks()
+  const { tasks, users } = useTasks()
   const { toast } = useToast()
 
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedCategory, setSelectedCategory] = useState<TaskCategory | "ALL">("ALL")
   const [customTaskDefs, setCustomTaskDefs] = useState<CustomTaskDefinition[]>([])
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
-  const [isConvertDialogOpen, setIsConvertDialogOpen] = useState(false)
-  const [selectedTaskToConvert, setSelectedTaskToConvert] = useState<any>(null)
   const [editingTask, setEditingTask] = useState<any>(null)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
 
-  const [newTaskForm, setNewTaskForm] = useState({
+  const createDefaultNewTaskForm = () => ({
     name: "",
     category: "GUEST_REQUEST" as TaskCategory,
     department: "housekeeping" as Department,
@@ -62,11 +61,21 @@ function TaskManagementPage() {
     requiresACLocation: false,
   })
 
+  const [newTaskForm, setNewTaskForm] = useState(createDefaultNewTaskForm)
+
   useEffect(() => {
     setCustomTaskDefs(getCustomTaskDefinitions())
   }, [])
 
-  const customTasks = tasks.filter((t) => t.task_type === "Other (Custom Task)" || t.custom_task_name)
+  const customTasks = tasks.filter(
+    (task) =>
+      task.is_custom_task ||
+      task.custom_task_name ||
+      task.task_type === "Other (Custom Task)" ||
+      task.task_type.startsWith("[CUSTOM]"),
+  )
+
+  const getUserName = (userId: string) => users.find((u) => u.id === userId)?.name || "Front Office"
 
   const allTaskDefinitions = getAllTaskDefinitions()
 
@@ -110,18 +119,7 @@ function TaskManagementPage() {
     setCustomTaskDefs(getCustomTaskDefinitions())
     setIsAddDialogOpen(false)
 
-    setNewTaskForm({
-      name: "",
-      category: "GUEST_REQUEST",
-      department: "housekeeping",
-      duration: 30,
-      priority: "medium",
-      photoRequired: true,
-      photoCount: 1,
-      keywords: "",
-      requiresRoom: false,
-      requiresACLocation: false,
-    })
+    setNewTaskForm(createDefaultNewTaskForm())
 
     toast({
       title: "Success",
@@ -129,33 +127,33 @@ function TaskManagementPage() {
     })
   }
 
-  const handleConvertCustomTask = () => {
-    if (!selectedTaskToConvert) return
+  const openAddDialogWithCustomTask = (task: Task) => {
+    const name = task.custom_task_name || task.task_type
+    const category = (task.custom_task_category as TaskCategory) || "GUEST_REQUEST"
+    const priority = (task.custom_task_priority as Priority) || "medium"
+    const photoRequiredValue = task.custom_task_photo_required ?? task.photo_required ?? false
+    const photoRequired = !!photoRequiredValue
+    const photoCount =
+      task.custom_task_photo_count ?? (photoRequired ? Math.max(1, task.photo_urls.length || 1) : 0)
 
-    const taskName = selectedTaskToConvert.custom_task_name || selectedTaskToConvert.task_type
-    const keywords = taskName.toLowerCase().split(" ")
-
-    const newTask = saveCustomTaskDefinition({
-      name: taskName,
-      category: "GUEST_REQUEST",
-      department: selectedTaskToConvert.department as Department,
-      duration: selectedTaskToConvert.expected_duration_minutes || 30,
-      priority: (selectedTaskToConvert.priority_level?.toLowerCase() as Priority) || "medium",
-      photoRequired: selectedTaskToConvert.photo_required || true,
-      photoCount: 1,
-      keywords,
-      requiresRoom: !!selectedTaskToConvert.room_number,
+    setNewTaskForm({
+      name,
+      category,
+      department: task.department as Department,
+      duration: task.expected_duration_minutes || 30,
+      priority,
+      photoRequired,
+      photoCount,
+      keywords: name.toLowerCase(),
+      requiresRoom: !!task.room_number,
       requiresACLocation: false,
-      createdBy: user?.id || "unknown",
     })
 
-    setCustomTaskDefs(getCustomTaskDefinitions())
-    setIsConvertDialogOpen(false)
-    setSelectedTaskToConvert(null)
+    setIsAddDialogOpen(true)
 
     toast({
-      title: "Success",
-      description: `"${newTask.name}" has been added to the permanent task library`,
+      title: "Custom request loaded",
+      description: `"${name}" has been copied into the Add New Task Type form.`,
     })
   }
 
@@ -190,9 +188,17 @@ function TaskManagementPage() {
             <h1 className="text-xl font-bold">Task Management</h1>
             <p className="text-sm text-muted-foreground">Manage task library and review custom task requests</p>
           </div>
-          <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+          <Dialog
+            open={isAddDialogOpen}
+            onOpenChange={(open) => {
+              setIsAddDialogOpen(open)
+              if (!open) {
+                setNewTaskForm(createDefaultNewTaskForm())
+              }
+            }}
+          >
             <DialogTrigger asChild>
-              <Button>
+              <Button onClick={() => setNewTaskForm(createDefaultNewTaskForm())}>
                 <Plus className="mr-2 h-4 w-4" />
                 Add New Task Type
               </Button>
@@ -380,7 +386,7 @@ function TaskManagementPage() {
             <CardContent>
               <p className="text-sm text-muted-foreground mb-4">
                 Front-office staff have created custom tasks that aren't in the standard library. Review them below and
-                add them as permanent task types.
+                add them as permanent task types. Click any request to auto-fill the creation form with its details.
               </p>
             </CardContent>
           </Card>
@@ -408,66 +414,105 @@ function TaskManagementPage() {
 
           <TabsContent value="custom" className="space-y-4">
             {customTasks.length > 0 ? (
-              <div className="grid gap-4">
-                {customTasks.map((task) => (
-                  <Card key={task.id}>
-                    <CardContent className="pt-6">
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1 space-y-3">
-                          <div>
-                            <h3 className="text-lg font-semibold">{task.custom_task_name || task.task_type}</h3>
-                            <div className="flex items-center gap-2 mt-1">
-                              <Badge variant="outline" className="capitalize">
-                                {task.department}
-                              </Badge>
-                              <Badge variant="secondary">{task.priority_level}</Badge>
-                              {task.room_number && (
-                                <span className="text-sm text-muted-foreground flex items-center gap-1">
-                                  <MapPin className="h-3 w-3" />
-                                  Room {task.room_number}
-                                </span>
+              <>
+                <p className="text-sm text-muted-foreground">
+                  Click a request to copy its details into the Add New Task Type form.
+                </p>
+                <div className="grid gap-4">
+                  {customTasks.map((task) => {
+                    const name = task.custom_task_name || task.task_type
+                    const categoryLabel =
+                      task.custom_task_category && CATEGORY_LABELS[task.custom_task_category]
+                        ? CATEGORY_LABELS[task.custom_task_category]
+                        : "Custom Request"
+                    const priorityLabel = task.custom_task_priority
+                      ? task.custom_task_priority.toUpperCase()
+                      : task.priority_level.replace(/_/g, " ")
+                    const photoRequiredValue = task.custom_task_photo_required ?? task.photo_required
+                    const photoRequired = !!photoRequiredValue
+                    const photoCount = task.custom_task_photo_count ?? (photoRequired ? 1 : 0)
+
+                    return (
+                      <Card
+                        key={task.id}
+                        role="button"
+                        tabIndex={0}
+                        className="cursor-pointer transition border border-border hover:border-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        onClick={() => openAddDialogWithCustomTask(task)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault()
+                            openAddDialogWithCustomTask(task)
+                          }
+                        }}
+                      >
+                        <CardContent className="pt-6">
+                          <div className="flex items-start justify-between gap-4">
+                            <div className="flex-1 space-y-3">
+                              <div>
+                                <h3 className="text-lg font-semibold">{name}</h3>
+                                <div className="flex flex-wrap items-center gap-2 mt-1 text-sm">
+                                  <Badge variant="outline" className="capitalize">
+                                    {task.department}
+                                  </Badge>
+                                  <Badge variant="secondary">{categoryLabel}</Badge>
+                                  <Badge variant="outline" className="uppercase tracking-wide">
+                                    {priorityLabel}
+                                  </Badge>
+                                  {task.room_number && (
+                                    <span className="text-muted-foreground flex items-center gap-1">
+                                      <MapPin className="h-3 w-3" />
+                                      Room {task.room_number}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+
+                              {task.worker_remark && (
+                                <div className="p-3 bg-muted rounded-lg">
+                                  <p className="text-sm text-muted-foreground">Additional Details:</p>
+                                  <p className="text-sm mt-1">"{task.worker_remark}"</p>
+                                </div>
                               )}
+
+                              <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
+                                <span className="flex items-center gap-1">
+                                  <Clock className="h-4 w-4" />
+                                  {task.expected_duration_minutes} min
+                                </span>
+                                {photoRequired && (
+                                  <span className="flex items-center gap-1">
+                                    <Camera className="h-4 w-4" />
+                                    {photoCount} photo{photoCount === 1 ? "" : "s"}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="flex flex-col items-end gap-2">
+                              <Button
+                                variant="outline"
+                                className="gap-2"
+                                onClick={(event) => {
+                                  event.stopPropagation()
+                                  openAddDialogWithCustomTask(task)
+                                }}
+                              >
+                                <Plus className="h-4 w-4" />
+                                Load in Form
+                              </Button>
+                              <p className="text-xs text-muted-foreground text-right">
+                                Created by {getUserName(task.assigned_by_user_id)} on{" "}
+                                {new Date(task.assigned_at.client).toLocaleString()}
+                              </p>
                             </div>
                           </div>
-
-                          {task.worker_remark && (
-                            <div className="p-3 bg-muted rounded-lg">
-                              <p className="text-sm text-muted-foreground">Additional Details:</p>
-                              <p className="text-sm mt-1">"{task.worker_remark}"</p>
-                            </div>
-                          )}
-
-                          <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                            <span className="flex items-center gap-1">
-                              <Clock className="h-4 w-4" />
-                              {task.expected_duration_minutes} min
-                            </span>
-                            {task.photo_required && (
-                              <span className="flex items-center gap-1">
-                                <Camera className="h-4 w-4" />
-                                Photos required
-                              </span>
-                            )}
-                          </div>
-                        </div>
-
-                        <div className="flex gap-2">
-                          <Button
-                            onClick={() => {
-                              setSelectedTaskToConvert(task)
-                              setIsConvertDialogOpen(true)
-                            }}
-                            className="gap-2"
-                          >
-                            <Plus className="h-4 w-4" />
-                            Add to Library
-                          </Button>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
+                        </CardContent>
+                      </Card>
+                    )
+                  })}
+                </div>
+              </>
             ) : (
               <Card>
                 <CardContent className="py-12 text-center">

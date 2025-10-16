@@ -1,5 +1,8 @@
 // Core type definitions for the resort task management system
 
+import type { TaskCategory, Priority } from "./task-definitions"
+export type { TaskCategory, Priority } from "./task-definitions"
+
 export type UserRole = "worker" | "supervisor" | "front_office" | "admin"
 export type Department = "housekeeping" | "maintenance" | "front_desk"
 export type TaskStatus = "PENDING" | "IN_PROGRESS" | "PAUSED" | "COMPLETED" | "REJECTED"
@@ -61,6 +64,12 @@ export interface Task {
   room_number: string
   pause_history: PauseRecord[]
   audit_log: AuditLogEntry[]
+  is_custom_task?: boolean
+  custom_task_name?: string | null
+  custom_task_category?: TaskCategory | null
+  custom_task_priority?: Priority | null
+  custom_task_photo_required?: boolean | null
+  custom_task_photo_count?: number | null
 }
 
 export interface AuditLogEntry {

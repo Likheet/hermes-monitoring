@@ -11,10 +11,10 @@ import { ArrowLeft } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import type { PriorityLevel, Priority, Department } from "@/lib/types"
 import { TaskSearch } from "@/components/task-search"
-import type { TaskDefinition } from "@/lib/task-definitions"
+import type { TaskDefinition, TaskCategory } from "@/lib/task-definitions"
 import { TaskAssignmentForm, type TaskAssignmentData } from "@/components/task-assignment-form"
 
-function mapPriorityToPriorityLevel(priority: Priority, category: string): PriorityLevel {
+function mapPriorityToPriorityLevel(priority: Priority, category: TaskCategory): PriorityLevel {
   if (category === "GUEST_REQUEST") return "GUEST_REQUEST"
   if (category === "TIME_SENSITIVE") return "TIME_SENSITIVE"
   if (category === "PREVENTIVE_MAINTENANCE") return "PREVENTIVE_MAINTENANCE"
@@ -49,9 +49,11 @@ function CreateTaskForm() {
       return
     }
 
-    const priorityLevel = mapPriorityToPriorityLevel(data.priority as Priority, data.category)
+    const priorityLevel = mapPriorityToPriorityLevel(data.priority, data.category)
 
-    const taskName = data.customTaskName || data.taskName
+    const trimmedCustomName = data.customTaskName?.trim()
+    const isCustomTask = data.isCustomTask && !!trimmedCustomName
+    const taskName = isCustomTask ? trimmedCustomName! : data.taskName
 
     createTask({
       task_type: taskName,
@@ -75,11 +77,17 @@ function CreateTaskForm() {
       rating_proof_photo_url: null,
       rejection_proof_photo_url: null,
       room_number: data.location || "",
+      is_custom_task: isCustomTask,
+      custom_task_name: isCustomTask ? trimmedCustomName! : null,
+      custom_task_category: isCustomTask ? data.category : null,
+      custom_task_priority: isCustomTask ? data.priority : null,
+      custom_task_photo_required: isCustomTask ? data.photoRequired : null,
+      custom_task_photo_count: isCustomTask ? data.photoCount : null,
     })
 
-    if (data.customTaskName) {
+    if (isCustomTask && trimmedCustomName) {
       // This will be handled in the task context
-      console.log("[v0] Custom task created, admin will be notified:", data.customTaskName)
+      console.log("[v0] Custom task created, admin will be notified:", trimmedCustomName)
     }
 
     const workerCurrentTask = tasks.find((t) => t.assigned_to_user_id === data.assignedTo && t.status === "IN_PROGRESS")

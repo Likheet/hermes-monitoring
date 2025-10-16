@@ -289,10 +289,13 @@ export function TaskProvider({ children }: { children: ReactNode }) {
   }
 
   const createTask = (taskData: Omit<Task, "id" | "audit_log" | "pause_history">) => {
+    const customTaskName = taskData.custom_task_name ?? (taskData.is_custom_task ? taskData.task_type : null)
     const newTask: Task = {
       ...taskData,
       id: `t${Date.now()}`,
       department: taskData.department,
+      custom_task_name: customTaskName,
+      is_custom_task: taskData.is_custom_task ?? !!customTaskName,
       audit_log: [
         {
           timestamp: createDualTimestamp(),
@@ -315,18 +318,24 @@ export function TaskProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    if (taskData.task_type.includes("Other (Custom Task)") || taskData.task_type.startsWith("[CUSTOM]")) {
+    if (
+      newTask.is_custom_task ||
+      newTask.custom_task_name ||
+      taskData.task_type.includes("Other (Custom Task)") ||
+      taskData.task_type.startsWith("[CUSTOM]")
+    ) {
       const adminUsers = users.filter((u) => u.role === "admin")
+      const notificationName = newTask.custom_task_name || taskData.task_type
       adminUsers.forEach((admin) => {
         createNotification(
           admin.id,
           "system",
           "Custom Task Created",
-          `Front office created a custom task: "${taskData.task_type}" at ${taskData.room_number || "N/A"}. Consider adding this as a permanent task type.`,
+          `Front office created a custom task: "${notificationName}" at ${taskData.room_number || "N/A"}. Consider adding this as a permanent task type.`,
           newTask.id,
         )
       })
-      console.log("[v0] Admin notified about custom task:", taskData.task_type)
+      console.log("[v0] Admin notified about custom task:", notificationName)
     }
 
     setTasks((prev) => [...prev, newTask])
