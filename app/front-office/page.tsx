@@ -59,9 +59,20 @@ function FrontOfficeDashboard() {
     <div className="min-h-screen bg-muted/30">
       <header className="border-b bg-background">
         <div className="container mx-auto flex flex-col gap-4 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex flex-col gap-1">
-            <h1 className="text-2xl font-bold">Front Office</h1>
-            <p className="text-sm text-muted-foreground">{user?.name}</p>
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex flex-col gap-1">
+              <h1 className="text-2xl font-bold">Front Office</h1>
+              <p className="text-sm text-muted-foreground">{user?.name}</p>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleLogout}
+              className="min-h-[44px] min-w-[44px] px-2 sm:px-3 bg-transparent"
+            >
+              <LogOut className="h-4 w-4 sm:mr-2" />
+              <span className="hidden sm:inline">Logout</span>
+            </Button>
           </div>
           <nav className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
             <div className="shrink-0">
@@ -94,11 +105,6 @@ function FrontOfficeDashboard() {
                 <Plus className="mr-2 h-4 w-4" />
                 Create Task
               </Link>
-            </Button>
-            <Button variant="outline" size="sm" onClick={handleLogout} className={`${navButtonClassName} w-full sm:w-auto`}
-            >
-              <LogOut className="mr-2 h-4 w-4" />
-              Logout
             </Button>
           </nav>
         </div>

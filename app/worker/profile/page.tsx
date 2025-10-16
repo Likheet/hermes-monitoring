@@ -112,7 +112,21 @@ function ProfilePage() {
   const avgRating =
     tasksWithRating.length > 0
       ? (tasksWithRating.reduce((sum, t) => sum + (t.rating || 0), 0) / tasksWithRating.length).toFixed(1)
-      : "N/A"
+      : "0.0"
+
+  const ratingValue = Number.parseFloat(avgRating)
+  const ratingPercentage = (ratingValue / 5) * 100
+  const circumference = 2 * Math.PI * 42
+  const strokeDashoffset = circumference - (ratingPercentage / 100) * circumference
+
+  useEffect(() => {
+    console.log("[v0] Rating calculation:", {
+      tasksWithRating: tasksWithRating.length,
+      avgRating,
+      ratingValue,
+      ratingPercentage,
+    })
+  }, [tasksWithRating.length, avgRating])
 
   const totalTasks = myTasks.length + (maintenanceTasks || []).filter((t) => t.assigned_to === user?.id).length
   const totalCompletedTasks = completedTasks.length + myCompletedMaintenanceTasks.length
@@ -187,9 +201,49 @@ function ProfilePage() {
         <Card>
           <CardContent className="pt-4 sm:pt-6">
             <div className="flex flex-col sm:flex-row items-start gap-4">
-              <Avatar className="h-16 w-16 sm:h-20 sm:w-20 shrink-0">
-                <AvatarFallback className="text-xl sm:text-2xl">{initials}</AvatarFallback>
-              </Avatar>
+              <div className="relative shrink-0 flex flex-col items-center gap-2">
+                <div className="relative">
+                  {/* Circular progress ring */}
+                  <svg className="absolute inset-0 -rotate-90" width="88" height="88" viewBox="0 0 88 88">
+                    <circle
+                      cx="44"
+                      cy="44"
+                      r="42"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="3"
+                      className="text-muted/20"
+                    />
+                    <circle
+                      cx="44"
+                      cy="44"
+                      r="42"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="3"
+                      strokeDasharray={circumference}
+                      strokeDashoffset={strokeDashoffset}
+                      strokeLinecap="round"
+                      className="text-yellow-500 transition-all duration-500"
+                    />
+                  </svg>
+                  <Avatar className="h-20 w-20 m-1">
+                    <AvatarFallback className="text-2xl">{initials}</AvatarFallback>
+                  </Avatar>
+                </div>
+                {/* Rating badge - always visible */}
+                <div className="bg-yellow-50 border-2 border-yellow-500 rounded-full px-3 py-1 flex items-center gap-1.5 shadow-sm">
+                  <Star className="h-4 w-4 fill-yellow-500 text-yellow-500" />
+                  <span className="text-sm font-bold text-foreground">{avgRating}</span>
+                  <span className="text-xs text-muted-foreground">/5</span>
+                </div>
+                {tasksWithRating.length > 0 && (
+                  <span className="text-xs text-muted-foreground">
+                    {tasksWithRating.length} {tasksWithRating.length === 1 ? "rating" : "ratings"}
+                  </span>
+                )}
+              </div>
+
               <div className="flex-1 min-w-0 w-full sm:w-auto">
                 <h2 className="text-xl sm:text-2xl font-bold truncate">{user?.name}</h2>
                 <p className="text-sm sm:text-base text-muted-foreground truncate">{user?.role}</p>
@@ -205,6 +259,7 @@ function ProfilePage() {
                   </span>
                 </div>
               </div>
+
               <div className="flex flex-col items-start sm:items-end gap-2 w-full sm:w-auto">
                 <Badge
                   variant={isOverQuota ? "destructive" : quotaRemaining <= 2 ? "outline" : "secondary"}
@@ -269,17 +324,6 @@ function ProfilePage() {
             <CardContent>
               <div className="text-2xl font-bold">{combinedAvgTime}m</div>
               <p className="text-xs text-muted-foreground">Per task completion</p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-sm font-medium">Average Rating</CardTitle>
-              <Star className="h-4 w-4 text-muted-foreground shrink-0" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{avgRating}</div>
-              <p className="text-xs text-muted-foreground">{tasksWithRating.length} rated tasks</p>
             </CardContent>
           </Card>
 

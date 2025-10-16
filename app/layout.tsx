@@ -8,11 +8,9 @@ import { Toaster } from "@/components/ui/toaster"
 import { Suspense } from "react"
 import "./globals.css"
 import { PWAInstallPrompt } from "@/components/pwa-install-prompt"
-import { OnboardingTour } from "@/components/onboarding/onboarding-tour"
 import { ErrorBoundary } from "@/components/error-boundary"
 import { StorageCleaner } from "@/components/storage-cleaner"
 
-import { Geist, Geist_Mono, Source_Serif_4, Geist as V0_Font_Geist, Geist_Mono as V0_Font_Geist_Mono, Source_Serif_4 as V0_Font_Source_Serif_4 } from 'next/font/google'
 import { Geist, Geist_Mono, Source_Serif_4, Geist as V0_Font_Geist, Geist_Mono as V0_Font_Geist_Mono, Source_Serif_4 as V0_Font_Source_Serif_4 } from 'next/font/google'
 
 // Initialize fonts
@@ -80,7 +78,6 @@ export default function RootLayout({
                 {children}
                 <Toaster />
                 <PWAInstallPrompt />
-                <OnboardingTour />
               </AuthProvider>
             </TaskProvider>
           </Suspense>
