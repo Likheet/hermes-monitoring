@@ -10,7 +10,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Input } from "@/components/ui/input"
 import { ArrowLeft, Trash2, Save } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
-import { formatDistanceToNow } from "date-fns"
+import { formatDistanceToNow } from "@/lib/date-utils"
 
 interface Note {
   id: string

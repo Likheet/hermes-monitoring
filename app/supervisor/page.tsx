@@ -20,7 +20,7 @@ import { ConnectionStatus } from "@/components/connection-status"
 import { detectEscalationLevel, type Escalation } from "@/lib/escalation-utils"
 import { createDualTimestamp } from "@/lib/mock-data"
 import { TASK_TYPE_LABELS } from "@/lib/maintenance-types"
-import { formatDistanceToNow } from "date-fns"
+import { formatDistanceToNow } from "@/lib/date-utils"
 
 function SupervisorDashboard() {
   const { user, logout } = useAuth()
@@ -193,29 +193,40 @@ function SupervisorDashboard() {
     <div className="min-h-screen bg-muted/30">
       <EscalationNotification escalations={escalations} tasks={tasks} onAcknowledge={handleAcknowledgeEscalation} />
 
-      <header className="border-b bg-background">
-        <div className="container mx-auto flex items-center justify-between px-4 py-4">
-          <div>
-            <h1 className="text-2xl font-bold">Supervisor Dashboard</h1>
-            <p className="text-sm text-muted-foreground">
+      <header className="border-b bg-background sticky top-0 z-40">
+        <div className="container mx-auto flex flex-col sm:flex-row items-start sm:items-center justify-between px-3 sm:px-4 py-3 sm:py-4 gap-3 sm:gap-4">
+          <div className="min-w-0 flex-1">
+            <h1 className="text-xl sm:text-2xl font-bold">Supervisor Dashboard</h1>
+            <p className="text-xs sm:text-sm text-muted-foreground truncate">
               {user?.name} - {user?.department}
             </p>
           </div>
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={() => router.push("/supervisor/analytics")}>
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => router.push("/supervisor/analytics")}
+              className="flex-1 sm:flex-none min-h-[44px]"
+            >
               <BarChart3 className="mr-2 h-4 w-4" />
-              Analytics
+              <span className="hidden sm:inline">Analytics</span>
+              <span className="sm:hidden">Stats</span>
             </Button>
             <ConnectionStatus isConnected={isConnected} />
-            <Button variant="outline" size="sm" onClick={handleLogout}>
-              <LogOut className="mr-2 h-4 w-4" />
-              Logout
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleLogout}
+              className="min-h-[44px] min-w-[44px] bg-transparent"
+            >
+              <LogOut className="h-4 w-4 sm:mr-2" />
+              <span className="hidden sm:inline">Logout</span>
             </Button>
           </div>
         </div>
       </header>
 
-      <main className="container mx-auto px-4 py-6 space-y-6">
+      <main className="container mx-auto px-3 sm:px-4 py-4 sm:py-6 space-y-4 sm:space-y-6">
         <Card>
           <CardHeader>
             <CardTitle>Filters</CardTitle>
@@ -233,11 +244,11 @@ function SupervisorDashboard() {
 
         {(rejectedTasks.length > 0 || rejectedMaintenanceTasks.length > 0) && (
           <section>
-            <h2 className="text-lg font-semibold mb-3 flex items-center gap-2">
-              <XCircle className="h-5 w-5 text-red-500" />
+            <h2 className="text-base sm:text-lg font-semibold mb-3 flex items-center gap-2">
+              <XCircle className="h-4 w-4 sm:h-5 sm:w-5 text-red-500" />
               Rejected Tasks ({rejectedTasks.length + rejectedMaintenanceTasks.length})
             </h2>
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-3 sm:gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {rejectedMaintenanceTasks.map((task) => (
                 <Card key={task.id} className="border-red-200">
                   <CardHeader className="pb-3">
@@ -299,8 +310,8 @@ function SupervisorDashboard() {
 
         {completedTasks.length > 0 && (
           <section>
-            <h2 className="text-lg font-semibold mb-3">Pending Verification</h2>
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            <h2 className="text-base sm:text-lg font-semibold mb-3">Pending Verification</h2>
+            <div className="grid gap-3 sm:gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {completedTasks.map((task) => (
                 <Link key={task.id} href={`/supervisor/verify/${task.id}`}>
                   <Card className="hover:shadow-md transition-shadow cursor-pointer">
@@ -391,11 +402,11 @@ function SupervisorDashboard() {
 
         {openIssues.length > 0 && (
           <section>
-            <h2 className="text-lg font-semibold mb-3 flex items-center gap-2">
-              <AlertTriangle className="h-5 w-5 text-orange-500" />
+            <h2 className="text-base sm:text-lg font-semibold mb-3 flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 sm:h-5 sm:w-5 text-orange-500" />
               Reported Issues ({openIssues.length})
             </h2>
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-3 sm:gap-4 md:grid-cols-2 lg:grid-cols-3">
               {openIssues.map((issue) => {
                 const task = tasks.find((t) => t.id === issue.task_id)
                 if (!task) return null
@@ -416,9 +427,9 @@ function SupervisorDashboard() {
         )}
 
         <section>
-          <h2 className="text-lg font-semibold mb-3">All Tasks</h2>
+          <h2 className="text-base sm:text-lg font-semibold mb-3">All Tasks</h2>
           {otherTasks.length > 0 ? (
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-3 sm:gap-4 md:grid-cols-2 lg:grid-cols-3">
               {otherTasks.map((task) => {
                 const escalationLevel = getTaskEscalation(task.id)
                 return (

@@ -339,43 +339,48 @@ function TaskDetail({ params }: TaskDetailProps) {
     <div className="min-h-screen bg-muted/30">
       <OfflineIndicator />
 
-      <header className="border-b bg-background">
-        <div className="container mx-auto flex items-center gap-4 px-4 py-4">
-          <Button variant="ghost" size="icon" onClick={() => router.push("/worker")}>
+      <header className="border-b bg-background sticky top-0 z-40">
+        <div className="container mx-auto flex items-center gap-2 sm:gap-4 px-3 sm:px-4 py-3 sm:py-4">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => router.push("/worker")}
+            className="shrink-0 min-h-[44px] min-w-[44px]"
+          >
             <ArrowLeft className="h-5 w-5" />
           </Button>
-          <div>
-            <h1 className="text-xl font-bold">Task Details</h1>
+          <div className="min-w-0 flex-1">
+            <h1 className="text-lg sm:text-xl font-bold truncate">Task Details</h1>
           </div>
         </div>
       </header>
 
-      <main className="container mx-auto px-4 py-6 max-w-2xl space-y-6">
+      <main className="container mx-auto px-3 sm:px-4 py-4 sm:py-6 max-w-2xl space-y-4 sm:space-y-6">
         <Card>
-          <CardHeader>
+          <CardHeader className="pb-3 sm:pb-6">
             <div className="flex items-start justify-between gap-2">
-              <CardTitle className="text-2xl">{task.task_type}</CardTitle>
+              <CardTitle className="text-xl sm:text-2xl leading-tight">{task.task_type}</CardTitle>
               <Badge className={priorityColors[task.priority_level]} variant="secondary">
                 {task.priority_level.replace(/_/g, " ")}
               </Badge>
             </div>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <Clock className="h-4 w-4" />
-              <span>Assigned at: {formatExactTimestamp(task.assigned_at.client)}</span>
+          <CardContent className="space-y-3 sm:space-y-4">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Clock className="h-4 w-4 shrink-0" />
+              <span className="truncate">Assigned at: {formatExactTimestamp(task.assigned_at.client)}</span>
             </div>
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <MapPin className="h-4 w-4" />
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <MapPin className="h-4 w-4 shrink-0" />
               <span>Room {task.room_number}</span>
             </div>
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <Clock className="h-4 w-4" />
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Clock className="h-4 w-4 shrink-0" />
               <span>Expected: {task.expected_duration_minutes} minutes</span>
             </div>
             {task.photo_required && (
-              <div className="flex items-center gap-2 text-muted-foreground">
-                <Camera className="h-4 w-4" />
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Camera className="h-4 w-4 shrink-0" />
                 <span>Photo required upon completion</span>
               </div>
             )}
@@ -486,9 +491,9 @@ function TaskDetail({ params }: TaskDetailProps) {
 
         {task.pause_history.length > 0 && <PauseTimeline pauseHistory={task.pause_history} />}
 
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col gap-2 sm:gap-3">
           {task.status === "PENDING" && (
-            <Button onClick={handleStart} size="lg" className="w-full">
+            <Button onClick={handleStart} size="lg" className="w-full min-h-[48px] sm:min-h-[52px]">
               <Play className="mr-2 h-5 w-5" />
               Start Task
             </Button>
@@ -501,12 +506,11 @@ function TaskDetail({ params }: TaskDetailProps) {
                   onClick={handlePause}
                   variant="outline"
                   size="lg"
-                  className="w-full bg-transparent"
+                  className="w-full min-h-[48px] sm:min-h-[52px] bg-transparent"
                   disabled={!canPauseTask()}
                 >
                   <Pause className="mr-2 h-5 w-5" />
-                  Pause Task
-                  {!canPauseTask() && <span className="ml-2 text-xs">(Need 2+ tasks)</span>}
+                  <span className="truncate">Pause Task{!canPauseTask() && " (Need 2+ tasks)"}</span>
                 </Button>
               )}
               {totalPhotos === 0 && task.photo_required && (
@@ -514,17 +518,22 @@ function TaskDetail({ params }: TaskDetailProps) {
                   onClick={() => setPhotoModalOpen(true)}
                   variant="outline"
                   size="lg"
-                  className="w-full bg-transparent"
+                  className="w-full min-h-[48px] sm:min-h-[52px]"
                 >
                   <Camera className="mr-2 h-5 w-5" />
                   Capture Photos
                 </Button>
               )}
-              <Button onClick={handleComplete} size="lg" className="w-full">
+              <Button onClick={handleComplete} size="lg" className="w-full min-h-[48px] sm:min-h-[52px]">
                 <CheckCircle className="mr-2 h-5 w-5" />
                 Complete Task
               </Button>
-              <Button onClick={() => setIssueModalOpen(true)} variant="destructive" size="lg" className="w-full">
+              <Button
+                onClick={() => setIssueModalOpen(true)}
+                variant="destructive"
+                size="lg"
+                className="w-full min-h-[48px] sm:min-h-[52px]"
+              >
                 <AlertTriangle className="mr-2 h-5 w-5" />
                 Raise Issue!
               </Button>
@@ -533,7 +542,7 @@ function TaskDetail({ params }: TaskDetailProps) {
 
           {task.status === "PAUSED" && (
             <>
-              <Button onClick={handleResume} size="lg" className="w-full">
+              <Button onClick={handleResume} size="lg" className="w-full min-h-[48px] sm:min-h-[52px]">
                 <Play className="mr-2 h-5 w-5" />
                 Resume Task
               </Button>
@@ -542,17 +551,27 @@ function TaskDetail({ params }: TaskDetailProps) {
                   onClick={() => setPhotoModalOpen(true)}
                   variant="outline"
                   size="lg"
-                  className="w-full bg-transparent"
+                  className="w-full min-h-[48px] sm:min-h-[52px]"
                 >
                   <Camera className="mr-2 h-4 w-4" />
                   Capture Photos
                 </Button>
               )}
-              <Button onClick={handleComplete} variant="outline" size="lg" className="w-full bg-transparent">
+              <Button
+                onClick={handleComplete}
+                variant="outline"
+                size="lg"
+                className="w-full min-h-[48px] sm:min-h-[52px] bg-transparent"
+              >
                 <CheckCircle className="mr-2 h-5 w-5" />
                 Complete Task
               </Button>
-              <Button onClick={() => setIssueModalOpen(true)} variant="destructive" size="lg" className="w-full">
+              <Button
+                onClick={() => setIssueModalOpen(true)}
+                variant="destructive"
+                size="lg"
+                className="w-full min-h-[48px] sm:min-h-[52px]"
+              >
                 <AlertTriangle className="mr-2 h-5 w-5" />
                 Raise Issue!
               </Button>

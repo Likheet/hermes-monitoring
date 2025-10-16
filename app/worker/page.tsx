@@ -21,7 +21,7 @@ import { MaintenanceCalendar } from "@/components/maintenance/maintenance-calend
 import type { MaintenanceTask } from "@/lib/maintenance-types"
 import { TASK_TYPE_LABELS } from "@/lib/maintenance-types"
 import type { TaskCompletionData } from "@/components/maintenance/room-task-modal"
-import { formatDistanceToNow } from "date-fns"
+import { formatDistanceToNow } from "@/lib/date-utils"
 import { cn } from "@/lib/utils"
 import { useToast } from "@/hooks/use-toast"
 import { formatShiftRange } from "@/lib/date-utils"
@@ -35,6 +35,9 @@ interface Note {
   created_at: Date
   updated_at: Date
 }
+
+// Define REJECTION_QUOTA and related constants
+const REJECTION_QUOTA = 5 // Updated quota from 3 to 5 per month
 
 function WorkerDashboard() {
   const { user, logout } = useAuth()
@@ -278,7 +281,7 @@ function WorkerDashboard() {
   }
 
   const saveNotes = (updatedNotes: Note[]) => {
-    localStorage.setItem(`notes_${user?.id}`, JSON.stringify(updatedNotes))
+    localStorage.setItem(`notes_${user?.id}`, JSON.JSON.stringify(updatedNotes))
     setNotes(updatedNotes)
   }
 
@@ -442,6 +445,15 @@ function WorkerDashboard() {
     .map((n) => n[0])
     .join("")
     .toUpperCase()
+
+  // Calculate rejectedThisMonth and quotaRemaining for the profile banner
+  const today = new Date()
+  const rejectedThisMonth = rejectedTasks.filter(
+    (t) =>
+      new Date(t.completed_at || t.updated_at).getMonth() === today.getMonth() &&
+      new Date(t.completed_at || t.updated_at).getFullYear() === today.getFullYear(),
+  ).length
+  const quotaRemaining = REJECTION_QUOTA - rejectedThisMonth
 
   const renderContent = () => {
     switch (activeTab) {
@@ -607,7 +619,7 @@ function WorkerDashboard() {
           <main className="container mx-auto px-4 py-6 space-y-6">
             <Card>
               <CardContent className="pt-6">
-                <div className="flex items-center gap-4">
+                <div className="flex items-start gap-4">
                   <Avatar className="h-20 w-20">
                     <AvatarFallback className="text-2xl">{initials}</AvatarFallback>
                   </Avatar>
@@ -623,6 +635,32 @@ function WorkerDashboard() {
                         </p>
                       )}
                     </div>
+                  </div>
+                  <div className="flex flex-col items-end gap-2">
+                    <Badge
+                      variant={
+                        rejectedThisMonth >= REJECTION_QUOTA
+                          ? "destructive"
+                          : quotaRemaining <= 2
+                            ? "outline"
+                            : "secondary"
+                      }
+                      className={`text-sm font-semibold ${
+                        rejectedThisMonth >= REJECTION_QUOTA
+                          ? "bg-red-100 text-red-900 border-red-300"
+                          : quotaRemaining <= 2
+                            ? "bg-orange-100 text-orange-900 border-orange-300"
+                            : ""
+                      }`}
+                    >
+                      {rejectedThisMonth}/{REJECTION_QUOTA} Rejections
+                    </Badge>
+                    {rejectedThisMonth >= REJECTION_QUOTA && (
+                      <span className="text-xs text-red-600 font-medium text-right">Retraining Required</span>
+                    )}
+                    {rejectedThisMonth < REJECTION_QUOTA && quotaRemaining <= 2 && (
+                      <span className="text-xs text-orange-600 font-medium text-right">{quotaRemaining} remaining</span>
+                    )}
                   </div>
                 </div>
               </CardContent>
@@ -664,20 +702,22 @@ function WorkerDashboard() {
                 </CardContent>
               </Card>
 
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Scheduled Maintenance</CardTitle>
-                  <TrendingUp className="h-4 w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">
-                    {completedMaintenanceTasks.length}/{totalScheduledTasks}
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    {pendingMaintenanceTasks.length} pending • {myActiveMaintenanceTasks.length} active
-                  </p>
-                </CardContent>
-              </Card>
+              {isMaintenanceUser && (
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium">Scheduled Maintenance</CardTitle>
+                    <TrendingUp className="h-4 w-4 text-muted-foreground" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold">
+                      {completedMaintenanceTasks.length}/{totalScheduledTasks}
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      {pendingMaintenanceTasks.length} pending • {myActiveMaintenanceTasks.length} active
+                    </p>
+                  </CardContent>
+                </Card>
+              )}
 
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -1003,9 +1043,9 @@ function WorkerDashboard() {
   return (
     <div className="flex flex-col h-screen bg-muted/30">
       <header className="border-b bg-background sticky top-0 z-40 shrink-0">
-        <div className="container mx-auto flex items-center justify-between px-4 py-4">
-          <div>
-            <h1 className="text-xl md:text-2xl font-bold">
+        <div className="container mx-auto flex items-center justify-between px-3 sm:px-4 py-3 sm:py-4 gap-2 sm:gap-4">
+          <div className="min-w-0 flex-1">
+            <h1 className="text-lg sm:text-xl md:text-2xl font-bold truncate">
               {activeTab === "home"
                 ? "My Tasks"
                 : activeTab === "tasks"
@@ -1017,9 +1057,11 @@ function WorkerDashboard() {
                       : "Schedule"}
             </h1>
             {activeTab !== "scheduled" && (
-              <p className="text-xs md:text-sm text-muted-foreground">
+              <p className="text-xs sm:text-sm text-muted-foreground truncate">
                 {user?.name}
-                {departmentDisplay && <span className="ml-1 text-muted-foreground">- {departmentDisplay}</span>}
+                {departmentDisplay && (
+                  <span className="ml-1 text-muted-foreground hidden sm:inline">- {departmentDisplay}</span>
+                )}
                 {(inProgressTasks.length > 0 || myActiveMaintenanceTasks.length > 0) && (
                   <span className="ml-2 text-accent font-medium">● Busy</span>
                 )}
@@ -1029,16 +1071,16 @@ function WorkerDashboard() {
               </p>
             )}
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 sm:gap-2 shrink-0">
             <ConnectionStatus isConnected={isConnected} />
             <Button
               variant="outline"
               size="sm"
               onClick={handleLogout}
-              className="min-h-[44px] min-w-[44px] bg-transparent"
+              className="min-h-[44px] min-w-[44px] px-2 sm:px-3 bg-transparent"
             >
-              <LogOut className="h-5 w-5 md:mr-2" />
-              <span className="hidden md:inline">Logout</span>
+              <LogOut className="h-4 w-4 sm:h-5 sm:w-5 sm:mr-2" />
+              <span className="hidden sm:inline">Logout</span>
             </Button>
           </div>
         </div>

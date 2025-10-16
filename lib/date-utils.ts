@@ -104,3 +104,34 @@ export function formatShiftTime(time: string): string {
 export function formatShiftRange(shiftStart: string, shiftEnd: string): string {
   return `${formatShiftTime(shiftStart)} - ${formatShiftTime(shiftEnd)}`
 }
+
+export function formatDistanceToNow(date: Date | string): string {
+  const now = new Date()
+  const targetDate = typeof date === "string" ? new Date(date) : date
+  const diffMs = now.getTime() - targetDate.getTime()
+  const diffSecs = Math.floor(diffMs / 1000)
+  const diffMins = Math.floor(diffSecs / 60)
+  const diffHours = Math.floor(diffMins / 60)
+  const diffDays = Math.floor(diffHours / 24)
+
+  if (diffSecs < 60) {
+    return "just now"
+  } else if (diffMins < 60) {
+    return `${diffMins} minute${diffMins !== 1 ? "s" : ""} ago`
+  } else if (diffHours < 24) {
+    return `${diffHours} hour${diffHours !== 1 ? "s" : ""} ago`
+  } else if (diffDays < 30) {
+    return `${diffDays} day${diffDays !== 1 ? "s" : ""} ago`
+  } else {
+    const diffMonths = Math.floor(diffDays / 30)
+    return `${diffMonths} month${diffMonths !== 1 ? "s" : ""} ago`
+  }
+}
+
+export function startOfMonth(date: Date = new Date()): Date {
+  return new Date(date.getFullYear(), date.getMonth(), 1)
+}
+
+export function endOfMonth(date: Date = new Date()): Date {
+  return new Date(date.getFullYear(), date.getMonth() + 1, 0, 23, 59, 59, 999)
+}

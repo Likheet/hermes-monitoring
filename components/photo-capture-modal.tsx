@@ -129,10 +129,10 @@ export function PhotoCaptureModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Capture Photos</DialogTitle>
-          <DialogDescription>
+      <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto p-4 sm:p-6">
+        <DialogHeader className="space-y-2">
+          <DialogTitle className="text-lg sm:text-xl">Capture Photos</DialogTitle>
+          <DialogDescription className="text-sm">
             {capturedPhotos.length === 0
               ? "Take photos to complete this task"
               : `${capturedPhotos.length} photo(s) captured`}
@@ -151,7 +151,7 @@ export function PhotoCaptureModal({
           {capturedPhotos.length > 0 && (
             <div className="space-y-2">
               <p className="text-sm font-medium">Captured Photos:</p>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                 {capturedPhotos.map((photo, index) => (
                   <div key={index} className="relative">
                     <img
@@ -162,7 +162,7 @@ export function PhotoCaptureModal({
                     <Button
                       size="icon"
                       variant="destructive"
-                      className="absolute top-1 right-1 h-7 w-7 shadow-lg"
+                      className="absolute top-1 right-1 h-8 w-8 sm:h-7 sm:w-7 shadow-lg"
                       onClick={() => handleRemovePhoto(index)}
                     >
                       <X className="h-4 w-4" />
@@ -176,8 +176,8 @@ export function PhotoCaptureModal({
           {!currentPhoto ? (
             <div className="flex flex-col items-center gap-4">
               {capturedPhotos.length === 0 && (
-                <div className="flex h-48 w-full items-center justify-center rounded-lg border-2 border-dashed border-muted-foreground/25 bg-muted/50">
-                  <Camera className="h-12 w-12 text-muted-foreground" />
+                <div className="flex h-40 sm:h-48 w-full items-center justify-center rounded-lg border-2 border-dashed border-muted-foreground/25 bg-muted/50">
+                  <Camera className="h-10 w-10 sm:h-12 sm:w-12 text-muted-foreground" />
                 </div>
               )}
               <input
@@ -194,7 +194,7 @@ export function PhotoCaptureModal({
                   triggerHaptic("medium")
                   fileInputRef.current?.click()
                 }}
-                className="w-full min-h-[48px] text-base"
+                className="w-full min-h-[48px] text-base touch-manipulation"
                 disabled={uploading}
                 variant={capturedPhotos.length > 0 ? "outline" : "default"}
               >
@@ -204,7 +204,11 @@ export function PhotoCaptureModal({
             </div>
           ) : (
             <div className="space-y-4">
-              <img src={currentPhoto || "/placeholder.svg"} alt="Current" className="w-full rounded-lg" />
+              <img
+                src={currentPhoto || "/placeholder.svg"}
+                alt="Current"
+                className="w-full rounded-lg max-h-[50vh] object-contain"
+              />
 
               {uploading && (
                 <div className="space-y-2">
@@ -220,12 +224,16 @@ export function PhotoCaptureModal({
                 <Button
                   onClick={handleRetake}
                   variant="outline"
-                  className="flex-1 min-h-[48px] bg-transparent"
+                  className="flex-1 min-h-[48px] bg-transparent touch-manipulation"
                   disabled={uploading}
                 >
                   Retake
                 </Button>
-                <Button onClick={handleAddPhoto} className="flex-1 min-h-[48px]" disabled={uploading}>
+                <Button
+                  onClick={handleAddPhoto}
+                  className="flex-1 min-h-[48px] touch-manipulation"
+                  disabled={uploading}
+                >
                   {uploading ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -241,10 +249,14 @@ export function PhotoCaptureModal({
 
           {capturedPhotos.length > 0 && !currentPhoto && (
             <div className="flex gap-2 pt-2 border-t">
-              <Button onClick={handleCancel} variant="outline" className="flex-1 min-h-[48px] bg-transparent">
+              <Button
+                onClick={handleCancel}
+                variant="outline"
+                className="flex-1 min-h-[48px] bg-transparent touch-manipulation"
+              >
                 Cancel
               </Button>
-              <Button onClick={handleConfirm} className="flex-1 min-h-[48px]">
+              <Button onClick={handleConfirm} className="flex-1 min-h-[48px] touch-manipulation">
                 Confirm ({capturedPhotos.length} photo{capturedPhotos.length !== 1 ? "s" : ""})
               </Button>
             </div>

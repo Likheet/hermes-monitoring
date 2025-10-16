@@ -338,54 +338,69 @@ function MaintenanceTaskPage({ params }: MaintenanceTaskPageProps) {
   const totalPhotos = categorizedPhotos.room_photos.length + categorizedPhotos.proof_photos.length
 
   return (
-    <div className="min-h-screen bg-muted/30">
+    <div className="min-h-screen bg-muted/30 pb-safe">
       <OfflineIndicator />
 
-      <header className="border-b bg-background">
-        <div className="container mx-auto flex items-center gap-4 px-4 py-4">
-          <Button variant="ghost" size="icon" onClick={() => router.back()}>
+      <header className="border-b bg-background sticky top-0 z-40">
+        <div className="container mx-auto flex items-center gap-2 sm:gap-4 px-3 sm:px-4 py-3 sm:py-4">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => router.back()}
+            className="min-h-[44px] min-w-[44px] shrink-0"
+          >
             <ArrowLeft className="h-5 w-5" />
           </Button>
-          <div>
-            <h1 className="text-xl font-bold">{TASK_TYPE_LABELS[taskType as keyof typeof TASK_TYPE_LABELS]}</h1>
-            <p className="text-sm text-muted-foreground">
+          <div className="flex-1 min-w-0">
+            <h1 className="text-base sm:text-xl font-bold truncate">
+              {TASK_TYPE_LABELS[taskType as keyof typeof TASK_TYPE_LABELS]}
+            </h1>
+            <p className="text-xs sm:text-sm text-muted-foreground truncate">
               Room {roomNumber} • {location}
             </p>
           </div>
         </div>
       </header>
 
-      <main className="container mx-auto px-4 py-6 max-w-2xl space-y-6">
+      <main className="container mx-auto px-3 sm:px-4 py-4 sm:py-6 max-w-2xl space-y-4 sm:space-y-6">
         <Card>
-          <CardHeader>
+          <CardHeader className="pb-3 sm:pb-4">
             <div className="flex items-start justify-between gap-2">
-              <CardTitle className="text-2xl">{TASK_TYPE_LABELS[taskType as keyof typeof TASK_TYPE_LABELS]}</CardTitle>
-              {isCompleted && (
-                <Badge className="bg-primary text-primary-foreground" variant="secondary">
-                  Completed
-                </Badge>
-              )}
-              {task.status === "paused" && (
-                <Badge variant="outline" className="border-muted-foreground">
-                  Paused
-                </Badge>
-              )}
-              {task.status === "in_progress" && <Badge variant="default">In Progress</Badge>}
+              <CardTitle className="text-lg sm:text-2xl leading-tight">
+                {TASK_TYPE_LABELS[taskType as keyof typeof TASK_TYPE_LABELS]}
+              </CardTitle>
+              <div className="flex flex-col gap-1 shrink-0">
+                {isCompleted && (
+                  <Badge className="bg-primary text-primary-foreground text-xs" variant="secondary">
+                    Completed
+                  </Badge>
+                )}
+                {task.status === "paused" && (
+                  <Badge variant="outline" className="border-muted-foreground text-xs">
+                    Paused
+                  </Badge>
+                )}
+                {task.status === "in_progress" && (
+                  <Badge variant="default" className="text-xs">
+                    In Progress
+                  </Badge>
+                )}
+              </div>
             </div>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <MapPin className="h-4 w-4" />
-              <span>
+          <CardContent className="space-y-3 sm:space-y-4">
+            <div className="flex items-center gap-2 text-sm sm:text-base text-muted-foreground">
+              <MapPin className="h-4 w-4 shrink-0" />
+              <span className="truncate">
                 Room {roomNumber} - {location}
               </span>
             </div>
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <Clock className="h-4 w-4" />
+            <div className="flex items-center gap-2 text-sm sm:text-base text-muted-foreground">
+              <Clock className="h-4 w-4 shrink-0" />
               <span>Expected: {task.expected_duration_minutes || 30} minutes</span>
             </div>
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <Camera className="h-4 w-4" />
+            <div className="flex items-center gap-2 text-sm sm:text-base text-muted-foreground">
+              <Camera className="h-4 w-4 shrink-0" />
               <span>Photo required upon completion</span>
             </div>
           </CardContent>
@@ -393,13 +408,13 @@ function MaintenanceTaskPage({ params }: MaintenanceTaskPageProps) {
 
         {isStarted && (
           <Card>
-            <CardHeader>
-              <CardTitle>Timer</CardTitle>
+            <CardHeader className="pb-3 sm:pb-4">
+              <CardTitle className="text-base sm:text-lg">Timer</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="text-center">
-                <div className="text-4xl font-bold font-mono">{formatTime(elapsedTime)}</div>
-                <p className="text-sm text-muted-foreground mt-2">
+                <div className="text-3xl sm:text-4xl font-bold font-mono">{formatTime(elapsedTime)}</div>
+                <p className="text-xs sm:text-sm text-muted-foreground mt-2">
                   Expected: {task.expected_duration_minutes || 30} min
                 </p>
               </div>
@@ -409,31 +424,39 @@ function MaintenanceTaskPage({ params }: MaintenanceTaskPageProps) {
 
         {!isRunning && isStarted && !isCompleted && (
           <Card className="border-destructive">
-            <CardContent className="pt-6">
-              <p className="text-center text-destructive font-medium">Task is currently paused</p>
+            <CardContent className="pt-4 sm:pt-6">
+              <p className="text-center text-destructive font-medium text-sm sm:text-base">Task is currently paused</p>
             </CardContent>
           </Card>
         )}
 
         {totalPhotos > 0 && (
           <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle>Photo Documentation ({totalPhotos})</CardTitle>
-                <Button variant="outline" size="sm" onClick={() => setPhotoModalOpen(true)} disabled={isCompleted}>
-                  <Camera className="mr-2 h-4 w-4" />
+            <CardHeader className="pb-3 sm:pb-4">
+              <div className="flex items-center justify-between gap-2">
+                <CardTitle className="text-base sm:text-lg">Photo Documentation ({totalPhotos})</CardTitle>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPhotoModalOpen(true)}
+                  disabled={isCompleted}
+                  className="text-xs sm:text-sm"
+                >
+                  <Camera className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4" />
                   Manage
                 </Button>
               </div>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-3 sm:space-y-4">
               {categorizedPhotos.room_photos.length > 0 && (
                 <div className="space-y-2">
                   <div className="flex items-center gap-2">
-                    <Home className="h-4 w-4 text-primary" />
-                    <span className="text-sm font-medium">Room Photos ({categorizedPhotos.room_photos.length})</span>
+                    <Home className="h-4 w-4 text-primary shrink-0" />
+                    <span className="text-xs sm:text-sm font-medium">
+                      Room Photos ({categorizedPhotos.room_photos.length})
+                    </span>
                   </div>
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                     {categorizedPhotos.room_photos.map((photo, index) => (
                       <div key={index} className="relative">
                         <img
@@ -453,10 +476,12 @@ function MaintenanceTaskPage({ params }: MaintenanceTaskPageProps) {
               {categorizedPhotos.proof_photos.length > 0 && (
                 <div className="space-y-2">
                   <div className="flex items-center gap-2">
-                    <Wrench className="h-4 w-4 text-secondary-foreground" />
-                    <span className="text-sm font-medium">Proof Photos ({categorizedPhotos.proof_photos.length})</span>
+                    <Wrench className="h-4 w-4 text-secondary-foreground shrink-0" />
+                    <span className="text-xs sm:text-sm font-medium">
+                      Proof Photos ({categorizedPhotos.proof_photos.length})
+                    </span>
                   </div>
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                     {categorizedPhotos.proof_photos.map((photo, index) => (
                       <div key={index} className="relative">
                         <img
@@ -478,11 +503,13 @@ function MaintenanceTaskPage({ params }: MaintenanceTaskPageProps) {
 
         {isStarted && !isCompleted && (
           <Card>
-            <CardHeader>
-              <CardTitle>Remarks</CardTitle>
+            <CardHeader className="pb-3 sm:pb-4">
+              <CardTitle className="text-base sm:text-lg">Remarks</CardTitle>
             </CardHeader>
             <CardContent>
-              <Label htmlFor="remark">Add any notes about this task</Label>
+              <Label htmlFor="remark" className="text-sm">
+                Add any notes about this task
+              </Label>
               <Textarea
                 id="remark"
                 placeholder="Enter your remarks here..."
@@ -491,16 +518,16 @@ function MaintenanceTaskPage({ params }: MaintenanceTaskPageProps) {
                   setRemark(e.target.value)
                   updateMaintenanceTask(task.id, { notes: e.target.value })
                 }}
-                className="mt-2"
+                className="mt-2 text-sm sm:text-base"
                 rows={4}
               />
             </CardContent>
           </Card>
         )}
 
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col gap-2 sm:gap-3">
           {!isStarted && !isCompleted && (
-            <Button onClick={handleStart} size="lg" className="w-full">
+            <Button onClick={handleStart} size="lg" className="w-full min-h-[48px] text-base">
               <Play className="mr-2 h-5 w-5" />
               Start Task
             </Button>
@@ -513,17 +540,22 @@ function MaintenanceTaskPage({ params }: MaintenanceTaskPageProps) {
                   onClick={() => setPhotoModalOpen(true)}
                   variant="outline"
                   size="lg"
-                  className="w-full bg-transparent"
+                  className="w-full min-h-[48px] text-base bg-transparent"
                 >
                   <Camera className="mr-2 h-5 w-5" />
                   Capture Photos
                 </Button>
               )}
-              <Button onClick={handleComplete} size="lg" className="w-full">
+              <Button onClick={handleComplete} size="lg" className="w-full min-h-[48px] text-base">
                 <CheckCircle className="mr-2 h-5 w-5" />
                 Complete Task
               </Button>
-              <Button onClick={() => setIssueModalOpen(true)} variant="destructive" size="lg" className="w-full">
+              <Button
+                onClick={() => setIssueModalOpen(true)}
+                variant="destructive"
+                size="lg"
+                className="w-full min-h-[48px] text-base"
+              >
                 <AlertTriangle className="mr-2 h-5 w-5" />
                 Raise Issue!
               </Button>
@@ -532,7 +564,7 @@ function MaintenanceTaskPage({ params }: MaintenanceTaskPageProps) {
 
           {isStarted && !isRunning && !isCompleted && (
             <>
-              <Button onClick={handleResume} size="lg" className="w-full">
+              <Button onClick={handleResume} size="lg" className="w-full min-h-[48px] text-base">
                 <Play className="mr-2 h-5 w-5" />
                 Resume Task
               </Button>
@@ -541,17 +573,27 @@ function MaintenanceTaskPage({ params }: MaintenanceTaskPageProps) {
                   onClick={() => setPhotoModalOpen(true)}
                   variant="outline"
                   size="lg"
-                  className="w-full bg-transparent"
+                  className="w-full min-h-[48px] text-base bg-transparent"
                 >
                   <Camera className="mr-2 h-5 w-5" />
                   Capture Photos
                 </Button>
               )}
-              <Button onClick={handleComplete} variant="outline" size="lg" className="w-full bg-transparent">
+              <Button
+                onClick={handleComplete}
+                variant="outline"
+                size="lg"
+                className="w-full min-h-[48px] text-base bg-transparent"
+              >
                 <CheckCircle className="mr-2 h-5 w-5" />
                 Complete Task
               </Button>
-              <Button onClick={() => setIssueModalOpen(true)} variant="destructive" size="lg" className="w-full">
+              <Button
+                onClick={() => setIssueModalOpen(true)}
+                variant="destructive"
+                size="lg"
+                className="w-full min-h-[48px] text-base"
+              >
                 <AlertTriangle className="mr-2 h-5 w-5" />
                 Raise Issue!
               </Button>
@@ -559,9 +601,9 @@ function MaintenanceTaskPage({ params }: MaintenanceTaskPageProps) {
           )}
 
           {isCompleted && (
-            <div className="text-center py-8">
-              <CheckCircle className="h-16 w-16 text-primary mx-auto mb-4" />
-              <p className="text-lg font-medium">Task Completed</p>
+            <div className="text-center py-6 sm:py-8">
+              <CheckCircle className="h-12 w-12 sm:h-16 sm:w-16 text-primary mx-auto mb-3 sm:mb-4" />
+              <p className="text-base sm:text-lg font-medium">Task Completed</p>
               <p className="text-sm text-muted-foreground">Completed in {Math.floor(elapsedTime / 60)} minutes</p>
             </div>
           )}

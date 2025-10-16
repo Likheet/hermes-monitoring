@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { ArrowLeft, Clock, CheckCircle2, XCircle, AlertCircle } from "lucide-react"
-import { formatDistanceToNow } from "date-fns"
+import { formatDistanceToNow } from "@/lib/date-utils"
 import { cn } from "@/lib/utils"
 
 function TasksPage() {

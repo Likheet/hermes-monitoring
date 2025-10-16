@@ -59,51 +59,56 @@ function AssignmentsHistory() {
 
   return (
     <div className="min-h-screen bg-muted/30">
-      <header className="border-b bg-background">
-        <div className="container mx-auto flex items-center gap-4 px-4 py-4">
-          <Button variant="ghost" size="icon" onClick={() => router.push("/front-office")}>
+      <header className="border-b bg-background sticky top-0 z-40">
+        <div className="container mx-auto flex items-center gap-2 sm:gap-4 px-3 sm:px-4 py-3 sm:py-4">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => router.push("/front-office")}
+            className="shrink-0 min-h-[44px] min-w-[44px]"
+          >
             <ArrowLeft className="h-5 w-5" />
           </Button>
-          <div>
-            <h1 className="text-2xl font-bold">My Assignments</h1>
-            <p className="text-sm text-muted-foreground">Tasks you have assigned</p>
+          <div className="min-w-0 flex-1">
+            <h1 className="text-xl sm:text-2xl font-bold">My Assignments</h1>
+            <p className="text-xs sm:text-sm text-muted-foreground">Tasks you have assigned</p>
           </div>
         </div>
       </header>
 
-      <main className="container mx-auto px-4 py-6 space-y-6">
+      <main className="container mx-auto px-3 sm:px-4 py-4 sm:py-6 space-y-4 sm:space-y-6">
         {/* Stats Cards */}
-        <div className="grid gap-4 md:grid-cols-4">
+        <div className="grid gap-3 sm:gap-4 grid-cols-2 lg:grid-cols-4">
           <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Total Assigned</CardTitle>
+            <CardHeader className="pb-2 sm:pb-3">
+              <CardTitle className="text-xs sm:text-sm font-medium text-muted-foreground">Total Assigned</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{stats.total}</div>
+              <div className="text-xl sm:text-2xl font-bold">{stats.total}</div>
             </CardContent>
           </Card>
           <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Pending</CardTitle>
+            <CardHeader className="pb-2 sm:pb-3">
+              <CardTitle className="text-xs sm:text-sm font-medium text-muted-foreground">Pending</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-yellow-600">{stats.pending}</div>
+              <div className="text-xl sm:text-2xl font-bold text-yellow-600">{stats.pending}</div>
             </CardContent>
           </Card>
           <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-muted-foreground">In Progress</CardTitle>
+            <CardHeader className="pb-2 sm:pb-3">
+              <CardTitle className="text-xs sm:text-sm font-medium text-muted-foreground">In Progress</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-blue-600">{stats.inProgress}</div>
+              <div className="text-xl sm:text-2xl font-bold text-blue-600">{stats.inProgress}</div>
             </CardContent>
           </Card>
           <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Completed</CardTitle>
+            <CardHeader className="pb-2 sm:pb-3">
+              <CardTitle className="text-xs sm:text-sm font-medium text-muted-foreground">Completed</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-green-600">{stats.completed}</div>
+              <div className="text-xl sm:text-2xl font-bold text-green-600">{stats.completed}</div>
             </CardContent>
           </Card>
         </div>
@@ -111,7 +116,7 @@ function AssignmentsHistory() {
         {/* Assignments List */}
         <Card>
           <CardHeader>
-            <CardTitle>Assignment History</CardTitle>
+            <CardTitle className="text-base sm:text-lg">Assignment History</CardTitle>
           </CardHeader>
           <CardContent>
             {myAssignments.length > 0 ? (
@@ -122,61 +127,67 @@ function AssignmentsHistory() {
                   return (
                     <div
                       key={task.id}
-                      className="flex items-start justify-between gap-4 p-4 border rounded-lg hover:bg-muted/50 transition-colors"
+                      className="flex flex-col sm:flex-row items-start justify-between gap-3 sm:gap-4 p-3 sm:p-4 border rounded-lg hover:bg-muted/50 transition-colors"
                     >
-                      <div className="flex-1 space-y-2">
+                      <div className="flex-1 space-y-2 w-full min-w-0">
                         <div className="flex items-start justify-between gap-2">
-                          <h3 className="font-semibold">{task.custom_task_name || task.task_type}</h3>
-                          <Badge className={`${priorityColors[task.priority_level]} text-xs`} variant="secondary">
+                          <h3 className="font-semibold text-sm sm:text-base leading-tight">
+                            {task.custom_task_name || task.task_type}
+                          </h3>
+                          <Badge
+                            className={`${priorityColors[task.priority_level]} text-xs shrink-0`}
+                            variant="secondary"
+                          >
                             {task.priority_level.replace(/_/g, " ")}
                           </Badge>
                         </div>
 
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm text-muted-foreground">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs sm:text-sm text-muted-foreground">
                           <div className="flex items-center gap-2">
-                            <MapPin className="h-4 w-4" />
-                            <span>{task.room_number}</span>
+                            <MapPin className="h-3 w-3 sm:h-4 sm:w-4 shrink-0" />
+                            <span className="truncate">{task.room_number}</span>
                           </div>
                           <div className="flex items-center gap-2">
-                            <User className="h-4 w-4" />
-                            <span>{getWorkerName(task.assigned_to_user_id)}</span>
+                            <User className="h-3 w-3 sm:h-4 sm:w-4 shrink-0" />
+                            <span className="truncate">{getWorkerName(task.assigned_to_user_id)}</span>
                           </div>
                           <div className="flex items-center gap-2">
-                            <Clock className="h-4 w-4" />
+                            <Clock className="h-3 w-3 sm:h-4 sm:w-4 shrink-0" />
                             <span>{task.expected_duration_minutes} min</span>
                           </div>
                           <div className="flex items-center gap-2">
-                            <CalendarClock className="h-4 w-4" />
-                            <span>{formatFullTimestamp(task.assigned_at)}</span>
+                            <CalendarClock className="h-3 w-3 sm:h-4 sm:w-4 shrink-0" />
+                            <span className="truncate">{formatFullTimestamp(task.assigned_at)}</span>
                           </div>
                         </div>
 
                         <div className="flex items-center gap-2">
-                          <div className={`h-2 w-2 rounded-full ${statusColors[task.status]}`} />
-                          <span className="text-sm font-medium">{task.status.replace(/_/g, " ")}</span>
+                          <div className={`h-2 w-2 rounded-full ${statusColors[task.status]} shrink-0`} />
+                          <span className="text-xs sm:text-sm font-medium">{task.status.replace(/_/g, " ")}</span>
                         </div>
                       </div>
                       {task.status === "PENDING" && (
-                        <div className="flex gap-2 shrink-0">
+                        <div className="flex gap-2 w-full sm:w-auto shrink-0">
                           {isOtherTask && (
                             <Button
                               variant="outline"
                               size="sm"
                               onClick={() => setEditTask(task)}
-                              className="min-h-[44px]"
+                              className="flex-1 sm:flex-none min-h-[44px]"
                             >
-                              <Edit2 className="h-4 w-4 mr-2" />
-                              Edit
+                              <Edit2 className="h-4 w-4 sm:mr-2" />
+                              <span className="hidden sm:inline">Edit</span>
                             </Button>
                           )}
                           <Button
                             variant="outline"
                             size="sm"
                             onClick={() => setReassignTask(task)}
-                            className="min-h-[44px]"
+                            className="flex-1 sm:flex-none min-h-[44px]"
                           >
-                            <Edit className="h-4 w-4 mr-2" />
-                            Re-assign
+                            <Edit className="h-4 w-4 sm:mr-2" />
+                            <span className="hidden sm:inline">Re-assign</span>
+                            <span className="sm:hidden">Reassign</span>
                           </Button>
                         </div>
                       )}
@@ -186,7 +197,7 @@ function AssignmentsHistory() {
               </div>
             ) : (
               <div className="flex min-h-[200px] items-center justify-center">
-                <p className="text-muted-foreground">No assignments yet</p>
+                <p className="text-sm text-muted-foreground">No assignments yet</p>
               </div>
             )}
           </CardContent>

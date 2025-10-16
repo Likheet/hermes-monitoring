@@ -244,41 +244,53 @@ function AdminDashboard() {
 
   return (
     <div className="min-h-screen bg-muted/30">
-      <header className="border-b bg-background">
-        <div className="container mx-auto flex items-center justify-between px-4 py-4">
-          <div>
-            <h1 className="text-2xl font-bold">Admin Dashboard</h1>
-            <p className="text-sm text-muted-foreground">{user?.name}</p>
+      <header className="border-b bg-background sticky top-0 z-40">
+        <div className="container mx-auto px-3 sm:px-4 py-3 sm:py-4 space-y-3 sm:space-y-0">
+          <div className="flex items-center justify-between gap-2">
+            <div className="min-w-0 flex-1">
+              <h1 className="text-xl sm:text-2xl font-bold">Admin Dashboard</h1>
+              <p className="text-xs sm:text-sm text-muted-foreground truncate">{user?.name}</p>
+            </div>
+            <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+              <ConnectionStatus isConnected={isConnected} />
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleLogout}
+                className="min-h-[44px] min-w-[44px] px-2 sm:px-3 bg-transparent"
+              >
+                <LogOut className="h-4 w-4 sm:mr-2" />
+                <span className="hidden sm:inline">Logout</span>
+              </Button>
+            </div>
           </div>
-          <div className="flex items-center gap-2">
-            <ConnectionStatus isConnected={isConnected} />
-            <Link href="/admin/maintenance-schedule">
-              <Button variant="outline">
+          <div className="flex gap-2 overflow-x-auto pb-2 -mx-3 px-3 sm:mx-0 sm:px-0 sm:pb-0">
+            <Link href="/admin/maintenance-schedule" className="shrink-0">
+              <Button variant="outline" size="sm" className="min-h-[44px] whitespace-nowrap bg-transparent">
                 <Calendar className="mr-2 h-4 w-4" />
-                Maintenance Schedule
+                <span className="hidden sm:inline">Maintenance Schedule</span>
+                <span className="sm:hidden">Schedule</span>
               </Button>
             </Link>
-            <Link href="/admin/task-management">
-              <Button variant="outline">
+            <Link href="/admin/task-management" className="shrink-0">
+              <Button variant="outline" size="sm" className="min-h-[44px] whitespace-nowrap bg-transparent">
                 <ClipboardList className="mr-2 h-4 w-4" />
-                Task Management
+                <span className="hidden sm:inline">Task Management</span>
+                <span className="sm:hidden">Tasks</span>
               </Button>
             </Link>
-            <Link href="/admin/add-worker">
-              <Button>
+            <Link href="/admin/add-worker" className="shrink-0">
+              <Button size="sm" className="min-h-[44px] whitespace-nowrap">
                 <UserPlus className="mr-2 h-4 w-4" />
-                Add Worker
+                <span className="hidden sm:inline">Add Worker</span>
+                <span className="sm:hidden">Add</span>
               </Button>
             </Link>
-            <Button variant="outline" size="sm" onClick={handleLogout}>
-              <LogOut className="mr-2 h-4 w-4" />
-              Logout
-            </Button>
           </div>
         </div>
       </header>
 
-      <main className="container mx-auto px-4 py-6 space-y-6">
+      <main className="container mx-auto px-3 sm:px-4 py-4 sm:py-6 space-y-4 sm:space-y-6">
         {recentCustomTasks.length > 0 && (
           <section>
             <Card className="border-accent">
@@ -340,8 +352,8 @@ function AdminDashboard() {
         )}
 
         <section>
-          <h2 className="text-lg font-semibold mb-4">System Overview</h2>
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          <h2 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4">System Overview</h2>
+          <div className="grid gap-3 sm:gap-4 grid-cols-2 lg:grid-cols-4">
             <StatsCard title="Total Tasks" value={totalTasks} icon={ClipboardList} />
             <StatsCard
               title="In Progress"
@@ -365,8 +377,8 @@ function AdminDashboard() {
         </section>
 
         <section>
-          <h2 className="text-lg font-semibold mb-4">Worker Status</h2>
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          <h2 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4">Worker Status</h2>
+          <div className="grid gap-3 sm:gap-4 grid-cols-2 lg:grid-cols-4">
             <StatsCard
               title="Available Workers"
               value={availableWorkers.length}
@@ -392,10 +404,14 @@ function AdminDashboard() {
         </section>
 
         <Tabs defaultValue="workers" className="space-y-4">
-          <TabsList>
-            <TabsTrigger value="workers">Staff</TabsTrigger>
-            <TabsTrigger value="audit">Audit Logs</TabsTrigger>
-            <TabsTrigger value="discrepancy">
+          <TabsList className="w-full justify-start overflow-x-auto">
+            <TabsTrigger value="workers" className="whitespace-nowrap">
+              Staff
+            </TabsTrigger>
+            <TabsTrigger value="audit" className="whitespace-nowrap">
+              Audit Logs
+            </TabsTrigger>
+            <TabsTrigger value="discrepancy" className="whitespace-nowrap">
               Discrepancy
               {discrepancyTasks.length > 0 && (
                 <span className="ml-2 px-2 py-0.5 text-xs bg-red-500 text-white rounded-full">
@@ -403,7 +419,7 @@ function AdminDashboard() {
                 </span>
               )}
             </TabsTrigger>
-            <TabsTrigger value="custom">
+            <TabsTrigger value="custom" className="whitespace-nowrap">
               Custom Tasks
               {customTasks.length > 0 && (
                 <span className="ml-2 px-2 py-0.5 text-xs bg-accent text-accent-foreground rounded-full">
@@ -416,10 +432,10 @@ function AdminDashboard() {
           <TabsContent value="workers" className="space-y-4">
             <Card>
               <CardHeader>
-                <div className="flex items-center justify-between">
-                  <CardTitle>Staff Performance Overview</CardTitle>
-                  <div className="flex items-center gap-2">
-                    <CalendarRange className="h-4 w-4 text-muted-foreground" />
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                  <CardTitle className="text-base sm:text-lg">Staff Performance Overview</CardTitle>
+                  <div className="flex items-center gap-2 w-full sm:w-auto">
+                    <CalendarRange className="h-4 w-4 text-muted-foreground shrink-0" />
                     <select
                       value={timeRange}
                       onChange={(e) => {
@@ -431,7 +447,7 @@ function AdminDashboard() {
                           setShowCustomDatePicker(false)
                         }
                       }}
-                      className="px-3 py-1.5 text-sm border border-border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring"
+                      className="flex-1 sm:flex-none px-3 py-1.5 text-sm border border-border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring min-h-[44px]"
                     >
                       <option value="week">This Week</option>
                       <option value="month">This Month</option>
@@ -441,93 +457,95 @@ function AdminDashboard() {
                   </div>
                 </div>
                 {showCustomDatePicker && (
-                  <div className="flex items-center gap-2 mt-3">
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 mt-3">
                     <input
                       type="date"
                       value={customStartDate}
                       onChange={(e) => setCustomStartDate(e.target.value)}
-                      className="px-3 py-1.5 text-sm border border-border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring"
+                      className="flex-1 px-3 py-1.5 text-sm border border-border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring min-h-[44px]"
                     />
-                    <span className="text-sm text-muted-foreground">to</span>
+                    <span className="text-sm text-muted-foreground text-center sm:text-left">to</span>
                     <input
                       type="date"
                       value={customEndDate}
                       onChange={(e) => setCustomEndDate(e.target.value)}
-                      className="px-3 py-1.5 text-sm border border-border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring"
+                      className="flex-1 px-3 py-1.5 text-sm border border-border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring min-h-[44px]"
                     />
                   </div>
                 )}
               </CardHeader>
               <CardContent>
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead>
-                      <tr className="border-b">
-                        <th className="text-left py-3 px-2 font-medium">Worker Name</th>
-                        <th className="text-right py-3 px-2 font-medium">Shift Hrs</th>
-                        <th className="text-right py-3 px-2 font-medium">Worked</th>
-                        <th className="text-right py-3 px-2 font-medium">Idle Time</th>
-                        <th className="text-right py-3 px-2 font-medium">Discrepancy</th>
-                        <th className="text-right py-3 px-2 font-medium">Rating</th>
-                        <th className="text-center py-3 px-2 font-medium">Status</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {workers.map((worker) => {
-                        const performance = calculateWorkerPerformance(worker.id)
-                        const currentTask = getWorkerCurrentTask(worker.id)
-                        const stats = getWorkerStats(worker.id)
+                <div className="overflow-x-auto -mx-3 sm:mx-0">
+                  <div className="inline-block min-w-full align-middle">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b">
+                          <th className="text-left py-3 px-2 font-medium whitespace-nowrap">Worker Name</th>
+                          <th className="text-right py-3 px-2 font-medium whitespace-nowrap">Shift Hrs</th>
+                          <th className="text-right py-3 px-2 font-medium whitespace-nowrap">Worked</th>
+                          <th className="text-right py-3 px-2 font-medium whitespace-nowrap">Idle Time</th>
+                          <th className="text-right py-3 px-2 font-medium whitespace-nowrap">Discrepancy</th>
+                          <th className="text-right py-3 px-2 font-medium whitespace-nowrap">Rating</th>
+                          <th className="text-center py-3 px-2 font-medium whitespace-nowrap">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {workers.map((worker) => {
+                          const performance = calculateWorkerPerformance(worker.id)
+                          const currentTask = getWorkerCurrentTask(worker.id)
+                          const stats = getWorkerStats(worker.id)
 
-                        if (!performance) return null
+                          if (!performance) return null
 
-                        return (
-                          <tr key={worker.id} className="border-b hover:bg-muted/50">
-                            <td className="py-3 px-2">
-                              <div>
-                                <p className="font-medium">{worker.name}</p>
-                                <p className="text-xs text-muted-foreground">{worker.department}</p>
-                              </div>
-                            </td>
-                            <td className="text-right py-3 px-2">{performance.shiftHours}h</td>
-                            <td className="text-right py-3 px-2 text-green-600 font-medium">
-                              {performance.actualWorkHours}h
-                            </td>
-                            <td className="text-right py-3 px-2 text-orange-600">{performance.idleHours}h</td>
-                            <td className="text-right py-3 px-2">
-                              <span
-                                className={`font-medium ${
-                                  Number.parseFloat(performance.discrepancyPercent) > 50
-                                    ? "text-red-600"
-                                    : Number.parseFloat(performance.discrepancyPercent) > 30
-                                      ? "text-orange-600"
-                                      : "text-green-600"
-                                }`}
-                              >
-                                {performance.discrepancyPercent}%
-                              </span>
-                            </td>
-                            <td className="text-right py-3 px-2">
-                              {performance.avgRating !== "N/A" ? (
-                                <span className="font-medium">
-                                  {performance.avgRating} ⭐
-                                  <span className="text-xs text-muted-foreground ml-1">
-                                    ({performance.totalRatings})
-                                  </span>
+                          return (
+                            <tr key={worker.id} className="border-b hover:bg-muted/50">
+                              <td className="py-3 px-2">
+                                <div>
+                                  <p className="font-medium">{worker.name}</p>
+                                  <p className="text-xs text-muted-foreground">{worker.department}</p>
+                                </div>
+                              </td>
+                              <td className="text-right py-3 px-2">{performance.shiftHours}h</td>
+                              <td className="text-right py-3 px-2 text-green-600 font-medium">
+                                {performance.actualWorkHours}h
+                              </td>
+                              <td className="text-right py-3 px-2 text-orange-600">{performance.idleHours}h</td>
+                              <td className="text-right py-3 px-2">
+                                <span
+                                  className={`font-medium ${
+                                    Number.parseFloat(performance.discrepancyPercent) > 50
+                                      ? "text-red-600"
+                                      : Number.parseFloat(performance.discrepancyPercent) > 30
+                                        ? "text-orange-600"
+                                        : "text-green-600"
+                                  }`}
+                                >
+                                  {performance.discrepancyPercent}%
                                 </span>
-                              ) : (
-                                <span className="text-muted-foreground">N/A</span>
-                              )}
-                            </td>
-                            <td className="text-center py-3 px-2">
-                              <Badge variant={currentTask ? "default" : "secondary"} className="text-xs">
-                                {currentTask ? "Working" : "Available"}
-                              </Badge>
-                            </td>
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
+                              </td>
+                              <td className="text-right py-3 px-2">
+                                {performance.avgRating !== "N/A" ? (
+                                  <span className="font-medium">
+                                    {performance.avgRating} ⭐
+                                    <span className="text-xs text-muted-foreground ml-1">
+                                      ({performance.totalRatings})
+                                    </span>
+                                  </span>
+                                ) : (
+                                  <span className="text-muted-foreground">N/A</span>
+                                )}
+                              </td>
+                              <td className="text-center py-3 px-2">
+                                <Badge variant={currentTask ? "default" : "secondary"} className="text-xs">
+                                  {currentTask ? "Working" : "Available"}
+                                </Badge>
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               </CardContent>
             </Card>

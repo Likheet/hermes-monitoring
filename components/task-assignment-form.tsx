@@ -160,28 +160,31 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers }: TaskAs
   }
 
   return (
-    <div className="mt-6 p-6 bg-card border-2 border-border rounded-xl">
-      {/* Header */}
-      <div className="flex items-start justify-between mb-6">
-        <div className="flex-1">
-          <div className="flex items-center gap-3 mb-2">
-            <h2 className="text-xl font-bold text-foreground">{task.name}</h2>
+    <div className="mt-4 sm:mt-6 p-4 sm:p-6 bg-card border-2 border-border rounded-xl">
+      <div className="flex items-start justify-between mb-4 sm:mb-6 gap-3">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 sm:gap-3 mb-2 flex-wrap">
+            <h2 className="text-lg sm:text-xl font-bold text-foreground truncate">{task.name}</h2>
             <span
-              className={`px-3 py-1 rounded-lg border text-sm font-medium ${CATEGORY_COLORS[isOtherTask ? customCategory : task.category]}`}
+              className={`px-2 sm:px-3 py-1 rounded-lg border text-xs sm:text-sm font-medium shrink-0 ${CATEGORY_COLORS[isOtherTask ? customCategory : task.category]}`}
             >
               {CATEGORY_LABELS[isOtherTask ? customCategory : task.category]}
             </span>
           </div>
-          <p className="text-sm text-muted-foreground">
+          <p className="text-xs sm:text-sm text-muted-foreground">
             Department: <span className="font-medium capitalize">{selectedDepartment}</span>
           </p>
         </div>
-        <button onClick={onCancel} className="p-2 hover:bg-muted rounded-lg transition-colors" aria-label="Cancel">
+        <button
+          onClick={onCancel}
+          className="p-2 hover:bg-muted rounded-lg transition-colors shrink-0 min-h-[44px] min-w-[44px] flex items-center justify-center"
+          aria-label="Cancel"
+        >
           <X className="w-5 h-5 text-muted-foreground" />
         </button>
       </div>
 
-      <div className="space-y-5">
+      <div className="space-y-4 sm:space-y-5">
         {isOtherTask && (
           <div>
             <label className="block text-sm font-semibold text-foreground mb-2">
@@ -193,14 +196,14 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers }: TaskAs
               onChange={(e) => setCustomTaskName(e.target.value)}
               placeholder="Enter custom task name..."
               maxLength={100}
-              className={`w-full px-4 py-3 border-2 rounded-lg focus:border-ring focus:outline-none bg-background text-foreground ${
+              className={`w-full px-3 sm:px-4 py-2.5 sm:py-3 text-sm sm:text-base border-2 rounded-lg focus:border-ring focus:outline-none bg-background text-foreground ${
                 errors.customTaskName ? "border-destructive" : "border-border"
               }`}
             />
             {errors.customTaskName && (
-              <p className="mt-1 text-sm text-destructive flex items-center gap-1">
-                <AlertCircle className="w-4 h-4" />
-                {errors.customTaskName}
+              <p className="mt-1 text-xs sm:text-sm text-destructive flex items-center gap-1">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{errors.customTaskName}</span>
               </p>
             )}
             <p className="mt-1 text-xs text-muted-foreground">
@@ -317,15 +320,15 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers }: TaskAs
               step="5"
               value={duration}
               onChange={(e) => setDuration(Number(e.target.value))}
-              className={`w-full pl-11 pr-4 py-3 border-2 rounded-lg focus:border-ring focus:outline-none bg-background text-foreground ${
+              className={`w-full pl-10 sm:pl-11 pr-3 sm:pr-4 py-2.5 sm:py-3 text-sm sm:text-base border-2 rounded-lg focus:border-ring focus:outline-none bg-background text-foreground ${
                 errors.duration ? "border-destructive" : "border-border"
               }`}
             />
           </div>
           {errors.duration && (
-            <p className="mt-1 text-sm text-destructive flex items-center gap-1">
-              <AlertCircle className="w-4 h-4" />
-              {errors.duration}
+            <p className="mt-1 text-xs sm:text-sm text-destructive flex items-center gap-1">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              <span>{errors.duration}</span>
             </p>
           )}
         </div>
@@ -470,17 +473,16 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers }: TaskAs
           </div>
         </div>
 
-        {/* Action Buttons */}
-        <div className="flex gap-3 pt-2">
+        <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 pt-2">
           <button
             onClick={onCancel}
-            className="flex-1 px-6 py-3 border-2 border-border text-foreground font-semibold rounded-lg hover:bg-muted transition-colors"
+            className="w-full sm:flex-1 px-4 sm:px-6 py-3 min-h-[48px] text-sm sm:text-base border-2 border-border text-foreground font-semibold rounded-lg hover:bg-muted transition-colors"
           >
             Cancel
           </button>
           <button
             onClick={handleSubmit}
-            className="flex-1 px-6 py-3 bg-primary text-primary-foreground font-semibold rounded-lg hover:bg-primary/90 transition-colors"
+            className="w-full sm:flex-1 px-4 sm:px-6 py-3 min-h-[48px] text-sm sm:text-base bg-primary text-primary-foreground font-semibold rounded-lg hover:bg-primary/90 transition-colors"
           >
             Assign Task
           </button>

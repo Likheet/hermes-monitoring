@@ -192,18 +192,18 @@ export function RatingModal({ open, onOpenChange, onSubmit, taskId }: RatingModa
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Rate Task Quality</DialogTitle>
-          <DialogDescription>
+      <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto p-4 sm:p-6">
+        <DialogHeader className="space-y-2">
+          <DialogTitle className="text-lg sm:text-xl">Rate Task Quality</DialogTitle>
+          <DialogDescription className="text-sm">
             Rate the quality of work completed. Ratings below 5 stars require photo proof.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-6 py-4">
           <div className="space-y-2">
-            <Label>Quality Rating</Label>
-            <div className="flex gap-2 justify-center">
+            <Label className="text-sm sm:text-base">Quality Rating</Label>
+            <div className="flex gap-1 sm:gap-2 justify-center">
               {[1, 2, 3, 4, 5].map((star) => (
                 <button
                   key={star}
@@ -211,10 +211,10 @@ export function RatingModal({ open, onOpenChange, onSubmit, taskId }: RatingModa
                   onClick={() => setRating(star)}
                   onMouseEnter={() => setHoveredRating(star)}
                   onMouseLeave={() => setHoveredRating(0)}
-                  className="transition-transform hover:scale-110"
+                  className="transition-transform hover:scale-110 active:scale-95 touch-manipulation p-1"
                 >
                   <Star
-                    className={`h-10 w-10 ${
+                    className={`h-8 w-8 sm:h-10 sm:w-10 ${
                       star <= (hoveredRating || rating) ? "fill-yellow-400 text-yellow-400" : "text-gray-300"
                     }`}
                   />
@@ -227,25 +227,29 @@ export function RatingModal({ open, onOpenChange, onSubmit, taskId }: RatingModa
           </div>
 
           <div className="space-y-2">
-            <Label>Quality Comment</Label>
+            <Label className="text-sm sm:text-base">Quality Comment</Label>
             <Textarea
               placeholder="Add comments about the work quality..."
               value={qualityComment}
               onChange={(e) => setQualityComment(e.target.value)}
               rows={3}
-              className="resize-none"
+              className="resize-none text-base min-h-[80px]"
             />
           </div>
 
           {rating > 0 && rating < 5 && (
             <div className="space-y-2">
-              <Label className="text-destructive">Proof Required (Rating below 5 stars)</Label>
+              <Label className="text-destructive text-sm sm:text-base">Proof Required (Rating below 5 stars)</Label>
               <p className="text-sm text-muted-foreground">
                 Please attach a photo showing the issue that prevented a 5-star rating
               </p>
 
               {!proofPhoto && !showCamera && (
-                <Button onClick={startCamera} variant="outline" className="w-full bg-transparent">
+                <Button
+                  onClick={startCamera}
+                  variant="outline"
+                  className="w-full bg-transparent min-h-[48px] touch-manipulation"
+                >
                   <Camera className="mr-2 h-4 w-4" />
                   Take Proof Photo
                 </Button>
@@ -253,13 +257,26 @@ export function RatingModal({ open, onOpenChange, onSubmit, taskId }: RatingModa
 
               {showCamera && (
                 <div className="space-y-2">
-                  <video ref={videoRef} autoPlay playsInline className="w-full rounded-lg bg-black" />
+                  <video
+                    ref={videoRef}
+                    autoPlay
+                    playsInline
+                    className="w-full rounded-lg bg-black max-h-[40vh] object-contain"
+                  />
                   <div className="flex gap-2">
-                    <Button onClick={capturePhoto} disabled={uploading} className="flex-1">
+                    <Button
+                      onClick={capturePhoto}
+                      disabled={uploading}
+                      className="flex-1 min-h-[48px] touch-manipulation"
+                    >
                       <Camera className="mr-2 h-4 w-4" />
                       {uploading ? "Uploading..." : "Capture"}
                     </Button>
-                    <Button onClick={stopCamera} variant="outline">
+                    <Button
+                      onClick={stopCamera}
+                      variant="outline"
+                      className="min-h-[48px] touch-manipulation bg-transparent"
+                    >
                       Cancel
                     </Button>
                   </div>
@@ -268,11 +285,15 @@ export function RatingModal({ open, onOpenChange, onSubmit, taskId }: RatingModa
 
               {proofPhoto && (
                 <div className="relative">
-                  <img src={proofPhoto || "/placeholder.svg"} alt="Proof" className="w-full rounded-lg" />
+                  <img
+                    src={proofPhoto || "/placeholder.svg"}
+                    alt="Proof"
+                    className="w-full rounded-lg max-h-[40vh] object-contain"
+                  />
                   <Button
                     size="icon"
                     variant="destructive"
-                    className="absolute top-2 right-2"
+                    className="absolute top-2 right-2 h-9 w-9 sm:h-8 sm:w-8 shadow-lg"
                     onClick={() => setProofPhoto(null)}
                   >
                     <X className="h-4 w-4" />
@@ -283,11 +304,19 @@ export function RatingModal({ open, onOpenChange, onSubmit, taskId }: RatingModa
           )}
         </div>
 
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
+        <DialogFooter className="flex-col sm:flex-row gap-2">
+          <Button
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            className="w-full sm:w-auto min-h-[48px] touch-manipulation"
+          >
             Cancel
           </Button>
-          <Button onClick={handleSubmit} disabled={uploading}>
+          <Button
+            onClick={handleSubmit}
+            disabled={uploading}
+            className="w-full sm:w-auto min-h-[48px] touch-manipulation"
+          >
             Submit Rating
           </Button>
         </DialogFooter>

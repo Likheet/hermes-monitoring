@@ -10,8 +10,7 @@ import { Badge } from "@/components/ui/badge"
 import { ArrowLeft, Award, Clock, CheckCircle2, TrendingUp, Star, XCircle, AlertTriangle } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { BottomNav } from "@/components/mobile/bottom-nav"
-import { calculateDuration, formatShiftRange } from "@/lib/date-utils"
-import { formatDistanceToNow, startOfMonth, endOfMonth } from "date-fns"
+import { calculateDuration, formatShiftRange, formatDistanceToNow, startOfMonth, endOfMonth } from "@/lib/date-utils"
 import { useEffect } from "react"
 
 function ProfilePage() {
@@ -171,42 +170,45 @@ function ProfilePage() {
   return (
     <div className="min-h-screen bg-muted/30 pb-20 md:pb-0">
       <header className="border-b bg-background sticky top-0 z-40">
-        <div className="container mx-auto flex items-center gap-4 px-4 py-4">
-          <Button variant="ghost" size="icon" onClick={() => router.back()} className="min-h-[44px] min-w-[44px]">
+        <div className="container mx-auto flex items-center gap-3 sm:gap-4 px-3 sm:px-4 py-3 sm:py-4">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => router.back()}
+            className="min-h-[44px] min-w-[44px] shrink-0"
+          >
             <ArrowLeft className="h-5 w-5" />
           </Button>
-          <h1 className="text-xl md:text-2xl font-bold">Profile</h1>
+          <h1 className="text-lg sm:text-xl md:text-2xl font-bold">Profile</h1>
         </div>
       </header>
 
-      <main className="container mx-auto px-4 py-6 space-y-6">
+      <main className="container mx-auto px-3 sm:px-4 py-4 sm:py-6 space-y-4 sm:space-y-6">
         <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-start gap-4">
-              <Avatar className="h-20 w-20">
-                <AvatarFallback className="text-2xl">{initials}</AvatarFallback>
+          <CardContent className="pt-4 sm:pt-6">
+            <div className="flex flex-col sm:flex-row items-start gap-4">
+              <Avatar className="h-16 w-16 sm:h-20 sm:w-20 shrink-0">
+                <AvatarFallback className="text-xl sm:text-2xl">{initials}</AvatarFallback>
               </Avatar>
-              <div className="flex-1">
-                <h2 className="text-2xl font-bold">{user?.name}</h2>
-                <p className="text-muted-foreground">{user?.role}</p>
-                <div className="flex items-center gap-2 mt-2">
-                  <Badge variant="secondary">{user?.department}</Badge>
-                  <div className="flex justify-between">
-                    <span className="text-sm text-muted-foreground">{user?.phone || "Not set"}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-sm text-muted-foreground">
-                      {user?.shift_start && user?.shift_end
-                        ? formatShiftRange(user.shift_start, user.shift_end)
-                        : "Not set"}
-                    </span>
-                  </div>
+              <div className="flex-1 min-w-0 w-full sm:w-auto">
+                <h2 className="text-xl sm:text-2xl font-bold truncate">{user?.name}</h2>
+                <p className="text-sm sm:text-base text-muted-foreground truncate">{user?.role}</p>
+                <div className="flex flex-wrap items-center gap-2 mt-2">
+                  <Badge variant="secondary" className="text-xs sm:text-sm">
+                    {user?.department}
+                  </Badge>
+                  <span className="text-xs sm:text-sm text-muted-foreground truncate">{user?.phone || "Not set"}</span>
+                  <span className="text-xs sm:text-sm text-muted-foreground truncate">
+                    {user?.shift_start && user?.shift_end
+                      ? formatShiftRange(user.shift_start, user.shift_end)
+                      : "Not set"}
+                  </span>
                 </div>
               </div>
-              <div className="flex flex-col items-end gap-2">
+              <div className="flex flex-col items-start sm:items-end gap-2 w-full sm:w-auto">
                 <Badge
                   variant={isOverQuota ? "destructive" : quotaRemaining <= 2 ? "outline" : "secondary"}
-                  className={`text-sm font-semibold ${
+                  className={`text-xs sm:text-sm font-semibold ${
                     isOverQuota
                       ? "bg-red-100 text-red-900 border-red-300"
                       : quotaRemaining <= 2
@@ -216,22 +218,20 @@ function ProfilePage() {
                 >
                   {rejectedThisMonth}/{REJECTION_QUOTA} Rejections
                 </Badge>
-                {isOverQuota && (
-                  <span className="text-xs text-red-600 font-medium text-right">Retraining Required</span>
-                )}
+                {isOverQuota && <span className="text-xs text-red-600 font-medium">Retraining Required</span>}
                 {!isOverQuota && quotaRemaining <= 2 && (
-                  <span className="text-xs text-orange-600 font-medium text-right">{quotaRemaining} remaining</span>
+                  <span className="text-xs text-orange-600 font-medium">{quotaRemaining} remaining</span>
                 )}
               </div>
             </div>
           </CardContent>
         </Card>
 
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Total Tasks</CardTitle>
-              <CheckCircle2 className="h-4 w-4 text-muted-foreground" />
+              <CheckCircle2 className="h-4 w-4 text-muted-foreground shrink-0" />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{totalTasks}</div>
@@ -242,7 +242,7 @@ function ProfilePage() {
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Completion Rate</CardTitle>
-              <TrendingUp className="h-4 w-4 text-muted-foreground" />
+              <TrendingUp className="h-4 w-4 text-muted-foreground shrink-0" />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{completionRate}%</div>
@@ -253,7 +253,7 @@ function ProfilePage() {
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">On-Time Delivery</CardTitle>
-              <Award className="h-4 w-4 text-muted-foreground" />
+              <Award className="h-4 w-4 text-muted-foreground shrink-0" />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{onTimeRate}%</div>
@@ -264,7 +264,7 @@ function ProfilePage() {
           <Card>
             <CardHeader>
               <CardTitle className="text-sm font-medium">Avg. Time</CardTitle>
-              <Clock className="h-4 w-4 text-muted-foreground" />
+              <Clock className="h-4 w-4 text-muted-foreground shrink-0" />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{combinedAvgTime}m</div>
@@ -275,7 +275,7 @@ function ProfilePage() {
           <Card>
             <CardHeader>
               <CardTitle className="text-sm font-medium">Average Rating</CardTitle>
-              <Star className="h-4 w-4 text-muted-foreground" />
+              <Star className="h-4 w-4 text-muted-foreground shrink-0" />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{avgRating}</div>
@@ -286,7 +286,7 @@ function ProfilePage() {
           <Card>
             <CardHeader>
               <CardTitle className="text-sm font-medium">Issues</CardTitle>
-              <AlertTriangle className="h-4 w-4 text-muted-foreground" />
+              <AlertTriangle className="h-4 w-4 text-muted-foreground shrink-0" />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-red-600">{totalRejectedTasks}</div>
@@ -297,10 +297,10 @@ function ProfilePage() {
 
         {(completedTasks.length > 0 || myCompletedMaintenanceTasks.length > 0) && (
           <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center justify-between">
-                <span>Completed Tasks</span>
-                <Badge variant="secondary" className="text-sm">
+            <CardHeader className="pb-3 sm:pb-4">
+              <CardTitle className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+                <span className="text-base sm:text-lg">Completed Tasks</span>
+                <Badge variant="secondary" className="text-xs sm:text-sm">
                   {totalCompletedTasks} total
                 </Badge>
               </CardTitle>
@@ -309,22 +309,24 @@ function ProfilePage() {
               <div className="space-y-3">
                 {isMaintenanceWorker && myCompletedMaintenanceTasks.length > 0 && (
                   <>
-                    <div className="text-sm font-semibold text-muted-foreground mb-2">
+                    <div className="text-xs sm:text-sm font-semibold text-muted-foreground mb-2">
                       Scheduled Maintenance ({myCompletedMaintenanceTasks.length})
                     </div>
                     {myCompletedMaintenanceTasks.slice(0, 10).map((task) => (
                       <div
                         key={task.id}
-                        className="flex items-start justify-between gap-4 p-4 border-2 border-accent/30 rounded-lg bg-accent/10"
+                        className="flex items-start justify-between gap-3 sm:gap-4 p-3 sm:p-4 border-2 border-accent/30 rounded-lg bg-accent/10"
                       >
-                        <div className="flex-1 space-y-1">
+                        <div className="flex-1 space-y-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <h4 className="font-semibold text-base">{getMaintenanceTaskLabel(task.task_type)}</h4>
-                            <Badge variant="default" className="text-xs font-semibold">
+                            <h4 className="font-semibold text-sm sm:text-base truncate">
+                              {getMaintenanceTaskLabel(task.task_type)}
+                            </h4>
+                            <Badge variant="default" className="text-xs font-semibold shrink-0">
                               Maintenance
                             </Badge>
                           </div>
-                          <p className="text-sm font-medium text-muted-foreground">
+                          <p className="text-xs sm:text-sm font-medium text-muted-foreground truncate">
                             Room {task.room_number} • {task.location}
                           </p>
                           {task.completed_at && (
@@ -347,13 +349,16 @@ function ProfilePage() {
                 {completedTasks.length > 0 && (
                   <>
                     {isMaintenanceWorker && myCompletedMaintenanceTasks.length > 0 && (
-                      <div className="text-sm font-semibold text-muted-foreground mt-4 mb-2">
+                      <div className="text-sm sm:text-sm font-semibold text-muted-foreground mt-4 mb-2">
                         Regular Tasks ({completedTasks.length})
                       </div>
                     )}
                     {completedTasks.slice(0, 10).map((task) => (
-                      <div key={task.id} className="flex items-start justify-between gap-4 p-4 border rounded-lg">
-                        <div className="flex-1 space-y-1">
+                      <div
+                        key={task.id}
+                        className="flex items-start justify-between gap-3 sm:gap-4 p-3 sm:p-4 border rounded-lg"
+                      >
+                        <div className="flex-1 space-y-1 min-w-0">
                           <div className="flex items-center gap-2">
                             <h4 className="font-medium">{task.task_type}</h4>
                             {task.rating && (
@@ -363,14 +368,16 @@ function ProfilePage() {
                               </div>
                             )}
                           </div>
-                          <p className="text-sm text-muted-foreground">Room: {task.room_number}</p>
+                          <p className="text-sm sm:text-sm text-muted-foreground truncate">Room: {task.room_number}</p>
                           {task.completed_at && task.started_at && (
-                            <p className="text-xs text-muted-foreground">
+                            <p className="text-xs sm:text-sm text-muted-foreground">
                               Completed in {calculateDuration(task.started_at, task.completed_at)}
                             </p>
                           )}
                           {task.quality_comment && (
-                            <p className="text-sm text-muted-foreground italic">"{task.quality_comment}"</p>
+                            <p className="text-sm sm:text-sm text-muted-foreground italic truncate">
+                              "{task.quality_comment}"
+                            </p>
                           )}
                         </div>
                         <CheckCircle2 className="h-5 w-5 text-green-600 shrink-0" />
@@ -395,7 +402,7 @@ function ProfilePage() {
               <div className="space-y-3">
                 {rejectedMaintenanceTasks.length > 0 && (
                   <>
-                    <div className="text-sm font-semibold text-muted-foreground mb-2">
+                    <div className="text-sm sm:text-sm font-semibold text-muted-foreground mb-2">
                       Maintenance Tasks ({rejectedMaintenanceTasks.length})
                     </div>
                     {rejectedMaintenanceTasks.map((task) => (
@@ -406,10 +413,10 @@ function ProfilePage() {
                             Maintenance
                           </Badge>
                         </div>
-                        <p className="text-sm text-red-700 mt-1">
+                        <p className="text-sm sm:text-sm text-red-700 mt-1">
                           <strong>Reason:</strong> {task.rejection_reason || "No reason provided"}
                         </p>
-                        <p className="text-xs text-muted-foreground mt-1">
+                        <p className="text-xs sm:text-sm text-muted-foreground mt-1">
                           Room {task.room_number} • {task.location}
                         </p>
                       </div>
@@ -420,17 +427,17 @@ function ProfilePage() {
                 {rejectedTasks.length > 0 && (
                   <>
                     {rejectedMaintenanceTasks.length > 0 && (
-                      <div className="text-sm font-semibold text-muted-foreground mt-4 mb-2">
+                      <div className="text-sm sm:text-sm font-semibold text-muted-foreground mt-4 mb-2">
                         Regular Tasks ({rejectedTasks.length})
                       </div>
                     )}
                     {rejectedTasks.map((task) => (
                       <div key={task.id} className="p-3 border border-red-200 rounded-lg bg-red-50">
                         <h4 className="font-medium text-red-900">{task.task_type}</h4>
-                        <p className="text-sm text-red-700 mt-1">
+                        <p className="text-sm sm:text-sm text-red-700 mt-1">
                           <strong>Reason:</strong> {task.supervisor_remark || "No reason provided"}
                         </p>
-                        <p className="text-xs text-muted-foreground mt-1">Room: {task.room_number}</p>
+                        <p className="text-xs sm:text-sm text-muted-foreground mt-1">Room: {task.room_number}</p>
                       </div>
                     ))}
                   </>
@@ -453,8 +460,10 @@ function ProfilePage() {
                 {overdueTasks.map((task) => (
                   <div key={task.id} className="p-3 border border-orange-200 rounded-lg bg-orange-50">
                     <h4 className="font-medium text-orange-900">{task.task_type}</h4>
-                    <p className="text-sm text-orange-700 mt-1">Expected: {task.expected_duration_minutes} min</p>
-                    <p className="text-xs text-muted-foreground mt-1">Room: {task.room_number}</p>
+                    <p className="text-sm sm:text-sm text-orange-700 mt-1">
+                      Expected: {task.expected_duration_minutes} min
+                    </p>
+                    <p className="text-xs sm:text-sm text-muted-foreground mt-1">Room: {task.room_number}</p>
                   </div>
                 ))}
               </div>
@@ -480,7 +489,11 @@ function ProfilePage() {
           </CardContent>
         </Card>
 
-        <Button variant="outline" className="w-full bg-transparent" onClick={() => router.push("/worker/settings")}>
+        <Button
+          variant="outline"
+          className="w-full min-h-[48px] text-base bg-transparent"
+          onClick={() => router.push("/worker/settings")}
+        >
           Settings
         </Button>
       </main>

@@ -13,7 +13,7 @@ import {
   type Notification,
 } from "@/lib/notification-utils"
 import { useAuth } from "@/lib/auth-context"
-import { formatDistanceToNow } from "date-fns"
+import { formatDistanceToNow } from "@/lib/date-utils"
 import Link from "next/link"
 import { cn } from "@/lib/utils"
 
