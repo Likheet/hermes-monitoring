@@ -10,7 +10,7 @@ import { EscalationNotification } from "@/components/escalation/escalation-notif
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { LogOut, Clock, MapPin, User, BarChart3, AlertTriangle } from "lucide-react"
+import { LogOut, Clock, MapPin, User, BarChart3, AlertTriangle, XCircle } from "lucide-react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { IssueCard } from "@/components/issue-card"
@@ -101,6 +101,13 @@ function SupervisorDashboard() {
     return taskDepartment === user.department
   })
 
+  const rejectedTasks = departmentTasks.filter((t) => t.status === "REJECTED")
+
+  const rejectedMaintenanceTasks =
+    user?.department?.toLowerCase() === "maintenance"
+      ? (maintenanceTasks || []).filter((task) => task.status === "rejected")
+      : []
+
   const filteredTasks = departmentTasks.filter((task) => {
     const statusMatch = statusFilter === "ALL" || task.status === statusFilter
     const workerMatch = workerFilter === "ALL" || task.assigned_to_user_id === workerFilter
@@ -127,19 +134,18 @@ function SupervisorDashboard() {
 
   const isMaintenanceSupervisor = user?.department?.toLowerCase() === "maintenance"
 
-  const departmentMaintenanceTasks =
-    isMaintenanceSupervisor
-      ? (maintenanceTasks || []).filter((task) => {
-          if (!task.assigned_to) return true
-          const assignedWorker = users.find((u) => u.id === task.assigned_to)
-          if (!assignedWorker) return true
-          return assignedWorker.department === "maintenance"
-        })
-      : []
+  const departmentMaintenanceTasks = isMaintenanceSupervisor
+    ? (maintenanceTasks || []).filter((task) => {
+        if (!task.assigned_to) return true
+        const assignedWorker = users.find((u) => u.id === task.assigned_to)
+        if (!assignedWorker) return true
+        return assignedWorker.department === "maintenance"
+      })
+    : []
 
   const completedMaintenanceTasks = departmentMaintenanceTasks.filter((task) => task.status === "completed")
-  const activeMaintenanceTasks = departmentMaintenanceTasks.filter((task) =>
-    task.status === "in_progress" || task.status === "paused",
+  const activeMaintenanceTasks = departmentMaintenanceTasks.filter(
+    (task) => task.status === "in_progress" || task.status === "paused",
   )
   const pendingMaintenanceTasks = departmentMaintenanceTasks.filter((task) => task.status === "pending")
 
@@ -225,6 +231,72 @@ function SupervisorDashboard() {
           </CardContent>
         </Card>
 
+        {(rejectedTasks.length > 0 || rejectedMaintenanceTasks.length > 0) && (
+          <section>
+            <h2 className="text-lg font-semibold mb-3 flex items-center gap-2">
+              <XCircle className="h-5 w-5 text-red-500" />
+              Rejected Tasks ({rejectedTasks.length + rejectedMaintenanceTasks.length})
+            </h2>
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {rejectedMaintenanceTasks.map((task) => (
+                <Card key={task.id} className="border-red-200">
+                  <CardHeader className="pb-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <CardTitle className="text-lg">{getMaintenanceTaskLabel(task.task_type)}</CardTitle>
+                      <Badge variant="destructive">Rejected</Badge>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-2">
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <User className="h-4 w-4" />
+                      <span>{getMaintenanceWorkerName(task.assigned_to)}</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <MapPin className="h-4 w-4" />
+                      <span>
+                        Room {task.room_number} • {task.location}
+                      </span>
+                    </div>
+                    {task.rejection_reason && (
+                      <div className="pt-2 border-t">
+                        <p className="text-xs font-medium text-red-700">Reason:</p>
+                        <p className="text-xs text-muted-foreground">{task.rejection_reason}</p>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              ))}
+
+              {rejectedTasks.map((task) => (
+                <Card key={task.id} className="border-red-200">
+                  <CardHeader className="pb-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <CardTitle className="text-lg">{task.task_type}</CardTitle>
+                      <Badge variant="destructive">Rejected</Badge>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-2">
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <User className="h-4 w-4" />
+                      <span>{getWorkerName(task.assigned_to_user_id)}</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <MapPin className="h-4 w-4" />
+                      <span>Room {task.room_number}</span>
+                    </div>
+                    {task.supervisor_remark && (
+                      <div className="pt-2 border-t">
+                        <p className="text-xs font-medium text-red-700">Reason:</p>
+                        <p className="text-xs text-muted-foreground">{task.supervisor_remark}</p>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </section>
+        )}
+
         {completedTasks.length > 0 && (
           <section>
             <h2 className="text-lg font-semibold mb-3">Pending Verification</h2>
@@ -274,8 +346,7 @@ function SupervisorDashboard() {
               <CardHeader>
                 <CardTitle className="text-base font-semibold">Team Progress</CardTitle>
                 <p className="text-sm text-muted-foreground">
-                  {completedMaintenanceTasks.length} completed • {activeMaintenanceTasks.length} in progress •
-                  {" "}
+                  {completedMaintenanceTasks.length} completed • {activeMaintenanceTasks.length} in progress •{" "}
                   {pendingMaintenanceTasks.length} pending
                 </p>
               </CardHeader>

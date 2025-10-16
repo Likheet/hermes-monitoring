@@ -29,6 +29,11 @@ function ProfilePage() {
   const completedTasks = myTasks.filter((t) => t.status === "COMPLETED")
   const rejectedTasks = myTasks.filter((t) => t.status === "REJECTED")
 
+  const rejectedMaintenanceTasks = (maintenanceTasks || []).filter(
+    (t) => t.assigned_to === user?.id && t.status === "rejected",
+  )
+  const totalRejectedTasks = rejectedTasks.length + rejectedMaintenanceTasks.length
+
   useEffect(() => {
     console.log("[v0] Profile page loaded with data:", {
       userId: user?.id,
@@ -232,7 +237,7 @@ function ProfilePage() {
               <AlertTriangle className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-red-600">{rejectedTasks.length}</div>
+              <div className="text-2xl font-bold text-red-600">{totalRejectedTasks}</div>
               <p className="text-xs text-muted-foreground">{overdueTasks.length} overdue</p>
             </CardContent>
           </Card>
@@ -326,25 +331,58 @@ function ProfilePage() {
           </Card>
         )}
 
-        {rejectedTasks.length > 0 && (
+        {totalRejectedTasks > 0 && (
           <Card className="border-red-200">
             <CardHeader>
               <CardTitle className="text-red-600 flex items-center gap-2">
                 <XCircle className="h-5 w-5" />
-                Rejected Tasks
+                Rejected Tasks ({totalRejectedTasks})
               </CardTitle>
             </CardHeader>
             <CardContent>
               <div className="space-y-3">
-                {rejectedTasks.map((task) => (
-                  <div key={task.id} className="p-3 border border-red-200 rounded-lg bg-red-50">
-                    <h4 className="font-medium text-red-900">{task.task_type}</h4>
-                    <p className="text-sm text-red-700 mt-1">
-                      <strong>Reason:</strong> {task.supervisor_remark || "No reason provided"}
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-1">Room: {task.room_number}</p>
-                  </div>
-                ))}
+                {rejectedMaintenanceTasks.length > 0 && (
+                  <>
+                    <div className="text-sm font-semibold text-muted-foreground mb-2">
+                      Maintenance Tasks ({rejectedMaintenanceTasks.length})
+                    </div>
+                    {rejectedMaintenanceTasks.map((task) => (
+                      <div key={task.id} className="p-3 border border-red-200 rounded-lg bg-red-50">
+                        <div className="flex items-center gap-2 mb-1">
+                          <h4 className="font-medium text-red-900">{getMaintenanceTaskLabel(task.task_type)}</h4>
+                          <Badge variant="outline" className="text-xs">
+                            Maintenance
+                          </Badge>
+                        </div>
+                        <p className="text-sm text-red-700 mt-1">
+                          <strong>Reason:</strong> {task.rejection_reason || "No reason provided"}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Room {task.room_number} • {task.location}
+                        </p>
+                      </div>
+                    ))}
+                  </>
+                )}
+
+                {rejectedTasks.length > 0 && (
+                  <>
+                    {rejectedMaintenanceTasks.length > 0 && (
+                      <div className="text-sm font-semibold text-muted-foreground mt-4 mb-2">
+                        Regular Tasks ({rejectedTasks.length})
+                      </div>
+                    )}
+                    {rejectedTasks.map((task) => (
+                      <div key={task.id} className="p-3 border border-red-200 rounded-lg bg-red-50">
+                        <h4 className="font-medium text-red-900">{task.task_type}</h4>
+                        <p className="text-sm text-red-700 mt-1">
+                          <strong>Reason:</strong> {task.supervisor_remark || "No reason provided"}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-1">Room: {task.room_number}</p>
+                      </div>
+                    ))}
+                  </>
+                )}
               </div>
             </CardContent>
           </Card>

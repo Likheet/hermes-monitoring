@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Separator } from "@/components/ui/separator"
+import { Badge } from "@/components/ui/badge"
 import {
   LogOut,
   ClipboardList,
@@ -21,18 +22,25 @@ import {
   UserPlus,
   BarChart3,
   Calendar,
+  CalendarRange,
 } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { useRealtimeTasks } from "@/lib/use-realtime-tasks"
 import { ConnectionStatus } from "@/components/connection-status"
 import Link from "next/link"
 import { CATEGORY_LABELS } from "@/lib/task-definitions"
+import { useState } from "react"
 
 function AdminDashboard() {
   const { user, logout } = useAuth()
   const { tasks, users, maintenanceTasks } = useTasks()
   const router = useRouter()
   const { isConnected } = useRealtimeTasks({ enabled: true })
+
+  const [timeRange, setTimeRange] = useState<"week" | "month" | "all" | "custom">("all")
+  const [customStartDate, setCustomStartDate] = useState("")
+  const [customEndDate, setCustomEndDate] = useState("")
+  const [showCustomDatePicker, setShowCustomDatePicker] = useState(false)
 
   const handleLogout = () => {
     logout()
@@ -41,15 +49,47 @@ function AdminDashboard() {
 
   const workers = users.filter((u) => u.role === "worker")
 
-  // Calculate statistics
-  const totalTasks = tasks.length
-  const pendingTasks = tasks.filter((t) => t.status === "PENDING").length
-  const inProgressTasks = tasks.filter((t) => t.status === "IN_PROGRESS").length
-  const completedTasks = tasks.filter((t) => t.status === "COMPLETED").length
-  const rejectedTasks = tasks.filter((t) => t.status === "REJECTED").length
+  const getFilteredTasks = () => {
+    const now = new Date()
+    let startDate: Date
 
-  // Calculate average completion time
-  const completedTasksWithDuration = tasks.filter((t) => t.status === "COMPLETED" && t.actual_duration_minutes)
+    switch (timeRange) {
+      case "week":
+        startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
+        break
+      case "month":
+        startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
+        break
+      case "custom":
+        if (customStartDate && customEndDate) {
+          const start = new Date(customStartDate)
+          const end = new Date(customEndDate)
+          return tasks.filter((t) => {
+            const taskDate = new Date(t.assigned_at.client)
+            return taskDate >= start && taskDate <= end
+          })
+        }
+        return tasks
+      case "all":
+      default:
+        return tasks
+    }
+
+    return tasks.filter((t) => {
+      const taskDate = new Date(t.assigned_at.client)
+      return taskDate >= startDate
+    })
+  }
+
+  const filteredTasks = getFilteredTasks()
+
+  const totalTasks = filteredTasks.length
+  const pendingTasks = filteredTasks.filter((t) => t.status === "PENDING").length
+  const inProgressTasks = filteredTasks.filter((t) => t.status === "IN_PROGRESS").length
+  const completedTasks = filteredTasks.filter((t) => t.status === "COMPLETED").length
+  const rejectedTasks = filteredTasks.filter((t) => t.status === "REJECTED").length
+
+  const completedTasksWithDuration = filteredTasks.filter((t) => t.status === "COMPLETED" && t.actual_duration_minutes)
   const avgCompletionTime =
     completedTasksWithDuration.length > 0
       ? Math.round(
@@ -58,12 +98,10 @@ function AdminDashboard() {
         )
       : 0
 
-  // Calculate overtime tasks
   const overtimeTasks = completedTasksWithDuration.filter(
     (t) => (t.actual_duration_minutes || 0) > t.expected_duration_minutes,
   ).length
 
-  // Worker availability
   const getWorkerCurrentTask = (workerId: string) => {
     const regularTask = tasks.find(
       (t) => t.assigned_to_user_id === workerId && (t.status === "IN_PROGRESS" || t.status === "PAUSED"),
@@ -76,11 +114,28 @@ function AdminDashboard() {
     return maintenanceTask
   }
 
+  const getWorkerStats = (workerId: string) => {
+    const workerTasks = filteredTasks.filter((t) => t.assigned_to_user_id === workerId)
+    const workerMaintenanceTasks = (maintenanceTasks || []).filter((t) => t.assigned_to === workerId)
+
+    return {
+      totalTasks: workerTasks.length + workerMaintenanceTasks.length,
+      completedTasks:
+        workerTasks.filter((t) => t.status === "COMPLETED").length +
+        workerMaintenanceTasks.filter((t) => t.status === "completed").length,
+      rejectedTasks:
+        workerTasks.filter((t) => t.status === "REJECTED").length +
+        workerMaintenanceTasks.filter((t) => t.status === "rejected").length,
+      inProgressTasks:
+        workerTasks.filter((t) => t.status === "IN_PROGRESS").length +
+        workerMaintenanceTasks.filter((t) => t.status === "in_progress").length,
+    }
+  }
+
   const availableWorkers = workers.filter((w) => !getWorkerCurrentTask(w.id))
   const busyWorkers = workers.filter((w) => getWorkerCurrentTask(w.id))
 
-  // Recent audit logs (last 20)
-  const allAuditLogs = tasks
+  const allAuditLogs = filteredTasks
     .flatMap((task) =>
       task.audit_log.map((log) => ({
         ...log,
@@ -95,7 +150,7 @@ function AdminDashboard() {
     return users.find((u) => u.id === userId)?.name || "Unknown"
   }
 
-  const customTasks = tasks.filter(
+  const customTasks = filteredTasks.filter(
     (t) =>
       t.is_custom_task ||
       t.custom_task_name ||
@@ -106,10 +161,64 @@ function AdminDashboard() {
   console.log("[v0] Admin dashboard - Custom tasks found:", {
     total: customTasks.length,
     taskTypes: customTasks.map((t) => t.task_type),
-    allTaskTypes: tasks.map((t) => t.task_type),
+    allTaskTypes: filteredTasks.map((t) => t.task_type),
   })
 
   const recentCustomTasks = customTasks.slice(0, 10)
+
+  const calculateWorkerPerformance = (workerId: string) => {
+    const worker = users.find((u) => u.id === workerId)
+    if (!worker) return null
+
+    const [startHour, startMin] = worker.shift_start.split(":").map(Number)
+    const [endHour, endMin] = worker.shift_end.split(":").map(Number)
+    const shiftMinutes = endHour * 60 + endMin - (startHour * 60 + startMin)
+    const shiftHours = (shiftMinutes / 60).toFixed(1)
+
+    const workerCompletedTasks = filteredTasks.filter(
+      (t) => t.assigned_to_user_id === workerId && t.status === "COMPLETED",
+    )
+    const workerCompletedMaintenanceTasks = (maintenanceTasks || []).filter(
+      (t) => t.assigned_to === workerId && t.status === "completed",
+    )
+
+    const totalWorkMinutes =
+      workerCompletedTasks.reduce((sum, t) => sum + (t.actual_duration_minutes || 0), 0) +
+      workerCompletedMaintenanceTasks.reduce((sum, t) => sum + (t.duration || 0), 0)
+    const actualWorkHours = (totalWorkMinutes / 60).toFixed(1)
+
+    const idleMinutes = shiftMinutes - totalWorkMinutes
+    const idleHours = (idleMinutes / 60).toFixed(1)
+
+    const discrepancyPercent = shiftMinutes > 0 ? ((idleMinutes / shiftMinutes) * 100).toFixed(1) : "0.0"
+
+    const ratedTasks = workerCompletedTasks.filter((t) => t.rating && t.rating > 0)
+    const avgRating =
+      ratedTasks.length > 0
+        ? (ratedTasks.reduce((sum, t) => sum + (t.rating || 0), 0) / ratedTasks.length).toFixed(1)
+        : "N/A"
+    const totalRatings = ratedTasks.length
+
+    return {
+      shiftHours,
+      actualWorkHours,
+      idleHours,
+      discrepancyPercent,
+      avgRating,
+      totalRatings,
+    }
+  }
+
+  const discrepancyTasks = filteredTasks.filter((t) => {
+    const isOvertime =
+      t.status === "COMPLETED" && t.actual_duration_minutes && t.actual_duration_minutes > t.expected_duration_minutes
+
+    const isRejected = t.status === "REJECTED"
+
+    const isLowRated = t.status === "COMPLETED" && t.rating && t.rating < 3
+
+    return isOvertime || isRejected || isLowRated
+  })
 
   return (
     <div className="min-h-screen bg-muted/30">
@@ -268,9 +377,16 @@ function AdminDashboard() {
 
         <Tabs defaultValue="workers" className="space-y-4">
           <TabsList>
-            <TabsTrigger value="workers">Workers</TabsTrigger>
+            <TabsTrigger value="workers">Staff</TabsTrigger>
             <TabsTrigger value="audit">Audit Logs</TabsTrigger>
-            <TabsTrigger value="alerts">Alerts</TabsTrigger>
+            <TabsTrigger value="discrepancy">
+              Discrepancy
+              {discrepancyTasks.length > 0 && (
+                <span className="ml-2 px-2 py-0.5 text-xs bg-red-500 text-white rounded-full">
+                  {discrepancyTasks.length}
+                </span>
+              )}
+            </TabsTrigger>
             <TabsTrigger value="custom">
               Custom Tasks
               {customTasks.length > 0 && (
@@ -282,6 +398,124 @@ function AdminDashboard() {
           </TabsList>
 
           <TabsContent value="workers" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <CardTitle>Staff Performance Overview</CardTitle>
+                  <div className="flex items-center gap-2">
+                    <CalendarRange className="h-4 w-4 text-muted-foreground" />
+                    <select
+                      value={timeRange}
+                      onChange={(e) => {
+                        const value = e.target.value as "week" | "month" | "all" | "custom"
+                        setTimeRange(value)
+                        if (value === "custom") {
+                          setShowCustomDatePicker(true)
+                        } else {
+                          setShowCustomDatePicker(false)
+                        }
+                      }}
+                      className="px-3 py-1.5 text-sm border border-border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring"
+                    >
+                      <option value="week">This Week</option>
+                      <option value="month">This Month</option>
+                      <option value="all">All Time</option>
+                      <option value="custom">Custom Range</option>
+                    </select>
+                  </div>
+                </div>
+                {showCustomDatePicker && (
+                  <div className="flex items-center gap-2 mt-3">
+                    <input
+                      type="date"
+                      value={customStartDate}
+                      onChange={(e) => setCustomStartDate(e.target.value)}
+                      className="px-3 py-1.5 text-sm border border-border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring"
+                    />
+                    <span className="text-sm text-muted-foreground">to</span>
+                    <input
+                      type="date"
+                      value={customEndDate}
+                      onChange={(e) => setCustomEndDate(e.target.value)}
+                      className="px-3 py-1.5 text-sm border border-border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring"
+                    />
+                  </div>
+                )}
+              </CardHeader>
+              <CardContent>
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b">
+                        <th className="text-left py-3 px-2 font-medium">Worker Name</th>
+                        <th className="text-right py-3 px-2 font-medium">Shift Hrs</th>
+                        <th className="text-right py-3 px-2 font-medium">Worked</th>
+                        <th className="text-right py-3 px-2 font-medium">Idle Time</th>
+                        <th className="text-right py-3 px-2 font-medium">Discrepancy</th>
+                        <th className="text-right py-3 px-2 font-medium">Rating</th>
+                        <th className="text-center py-3 px-2 font-medium">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {workers.map((worker) => {
+                        const performance = calculateWorkerPerformance(worker.id)
+                        const currentTask = getWorkerCurrentTask(worker.id)
+                        const stats = getWorkerStats(worker.id)
+
+                        if (!performance) return null
+
+                        return (
+                          <tr key={worker.id} className="border-b hover:bg-muted/50">
+                            <td className="py-3 px-2">
+                              <div>
+                                <p className="font-medium">{worker.name}</p>
+                                <p className="text-xs text-muted-foreground">{worker.department}</p>
+                              </div>
+                            </td>
+                            <td className="text-right py-3 px-2">{performance.shiftHours}h</td>
+                            <td className="text-right py-3 px-2 text-green-600 font-medium">
+                              {performance.actualWorkHours}h
+                            </td>
+                            <td className="text-right py-3 px-2 text-orange-600">{performance.idleHours}h</td>
+                            <td className="text-right py-3 px-2">
+                              <span
+                                className={`font-medium ${
+                                  Number.parseFloat(performance.discrepancyPercent) > 50
+                                    ? "text-red-600"
+                                    : Number.parseFloat(performance.discrepancyPercent) > 30
+                                      ? "text-orange-600"
+                                      : "text-green-600"
+                                }`}
+                              >
+                                {performance.discrepancyPercent}%
+                              </span>
+                            </td>
+                            <td className="text-right py-3 px-2">
+                              {performance.avgRating !== "N/A" ? (
+                                <span className="font-medium">
+                                  {performance.avgRating} ⭐
+                                  <span className="text-xs text-muted-foreground ml-1">
+                                    ({performance.totalRatings})
+                                  </span>
+                                </span>
+                              ) : (
+                                <span className="text-muted-foreground">N/A</span>
+                              )}
+                            </td>
+                            <td className="text-center py-3 px-2">
+                              <Badge variant={currentTask ? "default" : "secondary"} className="text-xs">
+                                {currentTask ? "Working" : "Available"}
+                              </Badge>
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+
             <Card>
               <CardHeader>
                 <CardTitle>Available Workers</CardTitle>
@@ -346,124 +580,80 @@ function AdminDashboard() {
             </Card>
           </TabsContent>
 
-          <TabsContent value="alerts">
+          <TabsContent value="discrepancy">
             <Card>
               <CardHeader>
-                <CardTitle>Active Alerts</CardTitle>
+                <CardTitle>Task Discrepancies</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
-                  {tasks
-                    .filter((t) => {
-                      if (t.status !== "IN_PROGRESS" || !t.started_at) return false
-                      const startTime = new Date(t.started_at.client).getTime()
-                      const now = Date.now()
-                      let pausedDuration = 0
-                      t.pause_history.forEach((pause) => {
-                        if (pause.resumed_at) {
-                          const pauseStart = new Date(pause.paused_at.client).getTime()
-                          const pauseEnd = new Date(pause.resumed_at.client).getTime()
-                          pausedDuration += pauseEnd - pauseStart
-                        } else {
-                          const pauseStart = new Date(pause.paused_at.client).getTime()
-                          pausedDuration += now - pauseStart
-                        }
-                      })
-                      const elapsedMinutes = Math.floor((now - startTime - pausedDuration) / 60000)
-                      return elapsedMinutes >= 15
-                    })
-                    .map((task, index) => {
-                      const startTime = new Date(task.started_at!.client).getTime()
-                      const now = Date.now()
-                      let pausedDuration = 0
-                      task.pause_history.forEach((pause) => {
-                        if (pause.resumed_at) {
-                          const pauseStart = new Date(pause.paused_at.client).getTime()
-                          const pauseEnd = new Date(pause.resumed_at.client).getTime()
-                          pausedDuration += pauseEnd - pauseStart
-                        } else {
-                          const pauseStart = new Date(pause.paused_at.client).getTime()
-                          pausedDuration += now - pauseStart
-                        }
-                      })
-                      const elapsedMinutes = Math.floor((now - startTime - pausedDuration) / 60000)
-                      const fiftyPercentOvertime = task.expected_duration_minutes * 1.5
+                  {discrepancyTasks.length > 0 ? (
+                    discrepancyTasks.map((task, index) => {
+                      const isOvertime =
+                        task.status === "COMPLETED" &&
+                        task.actual_duration_minutes &&
+                        task.actual_duration_minutes > task.expected_duration_minutes
+                      const isRejected = task.status === "REJECTED"
+                      const isLowRated = task.status === "COMPLETED" && task.rating && task.rating < 3
 
-                      let alertLevel = "warning"
-                      let alertMessage = "15+ minutes elapsed"
+                      let discrepancyType = ""
+                      let discrepancyColor = "text-yellow-500"
 
-                      if (elapsedMinutes >= fiftyPercentOvertime) {
-                        alertLevel = "critical"
-                        alertMessage = "50% overtime exceeded"
-                      } else if (elapsedMinutes >= 20) {
-                        alertLevel = "high"
-                        alertMessage = "20+ minutes elapsed"
+                      if (isRejected) {
+                        discrepancyType = "REJECTED"
+                        discrepancyColor = "text-red-500"
+                      } else if (isLowRated) {
+                        discrepancyType = `LOW RATING (${task.rating}⭐)`
+                        discrepancyColor = "text-orange-500"
+                      } else if (isOvertime) {
+                        const overtimePercent = (
+                          ((task.actual_duration_minutes! - task.expected_duration_minutes) /
+                            task.expected_duration_minutes) *
+                          100
+                        ).toFixed(0)
+                        discrepancyType = `OVERTIME (+${overtimePercent}%)`
+                        discrepancyColor = "text-red-500"
                       }
 
                       return (
                         <div key={task.id}>
                           <div className="flex items-start gap-3">
-                            <AlertTriangle
-                              className={`h-5 w-5 mt-0.5 ${
-                                alertLevel === "critical"
-                                  ? "text-red-500"
-                                  : alertLevel === "high"
-                                    ? "text-orange-500"
-                                    : "text-yellow-500"
-                              }`}
-                            />
+                            <AlertTriangle className={`h-5 w-5 mt-0.5 ${discrepancyColor}`} />
                             <div className="flex-1 space-y-1">
-                              <p className="text-sm font-medium">{task.task_type}</p>
+                              <div className="flex items-center gap-2">
+                                <p className="text-sm font-medium">{task.task_type}</p>
+                                <Badge variant="outline" className={discrepancyColor}>
+                                  {discrepancyType}
+                                </Badge>
+                              </div>
                               <p className="text-sm text-muted-foreground">
-                                {alertMessage} - Room {task.room_number}
+                                Room {task.room_number} • Worker: {getUserName(task.assigned_to_user_id)}
                               </p>
-                              <p className="text-xs text-muted-foreground">
-                                Worker: {getUserName(task.assigned_to_user_id)} - {elapsedMinutes} /{" "}
-                                {task.expected_duration_minutes} min
-                              </p>
+                              {isOvertime && (
+                                <p className="text-xs text-muted-foreground">
+                                  Expected: {task.expected_duration_minutes} min • Actual:{" "}
+                                  {task.actual_duration_minutes} min
+                                </p>
+                              )}
+                              {isRejected && task.supervisor_remark && (
+                                <p className="text-xs text-muted-foreground italic">
+                                  Reason: "{task.supervisor_remark}"
+                                </p>
+                              )}
+                              {isLowRated && (
+                                <p className="text-xs text-muted-foreground">
+                                  Completed in {task.actual_duration_minutes} min • Rated {task.rating}/5 stars
+                                </p>
+                              )}
                             </div>
                           </div>
-                          {index <
-                            tasks.filter((t) => {
-                              if (t.status !== "IN_PROGRESS" || !t.started_at) return false
-                              const startTime = new Date(t.started_at.client).getTime()
-                              const now = Date.now()
-                              let pausedDuration = 0
-                              t.pause_history.forEach((pause) => {
-                                if (pause.resumed_at) {
-                                  const pauseStart = new Date(pause.paused_at.client).getTime()
-                                  const pauseEnd = new Date(pause.resumed_at.client).getTime()
-                                  pausedDuration += pauseEnd - pauseStart
-                                } else {
-                                  const pauseStart = new Date(pause.paused_at.client).getTime()
-                                  pausedDuration += now - pauseStart
-                                }
-                              })
-                              const elapsedMinutes = Math.floor((now - startTime - pausedDuration) / 60000)
-                              return elapsedMinutes >= 15
-                            }).length -
-                              1 && <Separator className="mt-4" />}
+                          {index < discrepancyTasks.length - 1 && <Separator className="mt-4" />}
                         </div>
                       )
-                    })}
-                  {tasks.filter((t) => {
-                    if (t.status !== "IN_PROGRESS" || !t.started_at) return false
-                    const startTime = new Date(t.started_at.client).getTime()
-                    const now = Date.now()
-                    let pausedDuration = 0
-                    t.pause_history.forEach((pause) => {
-                      if (pause.resumed_at) {
-                        const pauseStart = new Date(pause.paused_at.client).getTime()
-                        const pauseEnd = new Date(pause.resumed_at.client).getTime()
-                        pausedDuration += pauseEnd - pauseStart
-                      } else {
-                        const pauseStart = new Date(pause.paused_at.client).getTime()
-                        pausedDuration += now - pauseStart
-                      }
                     })
-                    const elapsedMinutes = Math.floor((now - startTime - pausedDuration) / 60000)
-                    return elapsedMinutes >= 15
-                  }).length === 0 && <p className="text-sm text-muted-foreground">No active alerts</p>}
+                  ) : (
+                    <p className="text-sm text-muted-foreground">No task discrepancies found</p>
+                  )}
                 </div>
               </CardContent>
             </Card>

@@ -127,8 +127,8 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers }: TaskAs
       newErrors.assignedTo = "Please select a worker"
     }
 
-    if (duration < 5 || duration > 300) {
-      newErrors.duration = "Duration must be between 5 and 300 minutes"
+    if (duration < 1 || duration > 300) {
+      newErrors.duration = "Duration must be between 1 and 300 minutes"
     }
 
     setErrors(newErrors)
@@ -312,7 +312,7 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers }: TaskAs
             <Clock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
             <input
               type="number"
-              min="5"
+              min="1"
               max="300"
               step="5"
               value={duration}
