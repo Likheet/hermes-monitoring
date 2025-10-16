@@ -46,6 +46,9 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers }: TaskAs
 
   const [customTaskName, setCustomTaskName] = useState("")
   const [selectedDepartment, setSelectedDepartment] = useState<Department>(task.department)
+  const [customCategory, setCustomCategory] = useState(task.category)
+  const [photoRequired, setPhotoRequired] = useState(task.photoRequired)
+  const [photoCount, setPhotoCount] = useState(task.photoCount)
 
   const locationRef = useRef<HTMLDivElement>(null)
 
@@ -139,7 +142,7 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers }: TaskAs
       taskId: task.id,
       taskName: isOtherTask ? customTaskName : task.name,
       customTaskName: isOtherTask ? customTaskName : undefined,
-      category: task.category,
+      category: isOtherTask ? customCategory : task.category,
       department: selectedDepartment,
       priority,
       duration,
@@ -147,8 +150,8 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers }: TaskAs
       acLocation: task.requiresACLocation ? acLocation : undefined,
       additionalDetails: additionalDetails || undefined,
       assignedTo,
-      photoRequired: task.photoRequired,
-      photoCount: task.photoCount,
+      photoRequired: isOtherTask ? photoRequired : task.photoRequired,
+      photoCount: isOtherTask ? photoCount : task.photoCount,
     }
 
     onSubmit(data)
@@ -161,8 +164,10 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers }: TaskAs
         <div className="flex-1">
           <div className="flex items-center gap-3 mb-2">
             <h2 className="text-xl font-bold text-foreground">{task.name}</h2>
-            <span className={`px-3 py-1 rounded-lg border text-sm font-medium ${CATEGORY_COLORS[task.category]}`}>
-              {CATEGORY_LABELS[task.category]}
+            <span
+              className={`px-3 py-1 rounded-lg border text-sm font-medium ${CATEGORY_COLORS[isOtherTask ? customCategory : task.category]}`}
+            >
+              {CATEGORY_LABELS[isOtherTask ? customCategory : task.category]}
             </span>
           </div>
           <p className="text-sm text-muted-foreground">
@@ -204,6 +209,28 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers }: TaskAs
 
         {isOtherTask && (
           <div>
+            <label className="block text-sm font-semibold text-foreground mb-2">
+              Task Category <span className="text-destructive">*</span>
+            </label>
+            <select
+              value={customCategory}
+              onChange={(e) => setCustomCategory(e.target.value)}
+              className="w-full px-4 py-3 border-2 border-border rounded-lg focus:border-ring focus:outline-none bg-background text-foreground"
+            >
+              <option value="GUEST_REQUEST">Guest Issue</option>
+              <option value="ROOM_CLEANING">Room Cleaning</option>
+              <option value="COMMON_AREA">Common Area</option>
+              <option value="MAINTENANCE">Maintenance</option>
+              <option value="INSPECTION">Inspection</option>
+              <option value="LAUNDRY">Laundry</option>
+              <option value="SUPPLIES">Supplies</option>
+            </select>
+            <p className="mt-1 text-xs text-muted-foreground">Select the category that best describes this task</p>
+          </div>
+        )}
+
+        {isOtherTask && (
+          <div>
             <label className="block text-sm font-semibold text-foreground mb-2">Department</label>
             <select
               value={selectedDepartment}
@@ -216,6 +243,48 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers }: TaskAs
               <option value="housekeeping">Housekeeping</option>
               <option value="maintenance">Maintenance</option>
             </select>
+          </div>
+        )}
+
+        {isOtherTask && (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <label className="text-sm font-semibold text-foreground">Photo Required</label>
+              <button
+                type="button"
+                onClick={() => {
+                  setPhotoRequired(!photoRequired)
+                  if (!photoRequired) {
+                    setPhotoCount(1) // Default to 1 photo when enabled
+                  }
+                }}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                  photoRequired ? "bg-primary" : "bg-muted"
+                }`}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                    photoRequired ? "translate-x-6" : "translate-x-1"
+                  }`}
+                />
+              </button>
+            </div>
+            {photoRequired && (
+              <div>
+                <label className="block text-sm font-medium text-muted-foreground mb-2">Number of Photos</label>
+                <input
+                  type="number"
+                  min="1"
+                  max="5"
+                  value={photoCount}
+                  onChange={(e) => setPhotoCount(Math.max(1, Math.min(5, Number(e.target.value))))}
+                  className="w-full px-4 py-2 border-2 border-border rounded-lg focus:border-ring focus:outline-none bg-background text-foreground"
+                />
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Specify how many photos the worker must upload (1-5)
+                </p>
+              </div>
+            )}
           </div>
         )}
 
@@ -388,8 +457,8 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers }: TaskAs
             <div className="flex items-center gap-2 text-muted-foreground">
               <Camera className="w-4 h-4" />
               <span>
-                {task.photoRequired
-                  ? `${task.photoCount} photo${task.photoCount > 1 ? "s" : ""} required`
+                {(isOtherTask ? photoRequired : task.photoRequired)
+                  ? `${isOtherTask ? photoCount : task.photoCount} photo${(isOtherTask ? photoCount : task.photoCount) > 1 ? "s" : ""} required`
                   : "No photos required"}
               </span>
             </div>
