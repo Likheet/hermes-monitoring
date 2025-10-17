@@ -50,7 +50,7 @@ interface TaskContextType {
     breakEnd?: string,
   ) => void
   addWorker: (worker: Omit<User, "id" | "is_available">) => void
-  raiseIssue: (taskId: string, userId: string, issueDescription: string, photos: string[] = []) => void
+  raiseIssue: (taskId: string, userId: string, issueDescription: string, photos?: string[]) => void
   addSchedule: (schedule: Omit<MaintenanceSchedule, "id" | "created_at">) => void
   updateSchedule: (scheduleId: string, updates: Partial<MaintenanceSchedule>) => void
   deleteSchedule: (scheduleId: string) => void
@@ -631,7 +631,7 @@ export function TaskProvider({ children }: { children: ReactNode }) {
     })
   }
 
-  const raiseIssue = (taskId: string, userId: string, issueDescription: string, photos: string[] = []) => {
+  const raiseIssue = (taskId: string, userId: string, issueDescription: string, photos?: string[]) => {
     const task = tasks.find((t) => t.id === taskId)
     if (!task) return
 
@@ -641,7 +641,7 @@ export function TaskProvider({ children }: { children: ReactNode }) {
       reported_by_user_id: userId,
       reported_at: createDualTimestamp(),
       issue_description: issueDescription,
-      issue_photos: photos, // Store photos in issue
+      issue_photos: photos || [], // Store photos in issue
       status: "OPEN",
     }
 
@@ -652,7 +652,7 @@ export function TaskProvider({ children }: { children: ReactNode }) {
       action: "ISSUE_RAISED",
       old_status: task.status,
       new_status: task.status,
-      details: `Worker raised issue: ${issueDescription}${photos.length > 0 ? ` (with ${photos.length} photo(s))` : ""}`, // Include photo count in audit log
+      details: `Worker raised issue: ${issueDescription}${photos ? ` (with ${photos.length} photo(s))` : ""}`, // Include photo count in audit log
     })
 
     // Notify supervisor
