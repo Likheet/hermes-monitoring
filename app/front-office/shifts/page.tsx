@@ -12,7 +12,9 @@ import { Switch } from "@/components/ui/switch"
 import { ArrowLeft, Clock, Save, Coffee } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { useToast } from "@/hooks/use-toast"
-import { calculateShiftHours, formatShiftRange } from "@/lib/date-utils"
+import { formatShiftRange } from "@/lib/date-utils"
+import { validateBreakTimes } from "@/lib/shift-utils"
+import { calculateWorkingHours } from "@/lib/date-utils"
 
 function ShiftManagement() {
   const { user } = useAuth()
@@ -50,6 +52,19 @@ function ShiftManagement() {
 
   const handleSaveShift = (workerId: string) => {
     const shift = editingShifts[workerId]
+
+    if (shift.hasBreak) {
+      const validation = validateBreakTimes(shift.start, shift.end, shift.breakStart, shift.breakEnd)
+      if (!validation.valid) {
+        toast({
+          title: "Invalid Break Times",
+          description: validation.error,
+          variant: "destructive",
+        })
+        return
+      }
+    }
+
     updateWorkerShift(workerId, shift.start, shift.end, user!.id, shift.hasBreak, shift.breakStart, shift.breakEnd)
     toast({
       title: "Shift Updated",
@@ -60,7 +75,7 @@ function ShiftManagement() {
   const hasChanges = (workerId: string) => {
     const worker = workers.find((w) => w.id === workerId)
     if (!worker) return false
-    const edited = editingShifts[workerId]
+    const edited = editingShifts[worker.id]
     return (
       edited.start !== worker.shift_start ||
       edited.end !== worker.shift_end ||
@@ -70,30 +85,15 @@ function ShiftManagement() {
     )
   }
 
-  const calculateWorkingHours = (
+  const getWorkingHoursDisplay = (
     start: string,
     end: string,
     hasBreak: boolean,
     breakStart: string,
     breakEnd: string,
   ) => {
-    const totalHours = calculateShiftHours(start, end)
-    if (!hasBreak) return totalHours
-
-    // Calculate break duration
-    const [breakStartHour, breakStartMin] = breakStart.split(":").map(Number)
-    const [breakEndHour, breakEndMin] = breakEnd.split(":").map(Number)
-    const breakMinutes = breakEndHour * 60 + breakEndMin - (breakStartHour * 60 + breakStartMin)
-    const breakHours = breakMinutes / 60
-
-    // Parse total hours to subtract break
-    const hoursMatch = totalHours.match(/(\d+\.?\d*)\s*hours?/)
-    if (hoursMatch) {
-      const total = Number.parseFloat(hoursMatch[1])
-      const working = total - breakHours
-      return `${working.toFixed(1)} hours (${breakHours.toFixed(1)}h break)`
-    }
-    return totalHours
+    const result = calculateWorkingHours(start, end, hasBreak, breakStart, breakEnd)
+    return result.formatted
   }
 
   return (
@@ -114,7 +114,7 @@ function ShiftManagement() {
         <div className="grid gap-4 md:grid-cols-2">
           {workers.map((worker) => {
             const edited = editingShifts[worker.id]
-            const workingHours = calculateWorkingHours(
+            const workingHours = getWorkingHoursDisplay(
               edited.start,
               edited.end,
               edited.hasBreak,
@@ -225,21 +225,21 @@ function ShiftManagement() {
                       <span className="text-muted-foreground">Working Hours:</span>
                       <span className="font-semibold">{workingHours}</span>
                     </div>
-                  </div>
 
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground pt-2 border-t">
-                    <Clock className="h-4 w-4" />
-                    <span>Current: {formatShiftRange(worker.shift_start, worker.shift_end)}</span>
-                  </div>
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground pt-2 border-t">
+                      <Clock className="h-4 w-4" />
+                      <span>Current: {formatShiftRange(worker.shift_start, worker.shift_end)}</span>
+                    </div>
 
-                  <Button
-                    onClick={() => handleSaveShift(worker.id)}
-                    disabled={!hasChanges(worker.id)}
-                    className="w-full"
-                  >
-                    <Save className="mr-2 h-4 w-4" />
-                    Save Changes
-                  </Button>
+                    <Button
+                      onClick={() => handleSaveShift(worker.id)}
+                      disabled={!hasChanges(worker.id)}
+                      className="w-full"
+                    >
+                      <Save className="mr-2 h-4 w-4" />
+                      Save Changes
+                    </Button>
+                  </div>
                 </CardContent>
               </Card>
             )

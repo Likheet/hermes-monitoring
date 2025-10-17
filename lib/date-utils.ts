@@ -135,3 +135,48 @@ export function startOfMonth(date: Date = new Date()): Date {
 export function endOfMonth(date: Date = new Date()): Date {
   return new Date(date.getFullYear(), date.getMonth() + 1, 0, 23, 59, 59, 999)
 }
+
+export function calculateWorkingHours(
+  shiftStart: string,
+  shiftEnd: string,
+  hasBreak: boolean,
+  breakStart?: string,
+  breakEnd?: string,
+): { totalHours: number; breakHours: number; workingHours: number; formatted: string } {
+  // Calculate total shift hours
+  const [startHour, startMin] = shiftStart.split(":").map(Number)
+  const [endHour, endMin] = shiftEnd.split(":").map(Number)
+
+  let totalMinutes = endHour * 60 + endMin - (startHour * 60 + startMin)
+
+  // Handle overnight shifts
+  if (totalMinutes < 0) {
+    totalMinutes += 24 * 60
+  }
+
+  const totalHours = totalMinutes / 60
+
+  if (!hasBreak || !breakStart || !breakEnd) {
+    return {
+      totalHours,
+      breakHours: 0,
+      workingHours: totalHours,
+      formatted: `${totalHours.toFixed(1)} hours`,
+    }
+  }
+
+  // Calculate break duration
+  const [breakStartHour, breakStartMin] = breakStart.split(":").map(Number)
+  const [breakEndHour, breakEndMin] = breakEnd.split(":").map(Number)
+  const breakMinutes = breakEndHour * 60 + breakEndMin - (breakStartHour * 60 + breakStartMin)
+  const breakHours = breakMinutes / 60
+
+  const workingHours = totalHours - breakHours
+
+  return {
+    totalHours,
+    breakHours,
+    workingHours,
+    formatted: `${workingHours.toFixed(1)} hours (${breakHours.toFixed(1)}h break)`,
+  }
+}

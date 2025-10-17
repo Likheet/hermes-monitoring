@@ -4,6 +4,7 @@ import { useState } from "react"
 import { useTasks } from "@/lib/task-context"
 import { Calendar, Plus, Edit2, Trash2, ToggleLeft, ToggleRight } from "lucide-react"
 import { TASK_TYPE_LABELS, AREA_LABELS, FREQUENCY_LABELS, type MaintenanceSchedule } from "@/lib/maintenance-types"
+import { MaintenanceScheduleHelp } from "./maintenance-schedule-help"
 
 interface ScheduleListProps {
   onCreateNew: () => void
@@ -51,6 +52,9 @@ export function MaintenanceScheduleList({ onCreateNew, onEdit }: ScheduleListPro
           Create Schedule
         </button>
       </div>
+
+      {/* Help Section for New Admins */}
+      <MaintenanceScheduleHelp />
 
       {/* Schedules Table */}
       {schedules.length === 0 ? (

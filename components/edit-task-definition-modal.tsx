@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { CATEGORY_LABELS } from "@/lib/task-definitions"
 import type { TaskCategory, Department, Priority, TaskDefinition } from "@/lib/task-definitions"
 import type { CustomTaskDefinition } from "@/lib/custom-task-definitions"
-import { updateCustomTaskDefinition } from "@/lib/custom-task-definitions"
+import { updateCustomTaskDefinition, saveCustomTaskDefinition } from "@/lib/custom-task-definitions"
 import { useToast } from "@/hooks/use-toast"
 
 interface EditTaskDefinitionModalProps {
@@ -60,32 +60,43 @@ export function EditTaskDefinitionModal({ task, open, onOpenChange, onSuccess }:
       return
     }
 
-    if (!task.isCustom) {
-      toast({
-        title: "Cannot Edit",
-        description: "Built-in tasks cannot be edited. Create a custom task instead.",
-        variant: "destructive",
-      })
-      return
-    }
-
     const keywordsArray = formData.keywords
       .split(",")
       .map((k) => k.trim())
       .filter((k) => k.length > 0)
 
-    const updated = updateCustomTaskDefinition(task.id, {
-      name: formData.name,
-      category: formData.category,
-      department: formData.department,
-      duration: formData.duration,
-      priority: formData.priority,
-      photoRequired: formData.photoRequired,
-      photoCount: formData.photoCount,
-      keywords: keywordsArray,
-      requiresRoom: formData.requiresRoom,
-      requiresACLocation: formData.requiresACLocation,
-    })
+    let updated
+    if (task.isCustom) {
+      // Update existing custom task
+      updated = updateCustomTaskDefinition(task.id, {
+        name: formData.name,
+        category: formData.category,
+        department: formData.department,
+        duration: formData.duration,
+        priority: formData.priority,
+        photoRequired: formData.photoRequired,
+        photoCount: formData.photoCount,
+        keywords: keywordsArray,
+        requiresRoom: formData.requiresRoom,
+        requiresACLocation: formData.requiresACLocation,
+      })
+    } else {
+      // Create a custom task override with the same ID as the built-in task
+      updated = saveCustomTaskDefinition({
+        id: task.id, // Use the same ID to override the built-in task
+        name: formData.name,
+        category: formData.category,
+        department: formData.department,
+        duration: formData.duration,
+        priority: formData.priority,
+        photoRequired: formData.photoRequired,
+        photoCount: formData.photoCount,
+        keywords: keywordsArray,
+        requiresRoom: formData.requiresRoom,
+        requiresACLocation: formData.requiresACLocation,
+        createdBy: "admin",
+      })
+    }
 
     if (updated) {
       toast({
@@ -97,7 +108,7 @@ export function EditTaskDefinitionModal({ task, open, onOpenChange, onSuccess }:
     } else {
       toast({
         title: "Error",
-        description: "Failed to update task",
+        description: "Failed to save task",
         variant: "destructive",
       })
     }
@@ -109,9 +120,7 @@ export function EditTaskDefinitionModal({ task, open, onOpenChange, onSuccess }:
         <DialogHeader>
           <DialogTitle>Edit Task Definition</DialogTitle>
           <DialogDescription>
-            {task.isCustom
-              ? "Update the task definition. Changes will apply to future task assignments."
-              : "Built-in tasks cannot be edited. Create a custom task instead."}
+            Update the task definition. Changes will apply to future task assignments.
           </DialogDescription>
         </DialogHeader>
 
@@ -122,7 +131,6 @@ export function EditTaskDefinitionModal({ task, open, onOpenChange, onSuccess }:
               id="edit-task-name"
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              disabled={!task.isCustom}
             />
           </div>
 
@@ -132,7 +140,6 @@ export function EditTaskDefinitionModal({ task, open, onOpenChange, onSuccess }:
               <Select
                 value={formData.category}
                 onValueChange={(value) => setFormData({ ...formData, category: value as TaskCategory })}
-                disabled={!task.isCustom}
               >
                 <SelectTrigger id="edit-category">
                   <SelectValue />
@@ -152,7 +159,6 @@ export function EditTaskDefinitionModal({ task, open, onOpenChange, onSuccess }:
               <Select
                 value={formData.department}
                 onValueChange={(value) => setFormData({ ...formData, department: value as Department })}
-                disabled={!task.isCustom}
               >
                 <SelectTrigger id="edit-department">
                   <SelectValue />
@@ -174,7 +180,6 @@ export function EditTaskDefinitionModal({ task, open, onOpenChange, onSuccess }:
                 min="5"
                 value={formData.duration}
                 onChange={(e) => setFormData({ ...formData, duration: Number.parseInt(e.target.value) || 30 })}
-                disabled={!task.isCustom}
               />
             </div>
 
@@ -183,7 +188,6 @@ export function EditTaskDefinitionModal({ task, open, onOpenChange, onSuccess }:
               <Select
                 value={formData.priority}
                 onValueChange={(value) => setFormData({ ...formData, priority: value as Priority })}
-                disabled={!task.isCustom}
               >
                 <SelectTrigger id="edit-priority">
                   <SelectValue />
@@ -205,7 +209,6 @@ export function EditTaskDefinitionModal({ task, open, onOpenChange, onSuccess }:
               value={formData.keywords}
               onChange={(e) => setFormData({ ...formData, keywords: e.target.value })}
               rows={2}
-              disabled={!task.isCustom}
             />
           </div>
 
@@ -217,7 +220,6 @@ export function EditTaskDefinitionModal({ task, open, onOpenChange, onSuccess }:
                 checked={formData.photoRequired}
                 onChange={(e) => setFormData({ ...formData, photoRequired: e.target.checked })}
                 className="h-4 w-4"
-                disabled={!task.isCustom}
               />
               <Label htmlFor="edit-photo-required" className="cursor-pointer">
                 Photo documentation required
@@ -235,7 +237,6 @@ export function EditTaskDefinitionModal({ task, open, onOpenChange, onSuccess }:
                   value={formData.photoCount}
                   onChange={(e) => setFormData({ ...formData, photoCount: Number.parseInt(e.target.value) || 1 })}
                   className="w-24"
-                  disabled={!task.isCustom}
                 />
               </div>
             )}
@@ -247,7 +248,6 @@ export function EditTaskDefinitionModal({ task, open, onOpenChange, onSuccess }:
                 checked={formData.requiresRoom}
                 onChange={(e) => setFormData({ ...formData, requiresRoom: e.target.checked })}
                 className="h-4 w-4"
-                disabled={!task.isCustom}
               />
               <Label htmlFor="edit-requires-room" className="cursor-pointer">
                 Requires room number
@@ -261,7 +261,6 @@ export function EditTaskDefinitionModal({ task, open, onOpenChange, onSuccess }:
                 checked={formData.requiresACLocation}
                 onChange={(e) => setFormData({ ...formData, requiresACLocation: e.target.checked })}
                 className="h-4 w-4"
-                disabled={!task.isCustom}
               />
               <Label htmlFor="edit-requires-ac-location" className="cursor-pointer">
                 Requires AC location selection
@@ -274,9 +273,7 @@ export function EditTaskDefinitionModal({ task, open, onOpenChange, onSuccess }:
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button onClick={handleSave} disabled={!task.isCustom}>
-            Save Changes
-          </Button>
+          <Button onClick={handleSave}>Save Changes</Button>
         </div>
       </DialogContent>
     </Dialog>

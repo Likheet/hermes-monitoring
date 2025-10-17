@@ -2,8 +2,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import type { User, Task } from "@/lib/types"
 import type { MaintenanceTask } from "@/lib/maintenance-types"
-import { UserIcon, Clock, AlertTriangle } from "lucide-react"
+import { UserIcon, Clock, AlertTriangle, Coffee } from "lucide-react"
 import { formatShiftTime } from "@/lib/date-utils"
+import { isWorkerOnShiftFromUser } from "@/lib/shift-utils"
 
 interface WorkerStatusCardProps {
   worker: User
@@ -13,6 +14,9 @@ interface WorkerStatusCardProps {
 export function WorkerStatusCard({ worker, currentTask }: WorkerStatusCardProps) {
   const isRegularTask = currentTask && "assigned_to_user_id" in currentTask
   const isMaintenanceTask = currentTask && !("assigned_to_user_id" in currentTask)
+
+  const availability = isWorkerOnShiftFromUser(worker)
+  const isOnBreak = availability.status === "ON_BREAK"
 
   const isWorking = currentTask
     ? isRegularTask
@@ -32,6 +36,7 @@ export function WorkerStatusCard({ worker, currentTask }: WorkerStatusCardProps)
         : (currentTask as MaintenanceTask).status
       : "none",
     isWorking,
+    isOnBreak,
   })
 
   const isDelayed =
@@ -92,7 +97,14 @@ export function WorkerStatusCard({ worker, currentTask }: WorkerStatusCardProps)
             <UserIcon className="h-5 w-5 text-muted-foreground" />
             <CardTitle className="text-base">{worker.name}</CardTitle>
           </div>
-          <Badge variant={isWorking ? "default" : "secondary"}>{isWorking ? "Working" : "Available"}</Badge>
+          {isOnBreak ? (
+            <Badge variant="secondary" className="bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-100">
+              <Coffee className="h-3 w-3 mr-1" />
+              On break
+            </Badge>
+          ) : (
+            <Badge variant={isWorking ? "default" : "secondary"}>{isWorking ? "Working" : "Available"}</Badge>
+          )}
         </div>
       </CardHeader>
       <CardContent className="space-y-2">
@@ -104,6 +116,11 @@ export function WorkerStatusCard({ worker, currentTask }: WorkerStatusCardProps)
               ? `${formatShiftTime(worker.shift_start)} - ${formatShiftTime(worker.shift_end)}`
               : "Not set"}
           </p>
+          {worker.has_break && worker.break_start && worker.break_end && (
+            <p className="text-xs text-muted-foreground">
+              Break: {formatShiftTime(worker.break_start)} - {formatShiftTime(worker.break_end)}
+            </p>
+          )}
         </div>
         {taskDisplay && isWorking && (
           <div className="pt-2 border-t">

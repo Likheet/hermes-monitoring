@@ -22,17 +22,35 @@ export function getCustomTaskDefinitions(): CustomTaskDefinition[] {
 }
 
 export function saveCustomTaskDefinition(
-  taskDef: Omit<CustomTaskDefinition, "id" | "isCustom" | "createdAt">,
+  taskDef: Omit<CustomTaskDefinition, "id" | "isCustom" | "createdAt"> & { id?: string },
 ): CustomTaskDefinition {
+  // If an ID is provided and it's a built-in task, use that ID (override)
+  // Otherwise, generate a new ID
+  const taskId =
+    taskDef.id && isBuiltInTaskId(taskDef.id)
+      ? taskDef.id
+      : `custom-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+
   const newTask: CustomTaskDefinition = {
     ...taskDef,
-    id: `custom-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+    id: taskId,
     isCustom: true,
     createdAt: new Date().toISOString(),
   }
 
   const existing = getCustomTaskDefinitions()
-  const updated = [...existing, newTask]
+
+  // Check if we're overriding an existing custom task
+  const existingIndex = existing.findIndex((task) => task.id === taskId)
+
+  let updated: CustomTaskDefinition[]
+  if (existingIndex !== -1) {
+    // Update existing custom task
+    updated = [...existing.slice(0, existingIndex), newTask, ...existing.slice(existingIndex + 1)]
+  } else {
+    // Add new custom task
+    updated = [...existing, newTask]
+  }
 
   localStorage.setItem("custom_task_definitions", JSON.stringify(updated))
   console.log("[v0] Saved custom task definition:", newTask.id)
@@ -77,5 +95,17 @@ export function deleteCustomTaskDefinition(id: string): void {
 
 export function getAllTaskDefinitions(): (TaskDefinition | CustomTaskDefinition)[] {
   const customTasks = getCustomTaskDefinitions()
-  return [...TASK_DEFINITIONS, ...customTasks]
+
+  // Create a map of custom tasks by ID for quick lookup
+  const customTaskMap = new Map(customTasks.map((task) => [task.id, task]))
+
+  // Filter out built-in tasks that have been overridden by custom tasks
+  const nonOverriddenBuiltInTasks = TASK_DEFINITIONS.filter((task) => !customTaskMap.has(task.id))
+
+  // Return non-overridden built-in tasks + all custom tasks
+  return [...nonOverriddenBuiltInTasks, ...customTasks]
+}
+
+export function isBuiltInTaskId(id: string): boolean {
+  return TASK_DEFINITIONS.some((task) => task.id === id)
 }

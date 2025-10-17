@@ -13,10 +13,12 @@ export interface Shift {
 
 export interface WorkerAvailability {
   workerId: string
-  status: "ON_SHIFT" | "OFF_DUTY" | "ENDING_SOON"
+  status: "ON_SHIFT" | "OFF_DUTY" | "ENDING_SOON" | "ON_BREAK"
   minutesUntilEnd?: number
   shiftStart?: string
   shiftEnd?: string
+  breakStart?: string
+  breakEnd?: string
 }
 
 export function isWorkerOnShiftFromUser(user: User): WorkerAvailability {
@@ -63,6 +65,28 @@ export function isWorkerOnShiftFromUser(user: User): WorkerAvailability {
       status: "OFF_DUTY",
       shiftStart: user.shift_start,
       shiftEnd: user.shift_end,
+    }
+  }
+
+  if (user.has_break && user.break_start && user.break_end) {
+    const [breakStartHour, breakStartMin] = user.break_start.split(":").map(Number)
+    const [breakEndHour, breakEndMin] = user.break_end.split(":").map(Number)
+
+    const breakStartMinutes = breakStartHour * 60 + breakStartMin
+    const breakEndMinutes = breakEndHour * 60 + breakEndMin
+
+    const isOnBreak = currentMinutes >= breakStartMinutes && currentMinutes < breakEndMinutes
+
+    if (isOnBreak) {
+      console.log("[v0] Worker is currently on break")
+      return {
+        workerId: user.id,
+        status: "ON_BREAK",
+        shiftStart: user.shift_start,
+        shiftEnd: user.shift_end,
+        breakStart: user.break_start,
+        breakEnd: user.break_end,
+      }
     }
   }
 
@@ -267,4 +291,58 @@ export function hasOverlappingShifts(existingShifts: Shift[], newShift: Omit<Shi
       (newStart <= existingStart && newEnd >= existingEnd)
     )
   })
+}
+
+// Validate break times
+export function validateBreakTimes(
+  shiftStart: string,
+  shiftEnd: string,
+  breakStart: string,
+  breakEnd: string,
+): { valid: boolean; error?: string } {
+  const shiftStartMinutes = timeToMinutes(shiftStart)
+  const shiftEndMinutes = timeToMinutes(shiftEnd)
+  const breakStartMinutes = timeToMinutes(breakStart)
+  const breakEndMinutes = timeToMinutes(breakEnd)
+
+  // Check if break end is after break start
+  if (breakEndMinutes <= breakStartMinutes) {
+    return {
+      valid: false,
+      error: "Break end time must be after break start time",
+    }
+  }
+
+  // Check if break is within shift hours (handle overnight shifts)
+  if (shiftEndMinutes < shiftStartMinutes) {
+    // Overnight shift
+    const breakInFirstPart = breakStartMinutes >= shiftStartMinutes && breakEndMinutes <= 24 * 60
+    const breakInSecondPart = breakStartMinutes >= 0 && breakEndMinutes <= shiftEndMinutes
+
+    if (!breakInFirstPart && !breakInSecondPart) {
+      return {
+        valid: false,
+        error: "Break must be scheduled within shift hours",
+      }
+    }
+  } else {
+    // Normal shift
+    if (breakStartMinutes < shiftStartMinutes || breakEndMinutes > shiftEndMinutes) {
+      return {
+        valid: false,
+        error: "Break must be scheduled within shift hours",
+      }
+    }
+  }
+
+  // Check if break duration is reasonable (not more than 2 hours)
+  const breakDuration = breakEndMinutes - breakStartMinutes
+  if (breakDuration > 120) {
+    return {
+      valid: false,
+      error: "Break duration cannot exceed 2 hours",
+    }
+  }
+
+  return { valid: true }
 }
