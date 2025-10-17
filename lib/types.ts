@@ -96,3 +96,18 @@ export interface TaskIssue {
   issue_description: string
   status: "OPEN" | "RESOLVED"
 }
+
+export interface ShiftSchedule {
+  id: string
+  worker_id: string
+  schedule_date: string // Format: "YYYY-MM-DD"
+  shift_start: string // Format: "HH:MM"
+  shift_end: string // Format: "HH:MM"
+  has_break: boolean
+  break_start?: string // Format: "HH:MM"
+  break_end?: string // Format: "HH:MM"
+  is_override: boolean // true if this is a holiday/leave/off-duty day
+  override_reason?: string // "Holiday", "Leave", "Sick", "Emergency", etc.
+  notes?: string
+  created_at: string
+}

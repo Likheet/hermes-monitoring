@@ -346,3 +346,189 @@ export function validateBreakTimes(
 
   return { valid: true }
 }
+
+// Get worker's shift for a specific date, checking schedules first
+export function getWorkerShiftForDate(
+  worker: User,
+  date: Date,
+  shiftSchedules: Array<{
+    worker_id: string
+    schedule_date: string
+    shift_start: string
+    shift_end: string
+    has_break: boolean
+    break_start: string
+    break_end: string
+    is_override: boolean
+    override_reason: string
+  }>,
+): {
+  shift_start: string
+  shift_end: string
+  has_break: boolean
+  break_start?: string
+  break_end?: string
+  is_override: boolean
+  override_reason?: string
+} {
+  // Format date as YYYY-MM-DD
+  const dateStr = date.toISOString().split("T")[0]
+
+  // Check if there's a schedule for this specific date
+  const schedule = shiftSchedules.find((s) => s.worker_id === worker.id && s.schedule_date === dateStr)
+
+  if (schedule) {
+    console.log("[v0] Found shift schedule for", worker.name, "on", dateStr, schedule)
+    return {
+      shift_start: schedule.shift_start,
+      shift_end: schedule.shift_end,
+      has_break: schedule.has_break,
+      break_start: schedule.break_start,
+      break_end: schedule.break_end,
+      is_override: schedule.is_override,
+      override_reason: schedule.override_reason,
+    }
+  }
+
+  // Fall back to default shift from user profile
+  console.log("[v0] No schedule found, using default shift for", worker.name)
+  return {
+    shift_start: worker.shift_start,
+    shift_end: worker.shift_end,
+    has_break: worker.has_break || false,
+    break_start: worker.break_start,
+    break_end: worker.break_end,
+    is_override: false,
+  }
+}
+
+export function isWorkerOnShiftWithSchedule(
+  user: User,
+  shiftSchedules: Array<{
+    worker_id: string
+    schedule_date: string
+    shift_start: string
+    shift_end: string
+    has_break: boolean
+    break_start: string
+    break_end: string
+    is_override: boolean
+    override_reason: string
+  }>,
+): WorkerAvailability {
+  const today = new Date()
+  const todayShift = getWorkerShiftForDate(user, today, shiftSchedules)
+
+  // If worker is marked as off duty (override), return OFF_DUTY
+  if (todayShift.is_override && todayShift.override_reason) {
+    console.log("[v0] Worker", user.name, "is off duty:", todayShift.override_reason)
+    return {
+      workerId: user.id,
+      status: "OFF_DUTY",
+    }
+  }
+
+  if (!todayShift.shift_start || !todayShift.shift_end) {
+    return {
+      workerId: user.id,
+      status: "OFF_DUTY",
+    }
+  }
+
+  const now = new Date()
+  const currentMinutes = now.getHours() * 60 + now.getMinutes()
+
+  const [startHour, startMinute] = todayShift.shift_start.split(":").map(Number)
+  const [endHour, endMinute] = todayShift.shift_end.split(":").map(Number)
+
+  const shiftStartMinutes = startHour * 60 + startMinute
+  const shiftEndMinutes = endHour * 60 + endMinute
+
+  console.log("[v0] Checking shift for", user.name, {
+    currentTime: `${now.getHours().toString().padStart(2, "0")}:${now.getMinutes().toString().padStart(2, "0")}`,
+    currentMinutes,
+    shiftStart: todayShift.shift_start,
+    shiftStartMinutes,
+    shiftEnd: todayShift.shift_end,
+    shiftEndMinutes,
+    fromSchedule: !!shiftSchedules.find(
+      (s) => s.worker_id === user.id && s.schedule_date === today.toISOString().split("T")[0],
+    ),
+  })
+
+  let isWithinShift = false
+
+  if (shiftEndMinutes < shiftStartMinutes) {
+    // Shift crosses midnight
+    isWithinShift = currentMinutes >= shiftStartMinutes || currentMinutes <= shiftEndMinutes
+    console.log("[v0] Shift crosses midnight, isWithinShift:", isWithinShift)
+  } else {
+    // Normal shift within same day
+    isWithinShift = currentMinutes >= shiftStartMinutes && currentMinutes <= shiftEndMinutes
+    console.log("[v0] Normal shift, isWithinShift:", isWithinShift)
+  }
+
+  if (!isWithinShift) {
+    return {
+      workerId: user.id,
+      status: "OFF_DUTY",
+      shiftStart: todayShift.shift_start,
+      shiftEnd: todayShift.shift_end,
+    }
+  }
+
+  if (todayShift.has_break && todayShift.break_start && todayShift.break_end) {
+    const [breakStartHour, breakStartMin] = todayShift.break_start.split(":").map(Number)
+    const [breakEndHour, breakEndMin] = todayShift.break_end.split(":").map(Number)
+
+    const breakStartMinutes = breakStartHour * 60 + breakStartMin
+    const breakEndMinutes = breakEndHour * 60 + breakEndMin
+
+    const isOnBreak = currentMinutes >= breakStartMinutes && currentMinutes < breakEndMinutes
+
+    if (isOnBreak) {
+      console.log("[v0] Worker is currently on break")
+      return {
+        workerId: user.id,
+        status: "ON_BREAK",
+        shiftStart: todayShift.shift_start,
+        shiftEnd: todayShift.shift_end,
+        breakStart: todayShift.break_start,
+        breakEnd: todayShift.break_end,
+      }
+    }
+  }
+
+  let minutesUntilEnd: number
+  if (shiftEndMinutes < shiftStartMinutes && currentMinutes < shiftStartMinutes) {
+    // We're in the "after midnight" portion of the shift
+    minutesUntilEnd = shiftEndMinutes - currentMinutes
+  } else if (shiftEndMinutes < shiftStartMinutes && currentMinutes >= shiftStartMinutes) {
+    // We're in the "before midnight" portion of the shift
+    minutesUntilEnd = 24 * 60 - currentMinutes + shiftEndMinutes
+  } else {
+    // Normal shift calculation
+    minutesUntilEnd = shiftEndMinutes - currentMinutes
+  }
+
+  console.log("[v0] Minutes until shift end:", minutesUntilEnd)
+
+  // Check if shift is ending soon (within 30 minutes)
+  if (minutesUntilEnd <= 30 && minutesUntilEnd > 0) {
+    return {
+      workerId: user.id,
+      status: "ENDING_SOON",
+      minutesUntilEnd,
+      shiftStart: todayShift.shift_start,
+      shiftEnd: todayShift.shift_end,
+    }
+  }
+
+  return {
+    workerId: user.id,
+    status: "ON_SHIFT",
+    minutesUntilEnd,
+    shiftStart: todayShift.shift_start,
+    shiftEnd: todayShift.shift_end,
+  }
+}

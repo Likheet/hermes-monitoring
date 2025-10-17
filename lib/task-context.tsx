@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useState, useEffect, type ReactNode } from "react"
 import type { Task, AuditLogEntry, PauseRecord, User, TaskIssue, CategorizedPhotos } from "./types"
-import type { MaintenanceSchedule, MaintenanceTask, MaintenanceTaskType } from "./maintenance-types"
+import type { MaintenanceSchedule, MaintenanceTask, MaintenanceTaskType, ShiftSchedule } from "./maintenance-types"
 import { mockTasks, createDualTimestamp, mockUsers, mockIssues } from "./mock-data"
 import { createClient } from "@/lib/supabase/client"
 import { createNotification, playNotificationSound } from "./notification-utils"
@@ -15,6 +15,7 @@ interface TaskContextType {
   issues: TaskIssue[]
   schedules: MaintenanceSchedule[]
   maintenanceTasks: MaintenanceTask[]
+  shiftSchedules: ShiftSchedule[]
   updateTask: (taskId: string, updates: Partial<Task>) => void
   addAuditLog: (taskId: string, entry: Omit<AuditLogEntry, "timestamp">) => void
   startTask: (taskId: string, userId: string) => { success: boolean; error?: string }
@@ -56,6 +57,9 @@ interface TaskContextType {
   toggleSchedule: (scheduleId: string) => void
   updateMaintenanceTask: (taskId: string, updates: Partial<MaintenanceTask>) => void
   swapTasks: (pauseTaskId: string, resumeTaskId: string, userId: string) => { success: boolean; error?: string }
+  saveShiftSchedule: (schedule: Omit<ShiftSchedule, "id" | "created_at">) => void
+  getShiftSchedules: (workerId: string, startDate: string, endDate: string) => ShiftSchedule[]
+  deleteShiftSchedule: (scheduleId: string) => void
 }
 
 const TaskContext = createContext<TaskContextType | undefined>(undefined)
@@ -66,6 +70,7 @@ export function TaskProvider({ children }: { children: ReactNode }) {
   const [issues, setIssues] = useState<TaskIssue[]>(mockIssues)
   const [schedules, setSchedules] = useState<MaintenanceSchedule[]>([])
   const [maintenanceTasks, setMaintenanceTasks] = useState<MaintenanceTask[]>([])
+  const [shiftSchedules, setShiftSchedules] = useState<ShiftSchedule[]>([])
   const [isRealtimeEnabled] = useState(false) // Set to true when switching to real database
 
   useEffect(() => {
@@ -105,12 +110,12 @@ export function TaskProvider({ children }: { children: ReactNode }) {
     console.log("[v0] TaskProvider mounted, loading from localStorage")
     const savedSchedules = localStorage.getItem("maintenance_schedules")
     const savedTasks = localStorage.getItem("maintenance_tasks")
+    const savedShiftSchedules = localStorage.getItem("shift_schedules")
 
     console.log("[v0] localStorage check:", {
       hasSchedules: !!savedSchedules,
       hasTasks: !!savedTasks,
-      schedulesLength: savedSchedules?.length,
-      tasksLength: savedTasks?.length,
+      hasShiftSchedules: !!savedShiftSchedules,
     })
 
     if (savedSchedules) {
@@ -134,6 +139,16 @@ export function TaskProvider({ children }: { children: ReactNode }) {
     } else {
       console.log("[v0] No maintenance tasks found in localStorage")
     }
+
+    if (savedShiftSchedules) {
+      try {
+        const parsed = JSON.parse(savedShiftSchedules)
+        console.log("[v0] Loaded", parsed.length, "shift schedules from localStorage")
+        setShiftSchedules(parsed)
+      } catch (error) {
+        console.error("[v0] Error loading shift schedules:", error)
+      }
+    }
   }, [])
 
   useEffect(() => {
@@ -149,6 +164,13 @@ export function TaskProvider({ children }: { children: ReactNode }) {
       console.log("[v0] Saved", schedules.length, "schedules to localStorage")
     }
   }, [schedules])
+
+  useEffect(() => {
+    if (shiftSchedules.length > 0) {
+      localStorage.setItem("shift_schedules", JSON.stringify(shiftSchedules))
+      console.log("[v0] Saved", shiftSchedules.length, "shift schedules to localStorage")
+    }
+  }, [shiftSchedules])
 
   const updateTask = (taskId: string, updates: Partial<Task>) => {
     setTasks((prev) => prev.map((task) => (task.id === taskId ? { ...task, ...updates } : task)))
@@ -836,6 +858,54 @@ export function TaskProvider({ children }: { children: ReactNode }) {
     return { success: true }
   }
 
+  const saveShiftSchedule = (scheduleData: Omit<ShiftSchedule, "id" | "created_at">) => {
+    console.log("[v0] Saving shift schedule:", scheduleData)
+
+    // Check if schedule already exists for this worker and date
+    const existingIndex = shiftSchedules.findIndex(
+      (s) => s.worker_id === scheduleData.worker_id && s.schedule_date === scheduleData.schedule_date,
+    )
+
+    if (existingIndex >= 0) {
+      // Update existing schedule
+      console.log("[v0] Updating existing shift schedule")
+      setShiftSchedules((prev) =>
+        prev.map((s, i) => (i === existingIndex ? { ...s, ...scheduleData, created_at: new Date().toISOString() } : s)),
+      )
+    } else {
+      // Create new schedule
+      const newSchedule: ShiftSchedule = {
+        ...scheduleData,
+        id: `shift-sched-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        created_at: new Date().toISOString(),
+      }
+      console.log("[v0] Creating new shift schedule:", newSchedule.id)
+      setShiftSchedules((prev) => [...prev, newSchedule])
+    }
+  }
+
+  const getShiftSchedules = (workerId: string, startDate: string, endDate: string) => {
+    const filtered = shiftSchedules.filter(
+      (s) => s.worker_id === workerId && s.schedule_date >= startDate && s.schedule_date <= endDate,
+    )
+    console.log(
+      "[v0] Found",
+      filtered.length,
+      "shift schedules for worker",
+      workerId,
+      "between",
+      startDate,
+      "and",
+      endDate,
+    )
+    return filtered
+  }
+
+  const deleteShiftSchedule = (scheduleId: string) => {
+    console.log("[v0] Deleting shift schedule:", scheduleId)
+    setShiftSchedules((prev) => prev.filter((s) => s.id !== scheduleId))
+  }
+
   return (
     <TaskContext.Provider
       value={{
@@ -844,6 +914,7 @@ export function TaskProvider({ children }: { children: ReactNode }) {
         issues,
         schedules,
         maintenanceTasks,
+        shiftSchedules,
         updateTask,
         addAuditLog,
         startTask,
@@ -864,6 +935,9 @@ export function TaskProvider({ children }: { children: ReactNode }) {
         toggleSchedule,
         updateMaintenanceTask,
         swapTasks,
+        saveShiftSchedule,
+        getShiftSchedules,
+        deleteShiftSchedule,
       }}
     >
       {children}

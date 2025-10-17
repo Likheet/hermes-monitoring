@@ -16,11 +16,12 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Calendar, Coffee, Save, Umbrella, Plane } from "lucide-react"
+import { Calendar, Coffee, Save, Umbrella, Plane, ChevronLeft, ChevronRight } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
-import { createClient } from "@/lib/supabase/client"
 import type { User } from "@/lib/types"
 import { calculateWorkingHours } from "@/lib/date-utils"
+import { useTasks } from "@/lib/task-context"
+import { cn } from "@/lib/utils"
 
 interface WeeklyScheduleViewProps {
   workers: User[]
@@ -50,18 +51,19 @@ const OVERRIDE_REASONS = [
 
 export function WeeklyScheduleView({ workers }: WeeklyScheduleViewProps) {
   const { toast } = useToast()
-  const supabase = createClient()
+  const { saveShiftSchedule, getShiftSchedules } = useTasks()
   const [schedules, setSchedules] = useState<Record<string, WeekSchedule>>({})
   const [loading, setLoading] = useState(true)
   const [selectedWorker, setSelectedWorker] = useState<string | null>(null)
   const [selectedDay, setSelectedDay] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [weekOffset, setWeekOffset] = useState(0)
 
-  // Get the current week's dates
   const getWeekDates = () => {
     const today = new Date()
     const currentDay = today.getDay()
     const monday = new Date(today)
-    monday.setDate(today.getDate() - (currentDay === 0 ? 6 : currentDay - 1))
+    monday.setDate(today.getDate() - (currentDay === 0 ? 6 : currentDay - 1) + weekOffset * 7)
 
     return DAYS_OF_WEEK.map((_, index) => {
       const date = new Date(monday)
@@ -72,41 +74,59 @@ export function WeeklyScheduleView({ workers }: WeeklyScheduleViewProps) {
 
   const weekDates = getWeekDates()
 
-  // Load schedules from database
-  useEffect(() => {
-    loadSchedules()
-  }, [])
+  const isPastDate = (dateString: string) => {
+    const date = new Date(dateString)
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    return date < today
+  }
 
-  const loadSchedules = async () => {
+  const isToday = (dateString: string) => {
+    const date = new Date(dateString)
+    const today = new Date()
+    return (
+      date.getDate() === today.getDate() &&
+      date.getMonth() === today.getMonth() &&
+      date.getFullYear() === today.getFullYear()
+    )
+  }
+
+  useEffect(() => {
+    console.log("[v0] WeeklyScheduleView mounted with workers:", workers.length)
+    loadSchedules()
+  }, [weekOffset])
+
+  const loadSchedules = () => {
+    console.log("[v0] Loading schedules for workers:", workers.length)
     setLoading(true)
     const newSchedules: Record<string, WeekSchedule> = {}
 
     for (const worker of workers) {
+      console.log("[v0] Loading schedule for worker:", worker.name, "ID:", worker.id)
       const workerSchedule: WeekSchedule = {}
 
       for (let i = 0; i < weekDates.length; i++) {
         const date = weekDates[i]
-        const { data, error } = await supabase
-          .from("shift_schedules")
-          .select("*")
-          .eq("worker_id", worker.id)
-          .eq("schedule_date", date)
-          .single()
+        const day = DAYS_OF_WEEK[i]
 
-        if (data) {
-          workerSchedule[DAYS_OF_WEEK[i]] = {
-            shift_start: data.shift_start,
-            shift_end: data.shift_end,
-            has_break: data.has_break,
-            break_start: data.break_start || "12:00",
-            break_end: data.break_end || "13:00",
-            is_override: data.is_override,
-            override_reason: data.override_reason || "",
-            notes: data.notes || "",
+        const savedSchedules = getShiftSchedules(worker.id, date, date)
+        const savedSchedule = savedSchedules[0]
+
+        if (savedSchedule) {
+          console.log("[v0] Loaded schedule for", worker.name, day, savedSchedule)
+          workerSchedule[day] = {
+            shift_start: savedSchedule.shift_start,
+            shift_end: savedSchedule.shift_end,
+            has_break: savedSchedule.has_break,
+            break_start: savedSchedule.break_start || "12:00",
+            break_end: savedSchedule.break_end || "13:00",
+            is_override: savedSchedule.is_override,
+            override_reason: savedSchedule.override_reason || "",
+            notes: savedSchedule.notes || "",
           }
         } else {
-          // Use worker's default shift
-          workerSchedule[DAYS_OF_WEEK[i]] = {
+          console.log("[v0] No schedule found, using default shift for", worker.name, day)
+          workerSchedule[day] = {
             shift_start: worker.shift_start,
             shift_end: worker.shift_end,
             has_break: worker.has_break,
@@ -124,41 +144,7 @@ export function WeeklyScheduleView({ workers }: WeeklyScheduleViewProps) {
 
     setSchedules(newSchedules)
     setLoading(false)
-  }
-
-  const saveSchedule = async (workerId: string, day: string, schedule: DaySchedule) => {
-    const dayIndex = DAYS_OF_WEEK.indexOf(day)
-    const date = weekDates[dayIndex]
-
-    const { error } = await supabase.from("shift_schedules").upsert(
-      {
-        worker_id: workerId,
-        schedule_date: date,
-        shift_start: schedule.shift_start,
-        shift_end: schedule.shift_end,
-        has_break: schedule.has_break,
-        break_start: schedule.break_start,
-        break_end: schedule.break_end,
-        is_override: schedule.is_override,
-        override_reason: schedule.override_reason,
-        notes: schedule.notes,
-      },
-      { onConflict: "worker_id,schedule_date" },
-    )
-
-    if (error) {
-      toast({
-        title: "Error",
-        description: "Failed to save schedule",
-        variant: "destructive",
-      })
-    } else {
-      toast({
-        title: "Schedule Saved",
-        description: `Schedule for ${day} has been updated`,
-      })
-      loadSchedules()
-    }
+    console.log("[v0] Schedules loaded successfully")
   }
 
   const updateSchedule = (workerId: string, day: string, updates: Partial<DaySchedule>) => {
@@ -174,9 +160,51 @@ export function WeeklyScheduleView({ workers }: WeeklyScheduleViewProps) {
     }))
   }
 
+  const saveSchedule = (workerId: string, day: string, schedule: DaySchedule) => {
+    console.log("[v0] Saving schedule:", { workerId, day, schedule })
+    setSaving(true)
+
+    const dayIndex = DAYS_OF_WEEK.indexOf(day)
+    const date = weekDates[dayIndex]
+
+    try {
+      saveShiftSchedule({
+        worker_id: workerId,
+        schedule_date: date,
+        shift_start: schedule.shift_start,
+        shift_end: schedule.shift_end,
+        has_break: schedule.has_break,
+        break_start: schedule.break_start,
+        break_end: schedule.break_end,
+        is_override: schedule.is_override,
+        override_reason: schedule.override_reason,
+        notes: schedule.notes,
+      })
+
+      console.log("[v0] Schedule saved successfully")
+      toast({
+        title: "Schedule Saved",
+        description: `Schedule for ${day} has been updated`,
+      })
+    } catch (error) {
+      console.error("[v0] Save schedule exception:", error)
+      toast({
+        title: "Error",
+        description: `Failed to save schedule: ${error instanceof Error ? error.message : "Unknown error"}`,
+        variant: "destructive",
+      })
+    } finally {
+      setSaving(false)
+    }
+  }
+
   const toggleOverride = (workerId: string, day: string, reason: string) => {
+    console.log("[v0] toggleOverride called:", { workerId, day, reason })
     const currentSchedule = schedules[workerId]?.[day]
-    if (!currentSchedule) return
+    if (!currentSchedule) {
+      console.error("[v0] No current schedule found for:", { workerId, day })
+      return
+    }
 
     const newSchedule = {
       ...currentSchedule,
@@ -184,6 +212,7 @@ export function WeeklyScheduleView({ workers }: WeeklyScheduleViewProps) {
       override_reason: !currentSchedule.is_override ? reason : "",
     }
 
+    console.log("[v0] New schedule after toggle:", newSchedule)
     updateSchedule(workerId, day, newSchedule)
     saveSchedule(workerId, day, newSchedule)
   }
@@ -192,17 +221,36 @@ export function WeeklyScheduleView({ workers }: WeeklyScheduleViewProps) {
     return <div className="text-center py-8">Loading schedules...</div>
   }
 
+  const weekStart = new Date(weekDates[0])
+  const weekEnd = new Date(weekDates[6])
+  const weekRangeText = `${weekStart.toLocaleDateString("en-US", { month: "short", day: "numeric" })} - ${weekEnd.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`
+
   return (
     <div className="space-y-4">
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Calendar className="h-5 w-5" />
-            Weekly Schedule
-          </CardTitle>
-          <p className="text-sm text-muted-foreground">
-            Assign shifts for each worker for every day of the week. Click on a day to edit shift details.
-          </p>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <Calendar className="h-5 w-5" />
+                Weekly Schedule
+              </CardTitle>
+              <p className="text-sm text-muted-foreground mt-1">
+                Assign shifts for each worker for every day of the week. Click on a day to edit shift details.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" onClick={() => setWeekOffset((prev) => prev - 1)}>
+                <ChevronLeft className="h-4 w-4" />
+                Previous
+              </Button>
+              <div className="text-sm font-medium px-3">{weekRangeText}</div>
+              <Button variant="outline" size="sm" onClick={() => setWeekOffset((prev) => prev + 1)}>
+                Next
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           <div className="overflow-x-auto">
@@ -210,14 +258,28 @@ export function WeeklyScheduleView({ workers }: WeeklyScheduleViewProps) {
               <thead>
                 <tr className="border-b">
                   <th className="text-left p-3 font-semibold">Worker</th>
-                  {DAYS_OF_WEEK.map((day, index) => (
-                    <th key={day} className="text-center p-3 font-semibold min-w-[140px]">
-                      <div className="text-sm">{day}</div>
-                      <div className="text-xs text-muted-foreground font-normal">
-                        {new Date(weekDates[index]).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-                      </div>
-                    </th>
-                  ))}
+                  {DAYS_OF_WEEK.map((day, index) => {
+                    const date = weekDates[index]
+                    const isPast = isPastDate(date)
+                    const isTodayDate = isToday(date)
+
+                    return (
+                      <th
+                        key={day}
+                        className={cn(
+                          "text-center p-3 font-semibold min-w-[140px]",
+                          isPast && "bg-muted/30",
+                          isTodayDate && "bg-primary/10 border-2 border-primary/30",
+                        )}
+                      >
+                        <div className="text-sm">{day}</div>
+                        <div className="text-xs text-muted-foreground font-normal">
+                          {new Date(date).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                        </div>
+                        {isTodayDate && <Badge className="mt-1 text-xs">Today</Badge>}
+                      </th>
+                    )
+                  })}
                 </tr>
               </thead>
               <tbody>
@@ -227,9 +289,13 @@ export function WeeklyScheduleView({ workers }: WeeklyScheduleViewProps) {
                       <div className="font-medium">{worker.name}</div>
                       <div className="text-xs text-muted-foreground capitalize">{worker.department}</div>
                     </td>
-                    {DAYS_OF_WEEK.map((day) => {
+                    {DAYS_OF_WEEK.map((day, index) => {
                       const schedule = schedules[worker.id]?.[day]
                       if (!schedule) return <td key={day} className="p-2" />
+
+                      const date = weekDates[index]
+                      const isPast = isPastDate(date)
+                      const isTodayDate = isToday(date)
 
                       const workingHours = calculateWorkingHours(
                         schedule.shift_start,
@@ -240,12 +306,23 @@ export function WeeklyScheduleView({ workers }: WeeklyScheduleViewProps) {
                       )
 
                       return (
-                        <td key={day} className="p-2">
+                        <td
+                          key={day}
+                          className={cn(
+                            "p-2",
+                            isPast && "bg-muted/30",
+                            isTodayDate && "bg-primary/10 border-2 border-primary/30",
+                          )}
+                        >
                           <Dialog>
                             <DialogTrigger asChild>
                               <Button
                                 variant={schedule.is_override ? "secondary" : "outline"}
-                                className="w-full h-auto flex flex-col items-start p-2 gap-1"
+                                className={cn(
+                                  "w-full h-auto flex flex-col items-start p-2 gap-1",
+                                  isPast && "opacity-60",
+                                  isTodayDate && "ring-2 ring-primary/50",
+                                )}
                                 onClick={() => {
                                   setSelectedWorker(worker.id)
                                   setSelectedDay(day)
@@ -386,9 +463,13 @@ export function WeeklyScheduleView({ workers }: WeeklyScheduleViewProps) {
                                   />
                                 </div>
 
-                                <Button onClick={() => saveSchedule(worker.id, day, schedule)} className="w-full">
+                                <Button
+                                  onClick={() => saveSchedule(worker.id, day, schedule)}
+                                  className="w-full"
+                                  disabled={saving}
+                                >
                                   <Save className="mr-2 h-4 w-4" />
-                                  Save Schedule
+                                  {saving ? "Saving..." : "Save Schedule"}
                                 </Button>
                               </div>
                             </DialogContent>

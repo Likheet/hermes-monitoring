@@ -42,6 +42,21 @@ export interface MaintenanceTask {
   created_at: string
 }
 
+export interface ShiftSchedule {
+  id: string
+  worker_id: string
+  schedule_date: string // Format: "YYYY-MM-DD"
+  shift_start: string // Format: "HH:MM"
+  shift_end: string // Format: "HH:MM"
+  has_break: boolean
+  break_start?: string // Format: "HH:MM"
+  break_end?: string // Format: "HH:MM"
+  is_override: boolean // true if this is a holiday/leave/off-duty day
+  override_reason?: string // "holiday", "leave", "sick", "emergency", etc.
+  notes?: string
+  created_at: string
+}
+
 export const TASK_TYPE_LABELS: Record<MaintenanceTaskType, string> = {
   ac_indoor: "AC Indoor Unit",
   ac_outdoor: "AC Outdoor Unit",

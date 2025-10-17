@@ -4,7 +4,8 @@ import type { User, Task } from "@/lib/types"
 import type { MaintenanceTask } from "@/lib/maintenance-types"
 import { UserIcon, Clock, AlertTriangle, Coffee } from "lucide-react"
 import { formatShiftTime } from "@/lib/date-utils"
-import { isWorkerOnShiftFromUser } from "@/lib/shift-utils"
+import { isWorkerOnShiftFromUser, getWorkerShiftForDate } from "@/lib/shift-utils"
+import { useTasks } from "@/lib/task-context"
 
 interface WorkerStatusCardProps {
   worker: User
@@ -12,8 +13,13 @@ interface WorkerStatusCardProps {
 }
 
 export function WorkerStatusCard({ worker, currentTask }: WorkerStatusCardProps) {
+  const { shiftSchedules } = useTasks()
+
   const isRegularTask = currentTask && "assigned_to_user_id" in currentTask
   const isMaintenanceTask = currentTask && !("assigned_to_user_id" in currentTask)
+
+  const today = new Date()
+  const todayShift = getWorkerShiftForDate(worker, today, shiftSchedules)
 
   const availability = isWorkerOnShiftFromUser(worker)
   const isOnBreak = availability.status === "ON_BREAK"
@@ -28,8 +34,6 @@ export function WorkerStatusCard({ worker, currentTask }: WorkerStatusCardProps)
   console.log("[v0] WorkerStatusCard:", {
     workerName: worker.name,
     hasCurrentTask: !!currentTask,
-    isRegularTask,
-    isMaintenanceTask,
     taskStatus: currentTask
       ? isRegularTask
         ? (currentTask as Task).status
@@ -37,6 +41,12 @@ export function WorkerStatusCard({ worker, currentTask }: WorkerStatusCardProps)
       : "none",
     isWorking,
     isOnBreak,
+    todayShift: {
+      start: todayShift.shift_start,
+      end: todayShift.shift_end,
+      isOverride: todayShift.is_override,
+      reason: todayShift.override_reason,
+    },
   })
 
   const isDelayed =
@@ -97,7 +107,11 @@ export function WorkerStatusCard({ worker, currentTask }: WorkerStatusCardProps)
             <UserIcon className="h-5 w-5 text-muted-foreground" />
             <CardTitle className="text-base">{worker.name}</CardTitle>
           </div>
-          {isOnBreak ? (
+          {todayShift.is_override && todayShift.override_reason ? (
+            <Badge variant="secondary" className="bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-100">
+              Off Duty
+            </Badge>
+          ) : isOnBreak ? (
             <Badge variant="secondary" className="bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-100">
               <Coffee className="h-3 w-3 mr-1" />
               On break
@@ -110,16 +124,22 @@ export function WorkerStatusCard({ worker, currentTask }: WorkerStatusCardProps)
       <CardContent className="space-y-2">
         <div className="text-sm text-muted-foreground">
           <p>Department: {worker.department}</p>
-          <p>
-            Shift:{" "}
-            {worker.shift_start && worker.shift_end
-              ? `${formatShiftTime(worker.shift_start)} - ${formatShiftTime(worker.shift_end)}`
-              : "Not set"}
-          </p>
-          {worker.has_break && worker.break_start && worker.break_end && (
-            <p className="text-xs text-muted-foreground">
-              Break: {formatShiftTime(worker.break_start)} - {formatShiftTime(worker.break_end)}
-            </p>
+          {todayShift.is_override && todayShift.override_reason ? (
+            <p className="text-xs text-muted-foreground italic">{todayShift.override_reason}</p>
+          ) : (
+            <>
+              <p>
+                Shift:{" "}
+                {todayShift.shift_start && todayShift.shift_end
+                  ? `${formatShiftTime(todayShift.shift_start)} - ${formatShiftTime(todayShift.shift_end)}`
+                  : "Not set"}
+              </p>
+              {todayShift.has_break && todayShift.break_start && todayShift.break_end && (
+                <p className="text-xs text-muted-foreground">
+                  Break: {formatShiftTime(todayShift.break_start)} - {formatShiftTime(todayShift.break_end)}
+                </p>
+              )}
+            </>
           )}
         </div>
         {taskDisplay && isWorking && (
