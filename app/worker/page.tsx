@@ -71,7 +71,7 @@ function WorkerDashboard() {
     if (user?.id) {
       const savedNotes = localStorage.getItem(`notes_${user.id}`)
       if (savedNotes) {
-        const parsed = JSON.parse(savedNotes)
+        const parsed = JSON.JSON.parse(savedNotes)
         setNotes(
           parsed.map((n: any) => ({ ...n, created_at: new Date(n.created_at), updated_at: new Date(n.updated_at) })),
         )
@@ -100,6 +100,8 @@ function WorkerDashboard() {
   const inProgressTasks = myTasks.filter((t) => t.status === "IN_PROGRESS" || t.status === "PAUSED")
   const completedTasks = myTasks.filter((t) => t.status === "COMPLETED")
   const rejectedTasks = myTasks.filter((t) => t.status === "REJECTED")
+  const unacknowledgedRejectedTasks = rejectedTasks.filter((t) => !t.rejection_acknowledged)
+  const acknowledgedRejectedTasks = rejectedTasks.filter((t) => t.rejection_acknowledged)
 
   const now = new Date()
   const currentMonth = now.getMonth() + 1
@@ -120,7 +122,8 @@ function WorkerDashboard() {
     })
   }, [maintenanceTasks, currentMonth, currentYear])
 
-  const maintenanceTasksForDisplay = monthlyMaintenanceTasks.length > 0 ? monthlyMaintenanceTasks : maintenanceTasks || []
+  const maintenanceTasksForDisplay =
+    monthlyMaintenanceTasks.length > 0 ? monthlyMaintenanceTasks : maintenanceTasks || []
   const maintenanceTaskIdsForDisplay = useMemo(
     () => new Set(maintenanceTasksForDisplay.map((task) => task.id)),
     [maintenanceTasksForDisplay],
@@ -774,9 +777,7 @@ function WorkerDashboard() {
                     })
                     .slice(0, 10)
                     .map((task) => {
-                      const roomTasks = maintenanceTasksForDisplay.filter(
-                        (t) => t.room_number === task.room_number,
-                      )
+                      const roomTasks = maintenanceTasksForDisplay.filter((t) => t.room_number === task.room_number)
                       const completedCount = roomTasks.filter((t) => t.status === "completed").length
                       const remainingCount = Math.max(roomTasks.length - completedCount, 0)
 
@@ -938,9 +939,7 @@ function WorkerDashboard() {
                 <p className="text-sm text-muted-foreground mb-3">Rooms on the same floor as your current work</p>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                   {nearbyRooms.map((room) => {
-                    const roomTasks = maintenanceTasksForDisplay.filter(
-                      (t) => t.room_number === room.roomNumber,
-                    )
+                    const roomTasks = maintenanceTasksForDisplay.filter((t) => t.room_number === room.roomNumber)
                     const completedCount = roomTasks.filter((t) => t.status === "completed").length
 
                     return (
@@ -1030,49 +1029,91 @@ function WorkerDashboard() {
               </section>
             )}
 
-            {myTasks.filter((t) => t.status === "REJECTED").length > 0 && (
+            {unacknowledgedRejectedTasks.length > 0 && (
               <section>
-                <h2 className="text-base md:text-lg font-semibold mb-3 text-destructive">Rejected Tasks</h2>
+                <h2 className="text-base md:text-lg font-semibold mb-3 text-destructive">
+                  ⚠️ Rejected Tasks - Action Required
+                </h2>
                 <div className="space-y-4">
-                  {myTasks
-                    .filter((t) => t.status === "REJECTED")
-                    .map((task) => (
-                      <Card key={task.id} className="border-destructive/50 bg-destructive/10">
-                        <CardHeader className="pb-3">
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="flex items-start gap-2 flex-1">
-                              <AlertCircle className="h-5 w-5 text-destructive shrink-0 mt-0.5" />
-                              <CardTitle className="text-lg">{task.task_type}</CardTitle>
-                            </div>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => handleDismissRejection(task.id)}
-                              className="h-8 w-8 text-destructive hover:bg-destructive/20"
-                              title="Dismiss rejection"
-                            >
-                              <X className="h-4 w-4" />
-                            </Button>
+                  {unacknowledgedRejectedTasks.map((task) => (
+                    <Card key={task.id} className="border-destructive/50 bg-destructive/10">
+                      <CardHeader className="pb-3">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex items-start gap-2 flex-1">
+                            <AlertCircle className="h-5 w-5 text-destructive shrink-0 mt-0.5" />
+                            <CardTitle className="text-lg">{task.task_type}</CardTitle>
                           </div>
-                        </CardHeader>
-                        <CardContent className="space-y-2">
-                          <p className="text-sm font-medium text-destructive">
-                            <strong>Rejection Reason:</strong> {task.supervisor_remark || "No reason provided"}
-                          </p>
-                          {task.rejection_proof_photo_url && (
-                            <div className="mt-2">
-                              <p className="text-sm font-medium text-destructive mb-2">Proof Photo:</p>
-                              <img
-                                src={task.rejection_proof_photo_url || "/placeholder.svg"}
-                                alt="Rejection proof"
-                                className="w-full max-w-sm rounded-lg border-2 border-destructive/50"
-                              />
-                            </div>
-                          )}
-                          <p className="text-xs text-muted-foreground">Room: {task.room_number}</p>
-                        </CardContent>
-                      </Card>
-                    ))}
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleDismissRejection(task.id)}
+                            className="h-8 w-8 text-destructive hover:bg-destructive/20"
+                            title="Acknowledge rejection"
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </CardHeader>
+                      <CardContent className="space-y-2">
+                        <p className="text-sm font-medium text-destructive">
+                          <strong>Rejection Reason:</strong> {task.supervisor_remark || "No reason provided"}
+                        </p>
+                        {task.rejection_proof_photo_url && (
+                          <div className="mt-2">
+                            <p className="text-sm font-medium text-destructive mb-2">Proof Photo:</p>
+                            <img
+                              src={task.rejection_proof_photo_url || "/placeholder.svg"}
+                              alt="Rejection proof"
+                              className="w-full max-w-sm rounded-lg border-2 border-destructive/50"
+                            />
+                          </div>
+                        )}
+                        <p className="text-xs text-muted-foreground">Room: {task.room_number}</p>
+                        <p className="text-xs text-muted-foreground mt-2">
+                          Click X to acknowledge this rejection. The task will remain in your history for
+                          record-keeping.
+                        </p>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {acknowledgedRejectedTasks.length > 0 && (
+              <section>
+                <h2 className="text-base md:text-lg font-semibold mb-3 text-muted-foreground">
+                  📋 Acknowledged Rejections (Record)
+                </h2>
+                <p className="text-sm text-muted-foreground mb-3">
+                  These tasks are kept for audit and training purposes
+                </p>
+                <div className="space-y-3">
+                  {acknowledgedRejectedTasks.map((task) => (
+                    <Card key={task.id} className="border-muted bg-muted/30 opacity-75">
+                      <CardContent className="p-4">
+                        <div className="flex items-start gap-3">
+                          <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/30">
+                            REJECTED
+                          </Badge>
+                          <div className="flex-1 min-w-0">
+                            <h3 className="font-semibold text-sm mb-1">{task.task_type}</h3>
+                            <p className="text-xs text-muted-foreground mb-1">
+                              Room {task.room_number} • {task.supervisor_remark || "No reason provided"}
+                            </p>
+                            {task.rejection_acknowledged_at && (
+                              <p className="text-xs text-muted-foreground">
+                                Acknowledged{" "}
+                                {formatDistanceToNow(new Date(task.rejection_acknowledged_at.client), {
+                                  addSuffix: true,
+                                })}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
                 </div>
               </section>
             )}
@@ -1116,7 +1157,8 @@ function WorkerDashboard() {
                   <p className="text-muted-foreground">No tasks assigned</p>
                   {(completedTasks.length > 0 || myCompletedMaintenanceTasksForDisplay.length > 0) && (
                     <p className="text-sm text-muted-foreground">
-                      You've completed {completedTasks.length + myCompletedMaintenanceTasksForDisplay.length} task(s) today
+                      You've completed {completedTasks.length + myCompletedMaintenanceTasksForDisplay.length} task(s)
+                      today
                     </p>
                   )}
                 </div>

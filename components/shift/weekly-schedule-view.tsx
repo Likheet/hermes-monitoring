@@ -264,14 +264,7 @@ export function WeeklyScheduleView({ workers }: WeeklyScheduleViewProps) {
                     const isTodayDate = isToday(date)
 
                     return (
-                      <th
-                        key={day}
-                        className={cn(
-                          "text-center p-3 font-semibold min-w-[140px]",
-                          isPast && "bg-muted/30",
-                          isTodayDate && "bg-primary/10 border-2 border-primary/30",
-                        )}
-                      >
+                      <th key={day} className="text-center p-3 font-semibold min-w-[140px]">
                         <div className="text-sm">{day}</div>
                         <div className="text-xs text-muted-foreground font-normal">
                           {new Date(date).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
@@ -306,14 +299,7 @@ export function WeeklyScheduleView({ workers }: WeeklyScheduleViewProps) {
                       )
 
                       return (
-                        <td
-                          key={day}
-                          className={cn(
-                            "p-2",
-                            isPast && "bg-muted/30",
-                            isTodayDate && "bg-primary/10 border-2 border-primary/30",
-                          )}
-                        >
+                        <td key={day} className="p-2">
                           <Dialog>
                             <DialogTrigger asChild>
                               <Button

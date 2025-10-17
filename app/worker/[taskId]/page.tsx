@@ -299,6 +299,15 @@ function TaskDetail({ params }: TaskDetailProps) {
     console.log("[v0] Photos updated:", newPhotos.length)
   }
 
+  const handleRaiseIssue = (issueDescription: string, issuePhotos: string[]) => {
+    raiseIssue(taskId, user!.id, issueDescription, issuePhotos)
+    setIssueModalOpen(false)
+    toast({
+      title: "Issue Raised",
+      description: "Your issue has been reported to management",
+    })
+  }
+
   const canPauseTask = () => {
     if (!user) return false
 
@@ -522,7 +531,7 @@ function TaskDetail({ params }: TaskDetailProps) {
         </div>
       </main>
 
-      <RaiseIssueModal open={issueModalOpen} onOpenChange={setIssueModalOpen} onSubmit={raiseIssue} />
+      <RaiseIssueModal open={issueModalOpen} onOpenChange={setIssueModalOpen} onSubmit={handleRaiseIssue} />
 
       <AlertDialog open={swapDialogOpen} onOpenChange={setSwapDialogOpen}>
         <AlertDialogContent>

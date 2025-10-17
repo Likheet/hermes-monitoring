@@ -532,3 +532,124 @@ export function isWorkerOnShiftWithSchedule(
     shiftEnd: todayShift.shift_end,
   }
 }
+
+// Attendance tracking utilities
+export interface AttendanceRecord {
+  date: string // YYYY-MM-DD
+  status: "present" | "holiday" | "leave" | "sick" | "absent"
+  shift_start?: string
+  shift_end?: string
+  hours_worked?: number
+}
+
+export interface MonthlyAttendance {
+  month: string // YYYY-MM
+  total_days: number
+  days_worked: number
+  days_off: number
+  holidays: number
+  leaves: number
+  sick_days: number
+  attendance_percentage: number
+  records: AttendanceRecord[]
+}
+
+// Calculate attendance for a worker for a specific month
+export function calculateMonthlyAttendance(
+  workerId: string,
+  month: Date,
+  shiftSchedules: Array<{
+    worker_id: string
+    schedule_date: string
+    shift_start: string
+    shift_end: string
+    is_override: boolean
+    override_reason: string
+  }>,
+): MonthlyAttendance {
+  const year = month.getFullYear()
+  const monthNum = month.getMonth()
+  const monthStr = `${year}-${(monthNum + 1).toString().padStart(2, "0")}`
+
+  // Get first and last day of month
+  const firstDay = new Date(year, monthNum, 1)
+  const lastDay = new Date(year, monthNum + 1, 0)
+  const totalDays = lastDay.getDate()
+
+  const records: AttendanceRecord[] = []
+  let daysWorked = 0
+  let daysOff = 0
+  let holidays = 0
+  let leaves = 0
+  let sickDays = 0
+
+  // Iterate through each day of the month
+  for (let day = 1; day <= totalDays; day++) {
+    const date = new Date(year, monthNum, day)
+    const dateStr = date.toISOString().split("T")[0]
+
+    // Check if there's a schedule for this date
+    const schedule = shiftSchedules.find((s) => s.worker_id === workerId && s.schedule_date === dateStr)
+
+    if (schedule && schedule.is_override && schedule.override_reason) {
+      // Worker was off duty
+      const reason = schedule.override_reason.toLowerCase()
+      let status: AttendanceRecord["status"] = "absent"
+
+      if (reason.includes("holiday")) {
+        status = "holiday"
+        holidays++
+      } else if (reason.includes("leave")) {
+        status = "leave"
+        leaves++
+      } else if (reason.includes("sick")) {
+        status = "sick"
+        sickDays++
+      }
+
+      daysOff++
+      records.push({
+        date: dateStr,
+        status,
+      })
+    } else if (schedule || date <= new Date()) {
+      // Worker was present (either has a schedule or it's a past date with no override)
+      daysWorked++
+      records.push({
+        date: dateStr,
+        status: "present",
+        shift_start: schedule?.shift_start,
+        shift_end: schedule?.shift_end,
+      })
+    }
+  }
+
+  const attendancePercentage = totalDays > 0 ? Math.round((daysWorked / totalDays) * 100) : 0
+
+  return {
+    month: monthStr,
+    total_days: totalDays,
+    days_worked: daysWorked,
+    days_off: daysOff,
+    holidays,
+    leaves,
+    sick_days: sickDays,
+    attendance_percentage: attendancePercentage,
+    records,
+  }
+}
+
+// Get attendance summary for current month
+export function getCurrentMonthAttendance(
+  workerId: string,
+  shiftSchedules: Array<{
+    worker_id: string
+    schedule_date: string
+    shift_start: string
+    shift_end: string
+    is_override: boolean
+    override_reason: string
+  }>,
+): MonthlyAttendance {
+  return calculateMonthlyAttendance(workerId, new Date(), shiftSchedules)
+}

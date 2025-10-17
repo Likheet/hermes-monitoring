@@ -70,6 +70,8 @@ export interface Task {
   custom_task_priority?: Priority | null
   custom_task_photo_required?: boolean | null
   custom_task_photo_count?: number | null
+  rejection_acknowledged?: boolean
+  rejection_acknowledged_at?: DualTimestamp | null
 }
 
 export interface AuditLogEntry {
@@ -94,6 +96,7 @@ export interface TaskIssue {
   reported_by_user_id: string
   reported_at: DualTimestamp
   issue_description: string
+  issue_photos: string[] // Added photo URLs array for issue attachments
   status: "OPEN" | "RESOLVED"
 }
 

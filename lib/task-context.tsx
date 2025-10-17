@@ -50,7 +50,7 @@ interface TaskContextType {
     breakEnd?: string,
   ) => void
   addWorker: (worker: Omit<User, "id" | "is_available">) => void
-  raiseIssue: (taskId: string, userId: string, issueDescription: string) => void
+  raiseIssue: (taskId: string, userId: string, issueDescription: string, photos: string[] = []) => void
   addSchedule: (schedule: Omit<MaintenanceSchedule, "id" | "created_at">) => void
   updateSchedule: (scheduleId: string, updates: Partial<MaintenanceSchedule>) => void
   deleteSchedule: (scheduleId: string) => void
@@ -560,15 +560,21 @@ export function TaskProvider({ children }: { children: ReactNode }) {
     const task = tasks.find((t) => t.id === taskId)
     if (!task || task.status !== "REJECTED") return
 
-    setTasks((prev) => prev.filter((t) => t.id !== taskId))
+    const now = createDualTimestamp()
+    updateTask(taskId, {
+      rejection_acknowledged: true,
+      rejection_acknowledged_at: now,
+    })
 
     addAuditLog(taskId, {
       user_id: userId,
       action: "REJECTION_ACKNOWLEDGED",
       old_status: task.status,
       new_status: task.status,
-      details: "Worker acknowledged rejection",
+      details: "Worker acknowledged rejection - task retained for records",
     })
+
+    console.log("[v0] Rejection acknowledged for task:", taskId, "- task retained in system")
   }
 
   const updateWorkerShift = (
@@ -625,7 +631,7 @@ export function TaskProvider({ children }: { children: ReactNode }) {
     })
   }
 
-  const raiseIssue = (taskId: string, userId: string, issueDescription: string) => {
+  const raiseIssue = (taskId: string, userId: string, issueDescription: string, photos: string[] = []) => {
     const task = tasks.find((t) => t.id === taskId)
     if (!task) return
 
@@ -635,6 +641,7 @@ export function TaskProvider({ children }: { children: ReactNode }) {
       reported_by_user_id: userId,
       reported_at: createDualTimestamp(),
       issue_description: issueDescription,
+      issue_photos: photos, // Store photos in issue
       status: "OPEN",
     }
 
@@ -645,7 +652,7 @@ export function TaskProvider({ children }: { children: ReactNode }) {
       action: "ISSUE_RAISED",
       old_status: task.status,
       new_status: task.status,
-      details: `Worker raised issue: ${issueDescription}`,
+      details: `Worker raised issue: ${issueDescription}${photos.length > 0 ? ` (with ${photos.length} photo(s))` : ""}`, // Include photo count in audit log
     })
 
     // Notify supervisor

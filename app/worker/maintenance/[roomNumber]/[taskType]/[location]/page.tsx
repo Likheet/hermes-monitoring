@@ -182,9 +182,7 @@ function MaintenanceTaskPage({ params }: MaintenanceTaskPageProps) {
   }
 
   const handleStart = () => {
-    const blockingRegularTask = tasks.find(
-      (t) => t.assigned_to_user_id === user?.id && t.status === "IN_PROGRESS",
-    )
+    const blockingRegularTask = tasks.find((t) => t.assigned_to_user_id === user?.id && t.status === "IN_PROGRESS")
 
     if (blockingRegularTask) {
       toast({
@@ -247,9 +245,7 @@ function MaintenanceTaskPage({ params }: MaintenanceTaskPageProps) {
   }
 
   const handleResume = () => {
-    const blockingRegularTask = tasks.find(
-      (t) => t.assigned_to_user_id === user?.id && t.status === "IN_PROGRESS",
-    )
+    const blockingRegularTask = tasks.find((t) => t.assigned_to_user_id === user?.id && t.status === "IN_PROGRESS")
 
     if (blockingRegularTask) {
       toast({
@@ -334,10 +330,10 @@ function MaintenanceTaskPage({ params }: MaintenanceTaskPageProps) {
     })
   }
 
-  const handleRaiseIssue = (issue: string) => {
-    setRemark((prev) => prev + (prev ? "\n" : "") + `[ISSUE] ${issue}`)
+  const handleRaiseIssue = (issueDescription: string, issuePhotos: string[]) => {
+    setRemark((prev) => prev + (prev ? "\n" : "") + `[ISSUE] ${issueDescription}`)
     updateMaintenanceTask(task.id, {
-      notes: remark + (remark ? "\n" : "") + `[ISSUE] ${issue}`,
+      notes: remark + (remark ? "\n" : "") + `[ISSUE] ${issueDescription}`,
     })
     toast({
       title: "Issue Raised",
@@ -356,9 +352,7 @@ function MaintenanceTaskPage({ params }: MaintenanceTaskPageProps) {
   const handleSwapConfirm = () => {
     if (!taskToSwap || !user) return
 
-    const blockingRegularTask = tasks.find(
-      (t) => t.assigned_to_user_id === user.id && t.status === "IN_PROGRESS",
-    )
+    const blockingRegularTask = tasks.find((t) => t.assigned_to_user_id === user.id && t.status === "IN_PROGRESS")
 
     if (blockingRegularTask) {
       toast({

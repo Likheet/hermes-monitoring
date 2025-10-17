@@ -3,10 +3,11 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { AlertTriangle, MapPin, User, Clock } from "lucide-react"
+import { AlertTriangle, MapPin, User, Clock, ImageIcon } from "lucide-react"
 import { formatExactTimestamp } from "@/lib/date-utils"
 import type { TaskIssue, Task } from "@/lib/types"
 import { useTasks } from "@/lib/task-context"
+import Image from "next/image"
 
 interface IssueCardProps {
   issue: TaskIssue
@@ -46,6 +47,28 @@ export function IssueCard({ issue, task, onResolve }: IssueCardProps) {
           <p className="text-sm font-medium text-orange-900 mb-1">Issue Description:</p>
           <p className="text-sm text-gray-700">{issue.issue_description}</p>
         </div>
+
+        {issue.issue_photos && issue.issue_photos.length > 0 && (
+          <div className="p-3 bg-white rounded border border-orange-200">
+            <p className="text-sm font-medium text-orange-900 mb-2 flex items-center gap-2">
+              <ImageIcon className="h-4 w-4" />
+              Attached Photos ({issue.issue_photos.length})
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              {issue.issue_photos.map((photo, index) => (
+                <Image
+                  key={index}
+                  src={photo || "/placeholder.svg"}
+                  alt={`Issue photo ${index + 1}`}
+                  width={200}
+                  height={150}
+                  className="rounded-lg object-cover w-full h-24"
+                />
+              ))}
+            </div>
+          </div>
+        )}
+
         {issue.status === "OPEN" && onResolve && (
           <Button variant="outline" size="sm" className="w-full bg-transparent" onClick={() => onResolve(issue.id)}>
             Mark as Resolved

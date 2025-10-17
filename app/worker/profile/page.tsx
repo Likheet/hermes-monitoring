@@ -12,12 +12,13 @@ import { useRouter } from "next/navigation"
 import { BottomNav } from "@/components/mobile/bottom-nav"
 import { calculateDuration, formatShiftRange, formatDistanceToNow, startOfMonth, endOfMonth } from "@/lib/date-utils"
 import { useEffect } from "react"
+import { getCurrentMonthAttendance } from "@/lib/shift-utils"
 
 function ProfilePage() {
   console.log("[v0] Profile page loaded")
 
   const { user } = useAuth()
-  const { tasks, maintenanceTasks } = useTasks()
+  const { tasks, maintenanceTasks, shiftSchedules } = useTasks()
   const router = useRouter()
 
   const myTasks = tasks.filter((task) => task.assigned_to_user_id === user?.id)
@@ -181,6 +182,8 @@ function ProfilePage() {
 
   const isMaintenanceWorker = user?.department === "Maintenance"
 
+  const attendance = getCurrentMonthAttendance(user?.id || "", shiftSchedules || [])
+
   return (
     <div className="min-h-screen bg-muted/30 pb-20 md:pb-0">
       <header className="border-b bg-background sticky top-0 z-40">
@@ -277,6 +280,46 @@ function ProfilePage() {
                 {!isOverQuota && quotaRemaining <= 2 && (
                   <span className="text-xs text-orange-600 font-medium">{quotaRemaining} remaining</span>
                 )}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Attendance Card */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center justify-between">
+              <span>Attendance This Month</span>
+              <Badge variant="secondary">{attendance.attendance_percentage}%</Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-3 sm:gap-4 grid-cols-2 sm:grid-cols-4">
+              <div className="space-y-1">
+                <p className="text-xs text-muted-foreground">Days Worked</p>
+                <p className="text-2xl font-bold text-green-600">{attendance.days_worked}</p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-xs text-muted-foreground">Holidays</p>
+                <p className="text-2xl font-bold text-blue-600">{attendance.holidays}</p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-xs text-muted-foreground">Leaves</p>
+                <p className="text-2xl font-bold text-orange-600">{attendance.leaves}</p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-xs text-muted-foreground">Sick Days</p>
+                <p className="text-2xl font-bold text-red-600">{attendance.sick_days}</p>
+              </div>
+            </div>
+            <div className="mt-4 pt-4 border-t">
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Total Days</span>
+                <span className="font-medium">{attendance.total_days}</span>
+              </div>
+              <div className="flex justify-between text-sm mt-2">
+                <span className="text-muted-foreground">Days Off</span>
+                <span className="font-medium">{attendance.days_off}</span>
               </div>
             </div>
           </CardContent>

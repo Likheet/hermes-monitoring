@@ -21,6 +21,7 @@ import { detectEscalationLevel, type Escalation } from "@/lib/escalation-utils"
 import { createDualTimestamp } from "@/lib/mock-data"
 import { TASK_TYPE_LABELS } from "@/lib/maintenance-types"
 import { formatDistanceToNow } from "@/lib/date-utils"
+import { SupervisorBottomNav } from "@/components/supervisor/supervisor-bottom-nav"
 
 function SupervisorDashboard() {
   const { user, logout } = useAuth()
@@ -190,7 +191,7 @@ function SupervisorDashboard() {
   })
 
   return (
-    <div className="min-h-screen bg-muted/30">
+    <div className="min-h-screen bg-muted/30 pb-20 md:pb-0">
       <EscalationNotification escalations={escalations} tasks={tasks} onAcknowledge={handleAcknowledgeEscalation} />
 
       <header className="border-b bg-background sticky top-0 z-40">
@@ -371,23 +372,37 @@ function SupervisorDashboard() {
                         : "just now"
 
                     return (
-                      <div key={task.id} className="flex items-start justify-between gap-4">
-                        <div className="space-y-1">
-                          <p className="font-medium leading-tight">
-                            {getMaintenanceTaskLabel(task.task_type)} — Room {task.room_number}
-                            {task.location ? ` • ${task.location}` : ""}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            Completed by {getMaintenanceWorkerName(task.assigned_to)} {completedAtLabel}
-                          </p>
-                          {task.notes && (
-                            <p className="text-xs text-muted-foreground line-clamp-2">Notes: {task.notes}</p>
-                          )}
-                        </div>
-                        <Badge variant="outline" className="whitespace-nowrap">
-                          Completed
-                        </Badge>
-                      </div>
+                      <Card key={task.id} className="border-l-4 border-l-green-500">
+                        <CardContent className="pt-4">
+                          <div className="flex items-start justify-between gap-4">
+                            <div className="space-y-1 flex-1">
+                              <p className="font-medium leading-tight">
+                                {getMaintenanceTaskLabel(task.task_type)} — Room {task.room_number}
+                                {task.location ? ` • ${task.location}` : ""}
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                Completed by {getMaintenanceWorkerName(task.assigned_to)} {completedAtLabel}
+                              </p>
+                              {task.notes && (
+                                <p className="text-xs text-muted-foreground line-clamp-2">Notes: {task.notes}</p>
+                              )}
+                            </div>
+                            <div className="flex flex-col gap-2 items-end">
+                              <Badge variant="outline" className="whitespace-nowrap">
+                                Completed
+                              </Badge>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => router.push(`/supervisor/maintenance/${task.id}`)}
+                                className="whitespace-nowrap"
+                              >
+                                View Details
+                              </Button>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
                     )
                   })
                 ) : (
@@ -486,6 +501,8 @@ function SupervisorDashboard() {
           )}
         </section>
       </main>
+
+      <SupervisorBottomNav />
     </div>
   )
 }
