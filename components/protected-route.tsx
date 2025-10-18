@@ -20,25 +20,32 @@ export function ProtectedRoute({ children, allowedRoles }: ProtectedRouteProps) 
     if (!isAuthenticated) {
       router.push("/login")
     } else if (user && !allowedRoles.includes(user.role)) {
-      // Redirect to appropriate dashboard if wrong role
-      switch (user.role) {
-        case "worker":
-          router.push("/worker")
-          break
-        case "supervisor":
-          router.push("/supervisor")
-          break
-        case "front_office":
-          router.push("/front-office")
-          break
-        case "admin":
-          router.push("/admin")
-          break
+      const isAdminAccessingNonWorkerRoute = user.role === "admin" && !allowedRoles.includes("worker")
+
+      if (!isAdminAccessingNonWorkerRoute) {
+        // Redirect to appropriate dashboard if wrong role
+        switch (user.role) {
+          case "worker":
+            router.push("/worker")
+            break
+          case "supervisor":
+            router.push("/supervisor")
+            break
+          case "front_office":
+            router.push("/front-office")
+            break
+          case "admin":
+            router.push("/admin")
+            break
+        }
       }
     }
   }, [isAuthenticated, user, allowedRoles, router])
 
-  if (!isAuthenticated || !user || !allowedRoles.includes(user.role)) {
+  const isAdminAccessingNonWorkerRoute = user?.role === "admin" && !allowedRoles.includes("worker")
+  const hasAccess = user && (allowedRoles.includes(user.role) || isAdminAccessingNonWorkerRoute)
+
+  if (!isAuthenticated || !hasAccess) {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <p className="text-muted-foreground">Loading...</p>

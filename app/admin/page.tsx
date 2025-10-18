@@ -1,9 +1,7 @@
 "use client"
 
 import { ProtectedRoute } from "@/components/protected-route"
-import { useAuth } from "@/lib/auth-context"
-import { useTasks } from "@/lib/task-context"
-import { StatsCard } from "@/components/stats-card"
+import { ConnectionStatus } from "@/components/connection-status"
 import { WorkerStatusCard } from "@/components/worker-status-card"
 import { WorkerProfileDialog } from "@/components/worker-profile-dialog"
 import { Button } from "@/components/ui/button"
@@ -12,6 +10,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Separator } from "@/components/ui/separator"
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import {
   LogOut,
   ClipboardList,
@@ -19,26 +19,38 @@ import {
   CheckCircle,
   AlertTriangle,
   Users,
-  TrendingUp,
   Activity,
   UserPlus,
   Calendar,
-  CalendarRange,
   Star,
   Home,
   UserCog,
-  FileSpreadsheet,
   FileText,
   BarChart3,
   AlertCircle,
+  UserIcon,
+  MapPin,
+  X,
+  ChevronDown,
+  ChevronUp,
+  Save,
+  Edit,
 } from "lucide-react"
-import { useRouter } from "next/navigation"
-import { useRealtimeTasks } from "@/lib/use-realtime-tasks"
-import { ConnectionStatus } from "@/components/connection-status"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
+import { useAuth } from "@/lib/auth-context"
+import { useTasks } from "@/lib/task-context"
+import { useRealtimeTasks } from "@/lib/use-realtime-tasks"
 import { CATEGORY_LABELS } from "@/lib/task-definitions"
 import { useState } from "react"
-import type { User } from "@/lib/types"
+import type { User, PriorityLevel, Priority, Department } from "@/lib/types"
+import { TaskSearch } from "@/components/task-search"
+import { TaskAssignmentForm, type TaskAssignmentData } from "@/components/task-assignment-form"
+import type { TaskDefinition, TaskCategory } from "@/lib/task-definitions"
+import { createDualTimestamp } from "@/lib/mock-data"
+import { useToast } from "@/hooks/use-toast"
+import { formatShiftRange } from "@/lib/date-utils"
+import { getWorkerShiftForDate } from "@/lib/shift-utils"
 import {
   BarChart,
   Bar,
@@ -53,15 +65,48 @@ import {
   Legend,
   ResponsiveContainer,
 } from "recharts"
+import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
+import { WeeklyScheduleView } from "@/components/shift/weekly-schedule-view"
+
+function mapPriorityToPriorityLevel(priority: Priority, category: TaskCategory): PriorityLevel {
+  if (category === "GUEST_REQUEST") return "GUEST_REQUEST"
+  if (category === "TIME_SENSITIVE") return "TIME_SENSITIVE"
+  if (category === "PREVENTIVE_MAINTENANCE") return "PREVENTIVE_MAINTENANCE"
+  return "DAILY_TASK"
+}
 
 function AdminDashboard() {
   const { user, logout } = useAuth()
-  const { tasks, users, maintenanceTasks } = useTasks()
+  const {
+    tasks,
+    users,
+    maintenanceTasks,
+    createTask,
+    updateWorkerShift,
+    shiftSchedules,
+    workers,
+    customTaskRequests,
+    updateShiftSchedule,
+  } = useTasks()
   const router = useRouter()
   const { isConnected } = useRealtimeTasks({ enabled: true })
+  const { toast } = useToast()
 
-  const [activeTab, setActiveTab] = useState<"home" | "staff">("home")
+  const [activeTab, setActiveTab] = useState<"home" | "staff" | "tasks" | "operations">("home")
   const [analyticsTab, setAnalyticsTab] = useState<"peak" | "trends">("peak")
+
+  // Task filter status renamed to taskFilterStatus and type changed to string | null
+  const [taskFilterStatus, setTaskFilterStatus] = useState<string | null>(null)
+
+  const [selectedTaskDef, setSelectedTaskDef] = useState<TaskDefinition | null>(null)
 
   const [timeRange, setTimeRange] = useState<"week" | "month" | "all" | "custom">("all")
   const [customStartDate, setCustomStartDate] = useState("")
@@ -69,6 +114,30 @@ function AdminDashboard() {
   const [showCustomDatePicker, setShowCustomDatePicker] = useState(false)
   const [selectedWorker, setSelectedWorker] = useState<User | null>(null)
   const [isProfileDialogOpen, setIsProfileDialogOpen] = useState(false)
+
+  const [showTasksModal, setShowTasksModal] = useState(false)
+  const [showWorkersModal, setShowWorkersModal] = useState(false)
+  const [showCustomRequestsModal, setShowCustomRequestsModal] = useState(false)
+  const [selectedWorkerDetail, setSelectedWorkerDetail] = useState<User | null>(null)
+
+  const [showShiftManagement, setShowShiftManagement] = useState(false)
+  // Renamed editingWorkerShift to editingShift and changed its type to accommodate start_time and end_time
+  const [editingShift, setEditingShift] = useState<{
+    workerId: string
+    start_time: string
+    end_time: string
+  } | null>(null)
+  const [shiftEditForm, setShiftEditForm] = useState<{
+    start: string
+    end: string
+  }>({ start: "", end: "" })
+
+  // Added selectedTask and showTaskForm states
+  const [selectedTask, setSelectedTask] = useState<any>(null)
+  const [showTaskForm, setShowTaskForm] = useState(false)
+
+  const [showPendingModal, setShowPendingModal] = useState(false)
+  const [pendingModalTab, setPendingModalTab] = useState<"tasks" | "verifications">("tasks")
 
   const handleLogout = () => {
     logout()
@@ -80,7 +149,48 @@ function AdminDashboard() {
     setIsProfileDialogOpen(true)
   }
 
-  const workers = users.filter((u) => u.role === "worker")
+  // Modified handleEditShift to set editingShift state
+  const handleEditShift = (worker: User) => {
+    const today = new Date()
+    const todayShift = getWorkerShiftForDate(worker, today, shiftSchedules)
+    setEditingShift({
+      workerId: worker.id,
+      start_time: todayShift.shift_start,
+      end_time: todayShift.shift_end,
+    })
+  }
+
+  // Modified handleSaveShift to use the new editingShift state and updateShiftSchedule
+  const handleSaveShift = async () => {
+    if (!editingShift) return
+
+    try {
+      const today = new Date()
+      await updateShiftSchedule(editingShift.workerId, today, {
+        shift_start: editingShift.start_time,
+        shift_end: editingShift.end_time,
+      })
+
+      toast({
+        title: "Success",
+        description: "Shift schedule updated successfully",
+      })
+      setEditingShift(null)
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to update shift schedule",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleCancelShiftEdit = () => {
+    setEditingShift(null)
+    setShiftEditForm({ start: "", end: "" }) // This line might be redundant if using editingShift directly
+  }
+
+  const workersList = users.filter((u) => u.role === "worker") // Renamed to workersList for clarity
 
   const getFilteredTasks = () => {
     const now = new Date()
@@ -161,12 +271,12 @@ function AdminDashboard() {
         workerMaintenanceTasks.filter((t) => t.status === "rejected").length,
       inProgressTasks:
         workerTasks.filter((t) => t.status === "IN_PROGRESS").length +
-        workerMaintenanceTasks.filter((t) => t.status === "in_progress").length,
+        maintenanceTasks.filter((t) => t.status === "in_progress").length,
     }
   }
 
-  const availableWorkers = workers.filter((w) => !getWorkerCurrentTask(w.id))
-  const busyWorkers = workers.filter((w) => getWorkerCurrentTask(w.id))
+  const availableWorkers = workersList.filter((w) => !getWorkerCurrentTask(w.id))
+  const busyWorkers = workersList.filter((w) => getWorkerCurrentTask(w.id))
 
   const allAuditLogs = filteredTasks
     .flatMap((task) =>
@@ -191,12 +301,6 @@ function AdminDashboard() {
         t.task_type === "Other (Custom Task)" ||
         t.task_type.startsWith("[CUSTOM]")),
   )
-
-  console.log("[v0] Admin dashboard - Custom tasks found:", {
-    total: customTasks.length,
-    taskTypes: customTasks.map((t) => t.task_type),
-    allTaskTypes: filteredTasks.map((t) => t.task_type),
-  })
 
   const recentCustomTasks = customTasks.slice(0, 10)
 
@@ -276,7 +380,7 @@ function AdminDashboard() {
   }
 
   const calculateDepartmentStats = (department: "housekeeping" | "maintenance") => {
-    const departmentWorkers = workers.filter((w) => w.department === department)
+    const departmentWorkers = workersList.filter((w) => w.department === department)
     const departmentTasks = filteredTasks.filter((t) => {
       const worker = users.find((u) => u.id === t.assigned_to_user_id)
       return worker?.department === department
@@ -298,12 +402,11 @@ function AdminDashboard() {
         ? (ratedTasks.reduce((sum, t) => sum + (t.rating || 0), 0) / ratedTasks.length).toFixed(1)
         : "N/A"
 
-    const completedWithDuration = departmentTasks.filter((t) => t.status === "COMPLETED" && t.actual_duration_minutes)
     const avgDuration =
-      completedWithDuration.length > 0
+      completedTasksWithDuration.length > 0
         ? Math.round(
-            completedWithDuration.reduce((sum, t) => sum + (t.actual_duration_minutes || 0), 0) /
-              completedWithDuration.length,
+            completedTasksWithDuration.reduce((sum, t) => sum + (t.actual_duration_minutes || 0), 0) /
+              completedTasksWithDuration.length,
           )
         : 0
 
@@ -324,9 +427,8 @@ function AdminDashboard() {
   const maintenanceStats = calculateDepartmentStats("maintenance")
 
   const exportToExcel = () => {
-    // Dynamic import to avoid SSR issues
     import("xlsx").then((XLSX) => {
-      const workersData = workers.map((worker) => {
+      const workersData = workersList.map((worker) => {
         const performance = calculateWorkerPerformance(worker.id)
         const currentTask = getWorkerCurrentTask(worker.id)
         const stats = getWorkerStats(worker.id)
@@ -483,7 +585,7 @@ function AdminDashboard() {
       yPos += 7
 
       // Worker rows
-      workers.forEach((worker, index) => {
+      workersList.forEach((worker, index) => {
         const performance = calculateWorkerPerformance(worker.id)
         const currentTask = getWorkerCurrentTask(worker.id)
 
@@ -586,7 +688,7 @@ function AdminDashboard() {
     const currentMonth = now.getMonth()
     const currentYear = now.getFullYear()
 
-    return workers.map((worker) => {
+    return workersList.map((worker) => {
       const workerTasks = filteredTasks.filter((t) => t.assigned_to_user_id === worker.id)
       const currentMonthTasks = workerTasks.filter((t) => {
         const taskDate = new Date(t.assigned_at.client)
@@ -640,6 +742,77 @@ function AdminDashboard() {
   const workerRejectionData = getWorkerRejectionTrends()
   const peakHours = getPeakHours()
 
+  // Renamed pendingVerificationTasks to pendingVerificationsList for consistency
+  const pendingVerificationsList = tasks.filter((t) => t.status === "COMPLETED")
+  // Renamed allPendingTasks to pendingTasksList for consistency
+  const pendingTasksList = tasks.filter((t) => t.status === "PENDING")
+  const allInProgressTasks = tasks.filter((t) => t.status === "IN_PROGRESS" || t.status === "PAUSED")
+
+  const handleTaskSelect = (task: TaskDefinition) => {
+    setSelectedTaskDef(task)
+  }
+
+  const handleCancelTaskCreation = () => {
+    setSelectedTaskDef(null)
+  }
+
+  const handleSubmitTask = async (data: TaskAssignmentData) => {
+    if (!user) {
+      toast({
+        title: "Error",
+        description: "User not authenticated",
+        variant: "destructive",
+      })
+      return
+    }
+
+    const priorityLevel = mapPriorityToPriorityLevel(data.priority, data.category)
+
+    const trimmedCustomName = data.customTaskName?.trim()
+    const isCustomTask = data.isCustomTask && !!trimmedCustomName
+    const taskName = isCustomTask ? trimmedCustomName! : data.taskName
+
+    createTask({
+      task_type: taskName,
+      priority_level: priorityLevel,
+      status: "PENDING",
+      department: data.department as Department,
+      assigned_to_user_id: data.assignedTo,
+      assigned_by_user_id: user.id,
+      assigned_at: createDualTimestamp(),
+      started_at: null,
+      completed_at: null,
+      expected_duration_minutes: data.duration,
+      actual_duration_minutes: null,
+      photo_urls: [],
+      categorized_photos: null,
+      photo_required: data.photoRequired,
+      photo_count: data.photoCount,
+      photo_documentation_required: data.photoDocumentationRequired,
+      photo_categories: data.photoDocumentationRequired ? data.photoCategories : null,
+      worker_remark: data.remarks || "",
+      supervisor_remark: "",
+      rating: null,
+      quality_comment: null,
+      rating_proof_photo_url: null,
+      rejection_proof_photo_url: null,
+      room_number: data.location || "",
+      is_custom_task: isCustomTask,
+      custom_task_name: isCustomTask ? trimmedCustomName! : null,
+      custom_task_category: isCustomTask ? data.category : null,
+      custom_task_priority: isCustomTask ? data.priority : null,
+      custom_task_photo_required: isCustomTask ? data.photoRequired : null,
+      custom_task_photo_count: isCustomTask ? data.photoCount : null,
+    })
+
+    toast({
+      title: "Task Created",
+      description: isCustomTask ? "Custom task created successfully" : "Task has been assigned successfully",
+    })
+
+    setSelectedTaskDef(null)
+  }
+
   return (
     <div className="min-h-screen bg-background pb-20">
       <WorkerProfileDialog worker={selectedWorker} open={isProfileDialogOpen} onOpenChange={setIsProfileDialogOpen} />
@@ -684,8 +857,9 @@ function AdminDashboard() {
       </header>
 
       <main className="container mx-auto px-4 py-6 space-y-8">
+        {/* Home Tab */}
         {activeTab === "home" && (
-          <>
+          <div className="p-6 space-y-6">
             {recentCustomTasks.length > 0 && (
               <Card className="border-l-4 border-l-accent">
                 <CardHeader className="pb-4">
@@ -744,55 +918,100 @@ function AdminDashboard() {
               </Card>
             )}
 
-            <section className="space-y-4">
-              <h2 className="text-lg font-semibold">System Overview</h2>
-              <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
-                <StatsCard title="Total Tasks" value={totalTasks} icon={ClipboardList} />
-                <StatsCard
-                  title="In Progress"
-                  value={inProgressTasks}
-                  icon={Activity}
-                  description={`${pendingTasks} pending`}
-                />
-                <StatsCard
-                  title="Completed"
-                  value={completedTasks}
-                  icon={CheckCircle}
-                  description={`${rejectedTasks} rejected`}
-                />
-                <StatsCard
-                  title="Avg Completion"
-                  value={`${avgCompletionTime} min`}
-                  icon={Clock}
-                  description={`${overtimeTasks} overtime`}
-                />
+            {/* System Overview */}
+            <section>
+              <h2 className="text-2xl font-bold mb-4">System Overview</h2>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <Card
+                  className="cursor-pointer hover:bg-accent/50 transition-colors"
+                  onClick={() => setShowTasksModal(true)}
+                >
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium">Active Tasks</CardTitle>
+                    <ClipboardList className="h-4 w-4 text-muted-foreground" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold">{totalTasks}</div>
+                    <p className="text-xs text-muted-foreground">{pendingTasks} pending</p>
+                  </CardContent>
+                </Card>
+
+                <Card
+                  className="cursor-pointer hover:bg-accent/50 transition-colors"
+                  onClick={() => setShowWorkersModal(true)}
+                >
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium">Active Workers</CardTitle>
+                    <Users className="h-4 w-4 text-muted-foreground" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold">{availableWorkers.length}</div>
+                    <p className="text-xs text-muted-foreground">{busyWorkers.length} busy</p>
+                  </CardContent>
+                </Card>
+
+                <Card
+                  className="cursor-pointer hover:bg-accent/50 transition-colors"
+                  onClick={() => {
+                    setShowPendingModal(true)
+                    setPendingModalTab("tasks")
+                  }}
+                >
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium">Pending Items</CardTitle>
+                    <AlertCircle className="h-4 w-4 text-orange-500" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold">
+                      {pendingTasksList.length + pendingVerificationsList.length}
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      {pendingTasksList.length} tasks, {pendingVerificationsList.length} verifications
+                    </p>
+                  </CardContent>
+                </Card>
               </div>
             </section>
 
             <section className="space-y-4">
               <h2 className="text-lg font-semibold">Worker Status</h2>
               <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
-                <StatsCard
-                  title="Available Workers"
-                  value={availableWorkers.length}
-                  icon={Users}
-                  description={`${busyWorkers.length} busy`}
-                />
-                <StatsCard
-                  title="Housekeeping"
-                  value={workers.filter((w) => w.department === "housekeeping").length}
-                  icon={Users}
-                />
-                <StatsCard
-                  title="Maintenance"
-                  value={workers.filter((w) => w.department === "maintenance").length}
-                  icon={Users}
-                />
-                <StatsCard
-                  title="Efficiency"
-                  value={`${Math.round((completedTasks / totalTasks) * 100)}%`}
-                  icon={TrendingUp}
-                />
+                {users
+                  .filter((w) => w.role === "worker")
+                  .map((worker) => {
+                    const currentTask = tasks.find(
+                      (t) =>
+                        t.assigned_to_user_id === worker.id && (t.status === "IN_PROGRESS" || t.status === "PAUSED"),
+                    )
+                    const isWorking = !!currentTask
+                    const isBusy = busyWorkers.some((w) => w.id === worker.id)
+
+                    return (
+                      <Card
+                        key={worker.id}
+                        className="cursor-pointer hover:bg-accent/50 transition-colors"
+                        onClick={() => setSelectedWorkerDetail(worker)}
+                      >
+                        <CardHeader className="pb-3">
+                          <CardTitle className="text-sm font-medium flex items-center justify-between">
+                            <span>{worker.name}</span>
+                            <Badge variant={isWorking ? "default" : "secondary"} className="text-xs">
+                              {isWorking ? "Busy" : "Available"}
+                            </Badge>
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          <div className="text-xs text-muted-foreground capitalize">{worker.department}</div>
+                          {currentTask && (
+                            <div className="mt-2 text-xs">
+                              <div className="font-medium">{currentTask.task_type}</div>
+                              <div className="text-muted-foreground">{currentTask.room_number || "N/A"}</div>
+                            </div>
+                          )}
+                        </CardContent>
+                      </Card>
+                    )
+                  })}
               </div>
             </section>
 
@@ -907,7 +1126,9 @@ function AdminDashboard() {
                                   task.status === "COMPLETED" &&
                                   task.actual_duration_minutes &&
                                   task.actual_duration_minutes > task.expected_duration_minutes
+
                                 const isRejected = task.status === "REJECTED"
+
                                 const isLowRated = task.status === "COMPLETED" && task.rating && task.rating < 3
 
                                 const overtimePercent = isOvertime
@@ -1020,7 +1241,7 @@ function AdminDashboard() {
                           return (
                             <div key={task.id}>
                               <div className="flex items-start justify-between gap-4">
-                                <div className="space-y-1 flex-1">
+                                <div className="flex-1 space-y-1">
                                   <p className="font-medium">{displayName}</p>
                                   <p className="text-sm text-muted-foreground">
                                     {task.room_number && `Room ${task.room_number} • `}
@@ -1057,11 +1278,223 @@ function AdminDashboard() {
                 </Card>
               </TabsContent>
             </Tabs>
-          </>
+          </div>
         )}
 
+        {/* Tasks Tab */}
+        {activeTab === "tasks" && (
+          <div className="p-6 space-y-6">
+            <div className="grid gap-4 md:grid-cols-3">
+              <Card
+                className={`cursor-pointer transition-all hover:shadow-md ${taskFilterStatus === "pending_verification" ? "ring-2 ring-primary" : ""}`}
+                onClick={() =>
+                  setTaskFilterStatus(taskFilterStatus === "pending_verification" ? "all" : "pending_verification")
+                }
+              >
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">Pending Verification</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-3xl font-bold">{pendingVerificationsList.length}</div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {taskFilterStatus === "pending_verification" ? "Click to show all" : "Click to filter"}
+                  </p>
+                </CardContent>
+              </Card>
+
+              <Card
+                className={`cursor-pointer transition-all hover:shadow-md ${taskFilterStatus === "pending" ? "ring-2 ring-primary" : ""}`}
+                onClick={() => setTaskFilterStatus(taskFilterStatus === "pending" ? "all" : "pending")}
+              >
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">Pending Tasks</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-3xl font-bold">{pendingTasksList.length}</div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {taskFilterStatus === "pending" ? "Click to show all" : "Click to filter"}
+                  </p>
+                </CardContent>
+              </Card>
+
+              <Card
+                className={`cursor-pointer transition-all hover:shadow-md ${taskFilterStatus === "in_progress" ? "ring-2 ring-primary" : ""}`}
+                onClick={() => setTaskFilterStatus(taskFilterStatus === "in_progress" ? "all" : "in_progress")}
+              >
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">In Progress</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-3xl font-bold">{allInProgressTasks.length}</div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {taskFilterStatus === "in_progress" ? "Click to show all" : "Click to filter"}
+                  </p>
+                </CardContent>
+              </Card>
+            </div>
+
+            {taskFilterStatus !== "all" && (
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <CardTitle>
+                      {taskFilterStatus === "pending_verification" && "Pending Verification"}
+                      {taskFilterStatus === "pending" && "Pending Tasks"}
+                      {taskFilterStatus === "in_progress" && "In Progress Tasks"}
+                    </CardTitle>
+                    <Button variant="ghost" size="sm" onClick={() => setTaskFilterStatus("all")}>
+                      <X className="h-4 w-4 mr-2" />
+                      Clear Filter
+                    </Button>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                    {taskFilterStatus === "pending_verification" &&
+                      pendingVerificationsList.map((task) => (
+                        <Link key={task.id} href={`/supervisor/verify/${task.id}`}>
+                          <Card className="hover:shadow-md transition-shadow cursor-pointer">
+                            <CardHeader className="pb-3">
+                              <div className="flex items-start justify-between gap-2">
+                                <CardTitle className="text-base">{task.task_type}</CardTitle>
+                                <Badge variant="secondary">Verify</Badge>
+                              </div>
+                            </CardHeader>
+                            <CardContent className="space-y-2">
+                              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                <UserIcon className="h-4 w-4" />
+                                <span>{getUserName(task.assigned_to_user_id)}</span>
+                              </div>
+                              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                <MapPin className="h-4 w-4" />
+                                <span>Room {task.room_number}</span>
+                              </div>
+                              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                <Clock className="h-4 w-4" />
+                                <span>
+                                  {task.actual_duration_minutes} / {task.expected_duration_minutes} min
+                                </span>
+                              </div>
+                            </CardContent>
+                          </Card>
+                        </Link>
+                      ))}
+
+                    {taskFilterStatus === "pending" &&
+                      pendingTasksList.map((task) => (
+                        <Card key={task.id}>
+                          <CardHeader className="pb-3">
+                            <div className="flex items-start justify-between gap-2">
+                              <CardTitle className="text-base">{task.task_type}</CardTitle>
+                              <Badge variant="outline">Pending</Badge>
+                            </div>
+                          </CardHeader>
+                          <CardContent className="space-y-2">
+                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                              <UserIcon className="h-4 w-4" />
+                              <span>{getUserName(task.assigned_to_user_id)}</span>
+                            </div>
+                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                              <MapPin className="h-4 w-4" />
+                              <span>Room {task.room_number}</span>
+                            </div>
+                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                              <Clock className="h-4 w-4" />
+                              <span>{task.expected_duration_minutes} min</span>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      ))}
+
+                    {taskFilterStatus === "in_progress" &&
+                      allInProgressTasks.map((task) => (
+                        <Card key={task.id}>
+                          <CardHeader className="pb-3">
+                            <div className="flex items-start justify-between gap-2">
+                              <CardTitle className="text-base">{task.task_type}</CardTitle>
+                              <Badge variant="default">{task.status === "PAUSED" ? "Paused" : "In Progress"}</Badge>
+                            </div>
+                          </CardHeader>
+                          <CardContent className="space-y-2">
+                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                              <UserIcon className="h-4 w-4" />
+                              <span>{getUserName(task.assigned_to_user_id)}</span>
+                            </div>
+                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                              <MapPin className="h-4 w-4" />
+                              <span>Room {task.room_number}</span>
+                            </div>
+                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                              <Clock className="h-4 w-4" />
+                              <span>
+                                {task.actual_duration_minutes || 0} / {task.expected_duration_minutes} min
+                              </span>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        )}
+
+        {/* Operations Tab */}
+        {activeTab === "operations" && (
+          <div className="p-6 space-y-6">
+            {!selectedTaskDef ? (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Create New Task</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <TaskSearch onSelectTask={handleTaskSelect} />
+                </CardContent>
+              </Card>
+            ) : (
+              <TaskAssignmentForm
+                task={selectedTaskDef}
+                onCancel={handleCancelTaskCreation}
+                onSubmit={handleSubmitTask}
+                workers={users} // Assuming users contains all workers
+              />
+            )}
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Recent Assignments</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {tasks
+                    .sort((a, b) => new Date(b.assigned_at.client).getTime() - new Date(a.assigned_at.client).getTime())
+                    .slice(0, 10)
+                    .map((task) => (
+                      <div key={task.id} className="flex items-start justify-between p-4 bg-muted/50 rounded-lg">
+                        <div className="flex-1 space-y-1">
+                          <p className="font-medium">{task.task_type}</p>
+                          <p className="text-sm text-muted-foreground">
+                            Room {task.room_number} • {getUserName(task.assigned_to_user_id)}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {new Date(task.assigned_at.client).toLocaleString()}
+                          </p>
+                        </div>
+                        <Badge variant={task.status === "COMPLETED" ? "default" : "secondary"}>
+                          {task.status.replace(/_/g, " ")}
+                        </Badge>
+                      </div>
+                    ))}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {/* Staff Tab */}
         {activeTab === "staff" && (
-          <div className="space-y-6">
+          <div className="p-6 space-y-6">
             <div className="grid gap-4 md:grid-cols-2">
               <Card className="border-l-4 border-l-blue-500">
                 <CardHeader className="pb-3">
@@ -1143,141 +1576,168 @@ function AdminDashboard() {
             </div>
 
             <Card>
-              <CardHeader>
-                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-                  <CardTitle>Staff Performance Overview</CardTitle>
-                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={exportToExcel}
-                      className="min-h-[44px] whitespace-nowrap bg-transparent"
-                    >
-                      <FileSpreadsheet className="mr-2 h-4 w-4" />
-                      Export Excel
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={exportToPDF}
-                      className="min-h-[44px] whitespace-nowrap bg-transparent"
-                    >
-                      <FileText className="mr-2 h-4 w-4" />
-                      Export PDF
-                    </Button>
-                    <div className="flex items-center gap-2">
-                      <CalendarRange className="h-4 w-4 text-muted-foreground shrink-0" />
-                      <select
-                        value={timeRange}
-                        onChange={(e) => {
-                          const value = e.target.value as "week" | "month" | "all" | "custom"
-                          setTimeRange(value)
-                          if (value === "custom") {
-                            setShowCustomDatePicker(true)
-                          } else {
-                            setShowCustomDatePicker(false)
-                          }
-                        }}
-                        className="flex-1 sm:flex-none px-3 py-2 text-sm border rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-ring min-h-[44px]"
-                      >
-                        <option value="week">This Week</option>
-                        <option value="month">This Month</option>
-                        <option value="all">All Time</option>
-                        <option value="custom">Custom Range</option>
-                      </select>
+              <CardHeader className="bg-purple-50/50 dark:bg-purple-950/20">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-purple-100 dark:bg-purple-900 rounded-lg">
+                      <Clock className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+                    </div>
+                    <div>
+                      <CardTitle className="text-lg">Shift Management</CardTitle>
+                      <p className="text-sm text-muted-foreground mt-1">Manage worker shift timings for today</p>
                     </div>
                   </div>
-                </div>
-                {showCustomDatePicker && (
-                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 mt-3">
-                    <input
-                      type="date"
-                      value={customStartDate}
-                      onChange={(e) => setCustomStartDate(e.target.value)}
-                      className="flex-1 px-3 py-2 text-sm border rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-ring min-h-[44px]"
-                    />
-                    <span className="text-sm text-muted-foreground text-center sm:text-left">to</span>
-                    <input
-                      type="date"
-                      value={customEndDate}
-                      onChange={(e) => setCustomEndDate(e.target.value)}
-                      className="flex-1 px-3 py-2 text-sm border rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-ring min-h-[44px]"
-                    />
+                  <div className="flex items-center gap-2">
+                    <Dialog>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="min-h-[44px] whitespace-nowrap bg-transparent"
+                        asChild
+                      >
+                        <DialogTrigger>
+                          <Calendar className="mr-2 h-4 w-4" />
+                          Weekly Schedule
+                        </DialogTrigger>
+                      </Button>
+                      <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
+                        <DialogHeader>
+                          <DialogTitle>Weekly Shift Schedule</DialogTitle>
+                          <DialogDescription>
+                            View and manage the weekly shift schedule for all workers
+                          </DialogDescription>
+                        </DialogHeader>
+                        <WeeklyScheduleView workers={users.filter((u) => u.role === "worker")} />
+                      </DialogContent>
+                    </Dialog>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setShowShiftManagement(!showShiftManagement)}
+                      className="min-h-[44px]"
+                    >
+                      {showShiftManagement ? (
+                        <>
+                          <ChevronUp className="h-4 w-4 mr-2" />
+                          Hide
+                        </>
+                      ) : (
+                        <>
+                          <ChevronDown className="h-4 w-4 mr-2" />
+                          Show
+                        </>
+                      )}
+                    </Button>
                   </div>
-                )}
+                </div>
               </CardHeader>
-              <CardContent>
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow className="hover:bg-transparent">
-                        <TableHead className="font-semibold">Worker Name</TableHead>
-                        <TableHead className="text-right font-semibold">Shift Hrs</TableHead>
-                        <TableHead className="text-right font-semibold">Worked</TableHead>
-                        <TableHead className="text-right font-semibold">Idle Time</TableHead>
-                        <TableHead className="text-right font-semibold">Discrepancy</TableHead>
-                        <TableHead className="text-right font-semibold">Rating</TableHead>
-                        <TableHead className="text-center font-semibold">Status</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {workers.map((worker) => {
-                        const performance = calculateWorkerPerformance(worker.id)
-                        const currentTask = getWorkerCurrentTask(worker.id)
-                        const stats = getWorkerStats(worker.id)
-
-                        if (!performance) return null
+              <Collapsible open={showShiftManagement} onOpenChange={setShowShiftManagement}>
+                <CollapsibleContent>
+                  <CardContent className="pt-6">
+                    <div className="space-y-3">
+                      {workersList.map((worker) => {
+                        const today = new Date()
+                        const todayShift = getWorkerShiftForDate(worker, today, shiftSchedules)
+                        const isEditing = editingShift?.workerId === worker.id
 
                         return (
-                          <TableRow key={worker.id} className="hover:bg-muted/50">
-                            <TableCell>
+                          <div
+                            key={worker.id}
+                            className="flex items-center justify-between p-4 border rounded-lg hover:bg-accent/30 transition-colors"
+                          >
+                            <div className="flex items-center gap-3">
+                              <div className="p-2 bg-primary/10 rounded-full">
+                                <UserIcon className="h-4 w-4 text-primary" />
+                              </div>
                               <div>
                                 <p className="font-medium">{worker.name}</p>
-                                <p className="text-xs text-muted-foreground capitalize">{worker.department}</p>
+                                <p className="text-sm text-muted-foreground capitalize">{worker.department}</p>
                               </div>
-                            </TableCell>
-                            <TableCell className="text-right">{performance.shiftHours}h</TableCell>
-                            <TableCell className="text-right text-green-600 font-medium">
-                              {performance.actualWorkHours}h
-                            </TableCell>
-                            <TableCell className="text-right text-orange-600">{performance.idleHours}h</TableCell>
-                            <TableCell className="text-right">
-                              <span
-                                className={`font-medium ${
-                                  Number.parseFloat(performance.discrepancyPercent) > 50
-                                    ? "text-red-600"
-                                    : Number.parseFloat(performance.discrepancyPercent) > 30
-                                      ? "text-orange-600"
-                                      : "text-green-600"
-                                }`}
-                              >
-                                {performance.discrepancyPercent}%
-                              </span>
-                            </TableCell>
-                            <TableCell className="text-right">
-                              {performance.avgRating !== "N/A" ? (
-                                <span className="font-medium">
-                                  {performance.avgRating} ⭐
-                                  <span className="text-xs text-muted-foreground ml-1">
-                                    ({performance.totalRatings})
-                                  </span>
-                                </span>
-                              ) : (
-                                <span className="text-muted-foreground">N/A</span>
-                              )}
-                            </TableCell>
-                            <TableCell className="text-center">
-                              <Badge variant={currentTask ? "default" : "secondary"} className="text-xs">
-                                {currentTask ? "Working" : "Available"}
-                              </Badge>
-                            </TableCell>
-                          </TableRow>
+                            </div>
+
+                            {isEditing ? (
+                              <div className="flex items-center gap-3">
+                                <div className="flex items-center gap-2">
+                                  <div>
+                                    <Label htmlFor={`start-${worker.id}`} className="text-xs">
+                                      Start
+                                    </Label>
+                                    <Input
+                                      id={`start-${worker.id}`}
+                                      type="time"
+                                      value={editingShift.start_time}
+                                      onChange={(e) => setEditingShift({ ...editingShift, start_time: e.target.value })}
+                                      className="w-32 min-h-[44px]"
+                                    />
+                                  </div>
+                                  <div>
+                                    <Label htmlFor={`end-${worker.id}`} className="text-xs">
+                                      End
+                                    </Label>
+                                    <Input
+                                      id={`end-${worker.id}`}
+                                      type="time"
+                                      value={editingShift.end_time}
+                                      onChange={(e) => setEditingShift({ ...editingShift, end_time: e.target.value })}
+                                      className="w-32 min-h-[44px]"
+                                    />
+                                  </div>
+                                </div>
+                                <div className="flex gap-2">
+                                  <Button
+                                    size="sm"
+                                    onClick={handleSaveShift}
+                                    className="min-h-[44px] bg-green-600 hover:bg-green-700"
+                                  >
+                                    <Save className="h-4 w-4 mr-1" />
+                                    Save
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => setEditingShift(null)}
+                                    className="min-h-[44px]"
+                                  >
+                                    <X className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-3">
+                                <div className="text-right">
+                                  <p className="text-sm font-medium">
+                                    {formatShiftRange(todayShift.shift_start, todayShift.shift_end)}
+                                  </p>
+                                  {todayShift.is_override && (
+                                    <Badge variant="secondary" className="text-xs mt-1">
+                                      Override
+                                    </Badge>
+                                  )}
+                                </div>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() =>
+                                    setEditingShift({
+                                      workerId: worker.id,
+                                      start_time: todayShift.shift_start,
+                                      end_time: todayShift.shift_end,
+                                    })
+                                  }
+                                  className="min-h-[44px]"
+                                >
+                                  <Edit className="h-4 w-4 mr-1" />
+                                  Edit
+                                </Button>
+                              </div>
+                            )}
+                          </div>
                         )
                       })}
-                    </TableBody>
-                  </Table>
-                </div>
-              </CardContent>
+                    </div>
+                  </CardContent>
+                </CollapsibleContent>
+              </Collapsible>
             </Card>
 
             <Card>
@@ -1482,7 +1942,7 @@ function AdminDashboard() {
           <div className="flex items-center justify-around h-16">
             <button
               onClick={() => setActiveTab("home")}
-              className={`flex flex-col items-center justify-center gap-1 px-6 py-2 rounded-lg transition-colors min-h-[56px] flex-1 ${
+              className={`flex flex-col items-center justify-center gap-1 px-4 py-2 rounded-lg transition-colors min-h-[56px] flex-1 ${
                 activeTab === "home"
                   ? "bg-primary text-primary-foreground"
                   : "text-muted-foreground hover:text-foreground hover:bg-muted"
@@ -1493,7 +1953,7 @@ function AdminDashboard() {
             </button>
             <button
               onClick={() => setActiveTab("staff")}
-              className={`flex flex-col items-center justify-center gap-1 px-6 py-2 rounded-lg transition-colors min-h-[56px] flex-1 ${
+              className={`flex flex-col items-center justify-center gap-1 px-4 py-2 rounded-lg transition-colors min-h-[56px] flex-1 ${
                 activeTab === "staff"
                   ? "bg-primary text-primary-foreground"
                   : "text-muted-foreground hover:text-foreground hover:bg-muted"
@@ -1502,9 +1962,456 @@ function AdminDashboard() {
               <UserCog className="h-5 w-5" />
               <span className="text-xs font-medium">Staff</span>
             </button>
+            <button
+              onClick={() => setActiveTab("tasks")}
+              className={`flex flex-col items-center justify-center gap-1 px-4 py-2 rounded-lg transition-colors min-h-[56px] flex-1 relative ${
+                activeTab === "tasks"
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
+              }`}
+            >
+              <ClipboardList className="h-5 w-5" />
+              <span className="text-xs font-medium">Tasks</span>
+              {pendingTasksList.length > 0 && (
+                <Badge
+                  variant="destructive"
+                  className="absolute -top-1 -right-1 h-5 w-5 p-0 flex items-center justify-center text-xs"
+                >
+                  {pendingTasksList.length}
+                </Badge>
+              )}
+            </button>
+            <button
+              onClick={() => setActiveTab("operations")}
+              className={`flex flex-col items-center justify-center gap-1 px-4 py-2 rounded-lg transition-colors min-h-[56px] flex-1 ${
+                activeTab === "operations"
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
+              }`}
+            >
+              <Activity className="h-5 w-5" />
+              <span className="text-xs font-medium">Operations</span>
+            </button>
           </div>
         </div>
       </nav>
+
+      <Dialog open={showTasksModal} onOpenChange={setShowTasksModal}>
+        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>All Active Tasks</DialogTitle>
+            <DialogDescription>Complete list of all tasks in the system</DialogDescription>
+          </DialogHeader>
+          <Tabs defaultValue="all" className="mt-4">
+            <TabsList>
+              <TabsTrigger value="all">All ({tasks.length})</TabsTrigger>
+              <TabsTrigger value="pending">Pending ({pendingTasksList.length})</TabsTrigger>
+              <TabsTrigger value="in-progress">
+                In Progress ({tasks.filter((t) => t.status === "IN_PROGRESS").length})
+              </TabsTrigger>
+              <TabsTrigger value="completed">Completed ({completedTasks})</TabsTrigger>
+            </TabsList>
+            <TabsContent value="all" className="space-y-3 mt-4">
+              {tasks.map((task) => (
+                <Card key={task.id}>
+                  <CardContent className="pt-4">
+                    <div className="flex items-start justify-between">
+                      <div className="space-y-1">
+                        <div className="font-medium">{task.title}</div>
+                        <div className="text-sm text-muted-foreground">
+                          {task.room_number && `Room ${task.room_number} • `}
+                          {task.assigned_to && users.find((u) => u.id === task.assigned_to)?.name}
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          {new Date(task.created_at).toLocaleString()}
+                        </div>
+                      </div>
+                      <Badge>{task.status.replace("_", " ")}</Badge>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </TabsContent>
+            <TabsContent value="pending" className="space-y-3 mt-4">
+              {pendingTasksList.map((task) => (
+                <Card key={task.id}>
+                  <CardContent className="pt-4">
+                    <div className="flex items-start justify-between">
+                      <div className="space-y-1">
+                        <div className="font-medium">{task.title}</div>
+                        <div className="text-sm text-muted-foreground">
+                          {task.room_number && `Room ${task.room_number} • `}
+                          {task.assigned_to && users.find((u) => u.id === task.assigned_to)?.name}
+                        </div>
+                      </div>
+                      <Badge variant="secondary">PENDING</Badge>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </TabsContent>
+            <TabsContent value="in-progress" className="space-y-3 mt-4">
+              {tasks
+                .filter((t) => t.status === "IN_PROGRESS")
+                .map((task) => (
+                  <Card key={task.id}>
+                    <CardContent className="pt-4">
+                      <div className="flex items-start justify-between">
+                        <div className="space-y-1">
+                          <div className="font-medium">{task.title}</div>
+                          <div className="text-sm text-muted-foreground">
+                            {task.room_number && `Room ${task.room_number} • `}
+                            {task.assigned_to && users.find((u) => u.id === task.assigned_to)?.name}
+                          </div>
+                        </div>
+                        <Badge>IN PROGRESS</Badge>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+            </TabsContent>
+            <TabsContent value="completed" className="space-y-3 mt-4">
+              {tasks
+                .filter((t) => t.status === "COMPLETED" || t.status === "VERIFIED")
+                .map((task) => (
+                  <Card key={task.id}>
+                    <CardContent className="pt-4">
+                      <div className="flex items-start justify-between">
+                        <div className="space-y-1">
+                          <div className="font-medium">{task.title}</div>
+                          <div className="text-sm text-muted-foreground">
+                            {task.room_number && `Room ${task.room_number} • `}
+                            {task.assigned_to && users.find((u) => u.id === task.assigned_to)?.name}
+                          </div>
+                        </div>
+                        <Badge variant="outline">{task.status}</Badge>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+            </TabsContent>
+          </Tabs>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showWorkersModal} onOpenChange={setShowWorkersModal}>
+        <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>All Workers</DialogTitle>
+            <DialogDescription>Complete list of all workers and their current status</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 mt-4">
+            {users
+              .filter((u) => u.role === "worker")
+              .map((worker) => {
+                const currentTask = tasks.find(
+                  (t) => t.assigned_to === worker.id && (t.status === "IN_PROGRESS" || t.status === "PAUSED"),
+                )
+                const completedCount = tasks.filter(
+                  (t) => t.assigned_to === worker.id && (t.status === "COMPLETED" || t.status === "VERIFIED"),
+                ).length
+                const today = new Date()
+                const todayShift = getWorkerShiftForDate(worker, today, shiftSchedules)
+
+                return (
+                  <Card
+                    key={worker.id}
+                    className="cursor-pointer hover:bg-accent/50"
+                    onClick={() => setSelectedWorkerDetail(worker)}
+                  >
+                    <CardContent className="pt-4">
+                      <div className="flex items-start justify-between">
+                        <div className="space-y-2 flex-1">
+                          <div className="flex items-center gap-2">
+                            <div className="font-medium">{worker.name}</div>
+                            <Badge variant={currentTask ? "default" : "secondary"}>
+                              {currentTask ? "Busy" : "Available"}
+                            </Badge>
+                          </div>
+                          <div className="text-sm text-muted-foreground capitalize">
+                            {worker.department} • {todayShift.shift_start} - {todayShift.shift_end}
+                          </div>
+                          {currentTask && (
+                            <div className="text-sm">
+                              <span className="font-medium">Current Task:</span> {currentTask.title}
+                              {currentTask.room_number && ` (Room ${currentTask.room_number})`}
+                            </div>
+                          )}
+                          <div className="text-xs text-muted-foreground">Completed today: {completedCount} tasks</div>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )
+              })}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!selectedWorkerDetail} onOpenChange={(open) => !open && setSelectedWorkerDetail(null)}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          {selectedWorkerDetail && (
+            <>
+              <DialogHeader>
+                <DialogTitle>{selectedWorkerDetail.name}</DialogTitle>
+                <DialogDescription className="capitalize">
+                  {selectedWorkerDetail.department} Department
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4 mt-4">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-sm">Shift Information</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Today's Shift:</span>
+                      <span className="font-medium">
+                        {(() => {
+                          const today = new Date()
+                          const todayShift = getWorkerShiftForDate(selectedWorkerDetail, today, shiftSchedules)
+                          return `${todayShift.shift_start} - ${todayShift.shift_end}`
+                        })()}
+                      </span>
+                    </div>
+                    {selectedWorkerDetail.has_break && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Break Time:</span>
+                        <span className="font-medium">
+                          {selectedWorkerDetail.break_start} - {selectedWorkerDetail.break_end}
+                        </span>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-sm">Current Task</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {(() => {
+                      const currentTask = tasks.find(
+                        (t) =>
+                          t.assigned_to === selectedWorkerDetail.id &&
+                          (t.status === "IN_PROGRESS" || t.status === "PAUSED"),
+                      )
+                      if (currentTask) {
+                        return (
+                          <div className="space-y-2">
+                            <div className="font-medium">{currentTask.title}</div>
+                            <div className="text-sm text-muted-foreground">
+                              {currentTask.room_number && `Room ${currentTask.room_number}`}
+                            </div>
+                            <Badge>{currentTask.status.replace("_", " ")}</Badge>
+                          </div>
+                        )
+                      }
+                      return <p className="text-sm text-muted-foreground">No active task</p>
+                    })()}
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-sm">Task History (Today)</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-2">
+                      {tasks
+                        .filter((t) => t.assigned_to === selectedWorkerDetail.id)
+                        .slice(0, 5)
+                        .map((task) => (
+                          <div key={task.id} className="flex items-center justify-between text-sm">
+                            <div>
+                              <div className="font-medium">{task.title}</div>
+                              <div className="text-xs text-muted-foreground">
+                                {task.room_number && `Room ${task.room_number}`}
+                              </div>
+                            </div>
+                            <Badge variant="outline" className="text-xs">
+                              {task.status.replace("_", " ")}
+                            </Badge>
+                          </div>
+                        ))}
+                      {tasks.filter((t) => t.assigned_to === selectedWorkerDetail.id).length === 0 && (
+                        <p className="text-sm text-muted-foreground">No tasks assigned yet</p>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-sm">Performance Metrics</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Total Tasks:</span>
+                      <span className="font-medium">
+                        {tasks.filter((t) => t.assigned_to === selectedWorkerDetail.id).length}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Completed:</span>
+                      <span className="font-medium text-green-600">
+                        {
+                          tasks.filter(
+                            (t) =>
+                              t.assigned_to === selectedWorkerDetail.id &&
+                              (t.status === "COMPLETED" || t.status === "VERIFIED"),
+                          ).length
+                        }
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">In Progress:</span>
+                      <span className="font-medium text-blue-600">
+                        {
+                          tasks.filter((t) => t.assigned_to === selectedWorkerDetail.id && t.status === "IN_PROGRESS")
+                            .length
+                        }
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Pending:</span>
+                      <span className="font-medium text-orange-600">
+                        {
+                          tasks.filter((t) => t.assigned_to === selectedWorkerDetail.id && t.status === "PENDING")
+                            .length
+                        }
+                      </span>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showPendingModal} onOpenChange={setShowPendingModal}>
+        <DialogContent className="max-w-3xl max-h-[80vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertCircle className="h-5 w-5 text-orange-500" />
+              Pending Items
+            </DialogTitle>
+            <DialogDescription>View all pending tasks and verifications that require attention</DialogDescription>
+          </DialogHeader>
+
+          <Tabs
+            value={pendingModalTab}
+            onValueChange={(v) => setPendingModalTab(v as any)}
+            className="flex-1 flex flex-col overflow-hidden"
+          >
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="tasks" className="flex items-center gap-2">
+                <ClipboardList className="h-4 w-4" />
+                Pending Tasks ({pendingTasksList.length})
+              </TabsTrigger>
+              <TabsTrigger value="verifications" className="flex items-center gap-2">
+                <CheckCircle className="h-4 w-4" />
+                Pending Verifications ({pendingVerificationsList.length})
+              </TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="tasks" className="flex-1 overflow-y-auto mt-4 space-y-3">
+              {pendingTasksList.length === 0 ? (
+                <div className="text-center py-12 text-muted-foreground">
+                  <ClipboardList className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                  <p>No pending tasks</p>
+                </div>
+              ) : (
+                pendingTasksList.map((task) => (
+                  // Assuming task structure for rendering in the modal
+                  // Adjust task properties based on your actual Task type definition
+                  <Link key={task.id} href={`/supervisor/verify/${task.id}`}>
+                    <Card className="hover:bg-accent/50 transition-colors cursor-pointer">
+                      <CardContent className="p-4">
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-2">
+                              <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-200">
+                                PENDING
+                              </Badge>
+                              <Badge variant="secondary" className="capitalize">
+                                {task.department || "General"}
+                              </Badge>
+                            </div>
+                            <h4 className="font-semibold mb-1">{task.task_type || task.title}</h4>
+                            <p className="text-sm text-muted-foreground mb-2">{task.description}</p>
+                            <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                              <span className="flex items-center gap-1">
+                                <UserIcon className="h-3 w-3" />
+                                {getUserName(task.assigned_to_user_id) || "Unassigned"}
+                              </span>
+                              {task.room_number && (
+                                <span className="flex items-center gap-1">
+                                  <FileText className="h-3 w-3" />
+                                  Room {task.room_number}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </Link>
+                ))
+              )}
+            </TabsContent>
+
+            <TabsContent value="verifications" className="flex-1 overflow-y-auto mt-4 space-y-3">
+              {pendingVerificationsList.length === 0 ? (
+                <div className="text-center py-12 text-muted-foreground">
+                  <CheckCircle className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                  <p>No pending verifications</p>
+                </div>
+              ) : (
+                pendingVerificationsList.map((task) => (
+                  <Link key={task.id} href={`/supervisor/verify/${task.id}`}>
+                    <Card className="hover:bg-accent/50 transition-colors cursor-pointer">
+                      <CardContent className="p-4">
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-2">
+                              <Badge className="bg-blue-50 text-blue-700 border-blue-200">AWAITING VERIFICATION</Badge>
+                              <Badge variant="secondary" className="capitalize">
+                                {task.department || "General"}
+                              </Badge>
+                            </div>
+                            <h4 className="font-semibold mb-1">{task.task_type || task.title}</h4>
+                            <p className="text-sm text-muted-foreground mb-2">{task.description}</p>
+                            <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                              <span className="flex items-center gap-1">
+                                <UserIcon className="h-3 w-3" />
+                                {getUserName(task.assigned_to_user_id) || "Unknown"}
+                              </span>
+                              {task.room_number && (
+                                <span className="flex items-center gap-1">
+                                  <FileText className="h-3 w-3" />
+                                  Room {task.room_number}
+                                </span>
+                              )}
+                              {task.completed_at && (
+                                <span className="flex items-center gap-1">
+                                  <Clock className="h-3 w-3" />
+                                  Completed {new Date(task.completed_at).toLocaleTimeString()}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </Link>
+                ))
+              )}
+            </TabsContent>
+          </Tabs>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
