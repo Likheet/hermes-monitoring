@@ -102,10 +102,19 @@ function TaskManagementPage() {
       return
     }
 
-    if (newTaskForm.photoRequired && newTaskForm.photoCategories.length === 0) {
+    if (newTaskForm.photoDocumentationRequired && newTaskForm.photoCategories.length === 0) {
       toast({
         title: "Error",
         description: "Please configure photo categories or use a template",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (newTaskForm.photoRequired && newTaskForm.photoCount < 1) {
+      toast({
+        title: "Error",
+        description: "Please specify the number of photos required",
         variant: "destructive",
       })
       return

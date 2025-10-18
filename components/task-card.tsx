@@ -25,6 +25,22 @@ interface TaskCardProps {
 }
 
 export function TaskCard({ task }: TaskCardProps) {
+  const getPhotoRequirementText = () => {
+    if (task.photo_documentation_required && task.photo_categories) {
+      const totalPhotos = task.photo_categories.reduce((sum: number, cat: any) => sum + cat.count, 0)
+      const types = task.photo_categories.length
+      return `${totalPhotos} photo${totalPhotos > 1 ? "s" : ""} (${types} type${types > 1 ? "s" : ""})`
+    }
+    if (task.photo_required) {
+      const count = task.photo_count || task.custom_task_photo_count || 1
+      return `${count} photo${count > 1 ? "s" : ""} required`
+    }
+    return null
+  }
+
+  const photoText = getPhotoRequirementText()
+  // </CHANGE>
+
   return (
     <Link href={`/worker/${task.id}`}>
       <Card className="hover:shadow-md transition-shadow cursor-pointer active:scale-[0.98] min-h-[120px] touch-manipulation">
@@ -57,12 +73,13 @@ export function TaskCard({ task }: TaskCardProps) {
             <CalendarClock className="h-4 w-4 sm:h-5 sm:w-5 shrink-0" />
             <span className="truncate">Assigned {formatTimestamp(task.assigned_at)}</span>
           </div>
-          {task.photo_required && (
+          {photoText && (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Camera className="h-4 w-4 sm:h-5 sm:w-5 shrink-0" />
-              <span>Photo required</span>
+              <span>{photoText}</span>
             </div>
           )}
+          {/* </CHANGE> */}
           <div className="flex items-center gap-2 pt-2">
             <div className={`h-3 w-3 rounded-full ${statusColors[task.status]} shrink-0`} />
             <span className="text-xs sm:text-sm font-medium truncate">

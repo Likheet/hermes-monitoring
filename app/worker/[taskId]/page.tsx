@@ -29,6 +29,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
+import { CategorizedPhotoCaptureModal } from "@/components/categorized-photo-capture-modal"
 
 interface TaskDetailProps {
   params: { taskId: string } | Promise<{ taskId: string }>
@@ -58,6 +59,8 @@ function TaskDetail({ params }: TaskDetailProps) {
   const [swapDialogOpen, setSwapDialogOpen] = useState(false)
   const [pausedTaskToSwap, setPausedTaskToSwap] = useState<{ id: string; name: string } | null>(null)
   const [photos, setPhotos] = useState<string[]>([])
+  const [showCategorizedPhotoModal, setShowCategorizedPhotoModal] = useState(false)
+  const [categorizedPhotos, setCategorizedPhotos] = useState<any>(null)
   const [elapsedTime, setElapsedTime] = useState(0)
 
   useEffect(() => {
@@ -116,6 +119,9 @@ function TaskDetail({ params }: TaskDetailProps) {
   useEffect(() => {
     if (task?.photo_urls && task.photo_urls.length > 0) {
       setPhotos(task.photo_urls)
+    }
+    if (task?.categorized_photos) {
+      setCategorizedPhotos(task.categorized_photos)
     }
   }, [task?.id])
 
@@ -249,14 +255,30 @@ function TaskDetail({ params }: TaskDetailProps) {
   }
 
   const handleComplete = () => {
-    const requiredPhotoCount = task.photo_count || task.custom_task_photo_count || 1
-    if (task.photo_required && photos.length < requiredPhotoCount) {
-      toast({
-        title: "Photos Required",
-        description: `Please capture at least ${requiredPhotoCount} photo${requiredPhotoCount > 1 ? "s" : ""} before completing`,
-        variant: "destructive",
+    if (task.photo_documentation_required && task.photo_categories) {
+      const allCategoriesFilled = task.photo_categories.every((cat: any) => {
+        const categoryPhotos = categorizedPhotos?.[cat.name.toLowerCase().replace(/\s+/g, "_")] || []
+        return categoryPhotos.length >= cat.count
       })
-      return
+
+      if (!allCategoriesFilled) {
+        toast({
+          title: "Photos Required",
+          description: "Please capture all required photos before completing",
+          variant: "destructive",
+        })
+        return
+      }
+    } else if (task.photo_required) {
+      const requiredPhotoCount = task.photo_count || task.custom_task_photo_count || 1
+      if (photos.length < requiredPhotoCount) {
+        toast({
+          title: "Photos Required",
+          description: `Please capture at least ${requiredPhotoCount} photo${requiredPhotoCount > 1 ? "s" : ""} before completing`,
+          variant: "destructive",
+        })
+        return
+      }
     }
 
     if (!isOnline()) {
@@ -266,10 +288,12 @@ function TaskDetail({ params }: TaskDetailProps) {
         userId: user!.id,
         timestamp: new Date().toISOString(),
         data: {
-          categorizedPhotos: {
-            room_photos: photos.slice(0, Math.ceil(photos.length / 2)),
-            proof_photos: photos.slice(Math.ceil(photos.length / 2)),
-          },
+          categorizedPhotos: task.photo_documentation_required
+            ? categorizedPhotos
+            : {
+                room_photos: photos.slice(0, Math.ceil(photos.length / 2)),
+                proof_photos: photos.slice(Math.ceil(photos.length / 2)),
+              },
           remark,
         },
       })
@@ -281,12 +305,14 @@ function TaskDetail({ params }: TaskDetailProps) {
       return
     }
 
-    const categorizedPhotos = {
-      room_photos: photos.slice(0, Math.ceil(photos.length / 2)),
-      proof_photos: photos.slice(Math.ceil(photos.length / 2)),
-    }
+    const photosToSubmit = task.photo_documentation_required
+      ? categorizedPhotos
+      : {
+          room_photos: photos.slice(0, Math.ceil(photos.length / 2)),
+          proof_photos: photos.slice(Math.ceil(photos.length / 2)),
+        }
 
-    completeTask(taskId, user!.id, categorizedPhotos, remark)
+    completeTask(taskId, user!.id, photosToSubmit, remark)
     stopPauseMonitoring()
     toast({
       title: "Task Completed",
@@ -322,6 +348,21 @@ function TaskDetail({ params }: TaskDetailProps) {
   }
 
   const totalPhotos = photos.length
+
+  const getPhotoRequirementText = () => {
+    if (task.photo_documentation_required && task.photo_categories) {
+      const totalPhotos = task.photo_categories.reduce((sum: number, cat: any) => sum + cat.count, 0)
+      const types = task.photo_categories.length
+      return `${totalPhotos} photo${totalPhotos > 1 ? "s" : ""} (${types} type${types > 1 ? "s" : ""}) required`
+    }
+    if (task.photo_required) {
+      const count = task.photo_count || task.custom_task_photo_count || 1
+      return `${count} photo${count > 1 ? "s" : ""} required`
+    }
+    return null
+  }
+
+  const photoRequirementText = getPhotoRequirementText()
 
   return (
     <div className="min-h-screen bg-muted/30">
@@ -381,10 +422,10 @@ function TaskDetail({ params }: TaskDetailProps) {
                 </div>
               </div>
             )}
-            {task.photo_required && (
+            {photoRequirementText && (
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Camera className="h-4 w-4 shrink-0" />
-                <span>Photo required upon completion</span>
+                <span>{photoRequirementText}</span>
               </div>
             )}
             {task.task_type === "Housekeeping" && (
@@ -422,14 +463,33 @@ function TaskDetail({ params }: TaskDetailProps) {
           </Card>
         )}
 
-        {(task.status === "IN_PROGRESS" || task.status === "PAUSED") && task.photo_required && (
-          <SimplePhotoCapture
-            taskId={taskId}
-            existingPhotos={photos}
-            onPhotosChange={handlePhotosChange}
-            minPhotos={task.photo_count || task.custom_task_photo_count || 1}
-          />
-        )}
+        {(task.status === "IN_PROGRESS" || task.status === "PAUSED") &&
+          task.photo_documentation_required &&
+          task.photo_categories && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Photo Documentation</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Button onClick={() => setShowCategorizedPhotoModal(true)} variant="outline" className="w-full">
+                  <Camera className="mr-2 h-4 w-4" />
+                  Capture Photos ({task.photo_categories.reduce((sum: number, cat: any) => sum + cat.count, 0)}{" "}
+                  required)
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+
+        {(task.status === "IN_PROGRESS" || task.status === "PAUSED") &&
+          task.photo_required &&
+          !task.photo_documentation_required && (
+            <SimplePhotoCapture
+              taskId={taskId}
+              existingPhotos={photos}
+              onPhotosChange={handlePhotosChange}
+              minPhotos={task.photo_count || task.custom_task_photo_count || 1}
+            />
+          )}
 
         {task.status === "COMPLETED" && totalPhotos > 0 && (
           <Card>
@@ -546,6 +606,24 @@ function TaskDetail({ params }: TaskDetailProps) {
           )}
         </div>
       </main>
+
+      {task.photo_documentation_required && task.photo_categories && (
+        <CategorizedPhotoCaptureModal
+          open={showCategorizedPhotoModal}
+          onOpenChange={setShowCategorizedPhotoModal}
+          taskId={taskId}
+          photoCategories={task.photo_categories}
+          existingPhotos={categorizedPhotos}
+          onSave={(photos) => {
+            setCategorizedPhotos(photos)
+            setShowCategorizedPhotoModal(false)
+            toast({
+              title: "Photos Saved",
+              description: "Your photos have been saved",
+            })
+          }}
+        />
+      )}
 
       <RaiseIssueModal open={issueModalOpen} onOpenChange={setIssueModalOpen} onSubmit={handleRaiseIssue} />
 

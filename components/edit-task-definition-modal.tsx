@@ -23,15 +23,21 @@ interface EditTaskDefinitionModalProps {
 
 export function EditTaskDefinitionModal({ task, open, onOpenChange, onSuccess }: EditTaskDefinitionModalProps) {
   const { toast } = useToast()
+
+  const getBooleanValue = (value: any, defaultValue = false): boolean => {
+    if (typeof value === "boolean") return value
+    return defaultValue
+  }
+
   const [formData, setFormData] = useState({
     name: task.name,
     category: task.category,
     department: task.department,
     duration: task.duration,
     priority: task.priority,
-    photoRequired: task.photoRequired || false,
+    photoRequired: getBooleanValue(task.photoRequired, false),
     photoCount: task.photoCount || 1,
-    photoDocumentationRequired: task.photoDocumentationRequired || false,
+    photoDocumentationRequired: getBooleanValue(task.photoDocumentationRequired, false),
     photoCategories: task.photoCategories || ([] as PhotoCategory[]),
     keywords: task.keywords.join(", "),
     requiresRoom: task.requiresRoom,
@@ -45,9 +51,9 @@ export function EditTaskDefinitionModal({ task, open, onOpenChange, onSuccess }:
       department: task.department,
       duration: task.duration,
       priority: task.priority,
-      photoRequired: task.photoRequired || false,
+      photoRequired: getBooleanValue(task.photoRequired, false),
       photoCount: task.photoCount || 1,
-      photoDocumentationRequired: task.photoDocumentationRequired || false,
+      photoDocumentationRequired: getBooleanValue(task.photoDocumentationRequired, false),
       photoCategories: task.photoCategories || ([] as PhotoCategory[]),
       keywords: task.keywords.join(", "),
       requiresRoom: task.requiresRoom,
@@ -60,6 +66,24 @@ export function EditTaskDefinitionModal({ task, open, onOpenChange, onSuccess }:
       toast({
         title: "Error",
         description: "Task name is required",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (formData.photoDocumentationRequired && formData.photoCategories.length === 0) {
+      toast({
+        title: "Error",
+        description: "Please configure photo categories or use a template",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (formData.photoRequired && formData.photoCount < 1) {
+      toast({
+        title: "Error",
+        description: "Please specify the number of photos required",
         variant: "destructive",
       })
       return

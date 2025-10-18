@@ -35,6 +35,9 @@ export interface TaskAssignmentData {
   assignedTo: string
   photoRequired: boolean
   photoCount: number
+  photoDocumentationRequired: boolean
+  photoCategories: Array<{ name: string; count: number; description?: string }>
+  //
   isCustomTask: boolean
 }
 
@@ -61,6 +64,9 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers, initialD
   const [customCategory, setCustomCategory] = useState<TaskCategory>(task.category)
   const [photoRequired, setPhotoRequired] = useState(task.photoRequired)
   const [photoCount, setPhotoCount] = useState(task.photoCount)
+  const [photoDocumentationRequired, setPhotoDocumentationRequired] = useState(task.photoDocumentationRequired || false)
+  const [photoCategories, setPhotoCategories] = useState(task.photoCategories || [])
+  //
 
   const locationRef = useRef<HTMLDivElement>(null)
 
@@ -164,6 +170,9 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers, initialD
       assignedTo,
       photoRequired: isOtherTask ? photoRequired : task.photoRequired,
       photoCount: isOtherTask ? photoCount : task.photoCount,
+      photoDocumentationRequired: isOtherTask ? photoDocumentationRequired : task.photoDocumentationRequired || false,
+      photoCategories: isOtherTask ? photoCategories : task.photoCategories || [],
+      //
       isCustomTask: isOtherTask,
     }
 
@@ -171,11 +180,20 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers, initialD
       taskName: data.taskName,
       photoRequired: data.photoRequired,
       photoCount: data.photoCount,
+      photoDocumentationRequired: data.photoDocumentationRequired,
+      photoCategoriesCount: data.photoCategories.length,
+      //
       isCustomTask: data.isCustomTask,
     })
 
     onSubmit(data)
   }
+
+  const totalPhotosRequired = photoDocumentationRequired
+    ? photoCategories.reduce((sum, cat) => sum + cat.count, 0)
+    : photoCount
+  const photoTypesCount = photoDocumentationRequired ? photoCategories.length : 0
+  //
 
   return (
     <div className="mt-4 sm:mt-6 p-4 sm:p-6 bg-card border-2 border-border rounded-xl">
@@ -478,9 +496,12 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers, initialD
             <div className="flex items-center gap-2 text-muted-foreground">
               <Camera className="w-4 h-4" />
               <span>
-                {(isOtherTask ? photoRequired : task.photoRequired)
-                  ? `${isOtherTask ? photoCount : task.photoCount} photo${(isOtherTask ? photoCount : task.photoCount) > 1 ? "s" : ""} required`
-                  : "No photos required"}
+                {(isOtherTask ? photoDocumentationRequired : task.photoDocumentationRequired || false)
+                  ? `${totalPhotosRequired} photo${totalPhotosRequired > 1 ? "s" : ""} (${photoTypesCount} type${photoTypesCount > 1 ? "s" : ""})`
+                  : (isOtherTask ? photoRequired : task.photoRequired)
+                    ? `${isOtherTask ? photoCount : task.photoCount} photo${(isOtherTask ? photoCount : task.photoCount) > 1 ? "s" : ""} required`
+                    : "No photos required"}
+                {/* */}
               </span>
             </div>
             <div className="flex items-center gap-2 text-muted-foreground">
