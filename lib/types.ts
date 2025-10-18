@@ -40,6 +40,7 @@ export interface CategorizedPhotos {
   before_photos?: string[] // Before maintenance photos
   during_photos?: string[] // During maintenance photos (optional)
   after_photos?: string[] // After maintenance photos
+  dynamic_categories?: Record<string, string[]> // e.g., { "Initial State": ["url1"], "Final Result": ["url2"] }
 }
 
 export interface Task {
@@ -57,8 +58,10 @@ export interface Task {
   actual_duration_minutes: number | null
   photo_urls: string[] // Deprecated - keeping for backward compatibility
   categorized_photos: CategorizedPhotos | null
-  photo_required: boolean
-  photo_count?: number | null // Added photo_count field for regular tasks from task library
+  photo_required: boolean // Simple photo requirement
+  photo_count?: number | null // Number of photos if photo_required is true
+  photo_documentation_required?: boolean // Categorized photo documentation
+  photo_categories?: Array<{ name: string; count: number; description?: string }> | null // Categories if photo_documentation_required is true
   worker_remark: string
   supervisor_remark: string
   rating: number | null
@@ -74,7 +77,7 @@ export interface Task {
   custom_task_priority?: Priority | null
   custom_task_photo_required?: boolean | null
   custom_task_photo_count?: number | null
-  custom_task_processed?: boolean // Added field to track if custom task has been added to library
+  custom_task_processed?: boolean
   rejection_acknowledged?: boolean
   rejection_acknowledged_at?: DualTimestamp | null
 }

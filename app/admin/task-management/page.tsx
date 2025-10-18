@@ -23,7 +23,7 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { ArrowLeft, Plus, Trash2, Search, AlertCircle, CheckCircle, Clock, MapPin, Camera, Edit } from "lucide-react"
 import { CATEGORY_LABELS, CATEGORY_COLORS } from "@/lib/task-definitions"
-import type { TaskCategory, Department, Priority } from "@/lib/task-definitions"
+import type { TaskCategory, Department, Priority, PhotoCategory } from "@/lib/task-definitions"
 import type { Task } from "@/lib/types"
 import {
   getCustomTaskDefinitions,
@@ -34,6 +34,7 @@ import {
 } from "@/lib/custom-task-definitions"
 import { useToast } from "@/hooks/use-toast"
 import { EditTaskDefinitionModal } from "@/components/edit-task-definition-modal"
+import { PhotoCategoryConfig } from "@/components/photo-category-config"
 
 function TaskManagementPage() {
   const router = useRouter()
@@ -54,8 +55,10 @@ function TaskManagementPage() {
     department: "housekeeping" as Department,
     duration: 30,
     priority: "medium" as Priority,
-    photoRequired: true,
+    photoRequired: false,
     photoCount: 1,
+    photoDocumentationRequired: false,
+    photoCategories: [] as PhotoCategory[],
     keywords: "",
     requiresRoom: false,
     requiresACLocation: false,
@@ -99,6 +102,15 @@ function TaskManagementPage() {
       return
     }
 
+    if (newTaskForm.photoRequired && newTaskForm.photoCategories.length === 0) {
+      toast({
+        title: "Error",
+        description: "Please configure photo categories or use a template",
+        variant: "destructive",
+      })
+      return
+    }
+
     const keywordsArray = newTaskForm.keywords
       .split(",")
       .map((k) => k.trim())
@@ -112,6 +124,7 @@ function TaskManagementPage() {
       priority: newTaskForm.priority,
       photoRequired: newTaskForm.photoRequired,
       photoCount: newTaskForm.photoCount,
+      photoCategories: newTaskForm.photoCategories.length > 0 ? newTaskForm.photoCategories : undefined,
       keywords: keywordsArray,
       requiresRoom: newTaskForm.requiresRoom,
       requiresACLocation: newTaskForm.requiresACLocation,
@@ -155,6 +168,7 @@ function TaskManagementPage() {
       requiresRoom: !!task.room_number,
       requiresACLocation: false,
       sourceTaskId: task.id,
+      photoCategories: task.custom_task_photo_categories || [],
     })
 
     setIsAddDialogOpen(true)
@@ -313,37 +327,23 @@ function TaskManagementPage() {
                   </p>
                 </div>
 
+                <PhotoCategoryConfig
+                  photoRequired={newTaskForm.photoRequired}
+                  photoCount={newTaskForm.photoCount}
+                  photoDocumentationRequired={newTaskForm.photoDocumentationRequired}
+                  categories={newTaskForm.photoCategories}
+                  onChange={(config) =>
+                    setNewTaskForm({
+                      ...newTaskForm,
+                      photoRequired: config.photoRequired,
+                      photoCount: config.photoCount,
+                      photoDocumentationRequired: config.photoDocumentationRequired,
+                      photoCategories: config.categories,
+                    })
+                  }
+                />
+
                 <div className="space-y-3">
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      id="photo-required"
-                      checked={newTaskForm.photoRequired}
-                      onChange={(e) => setNewTaskForm({ ...newTaskForm, photoRequired: e.target.checked })}
-                      className="h-4 w-4"
-                    />
-                    <Label htmlFor="photo-required" className="cursor-pointer">
-                      Photo documentation required
-                    </Label>
-                  </div>
-
-                  {newTaskForm.photoRequired && (
-                    <div className="ml-6 space-y-2">
-                      <Label htmlFor="photo-count">Minimum photos required</Label>
-                      <Input
-                        id="photo-count"
-                        type="number"
-                        min="1"
-                        max="5"
-                        value={newTaskForm.photoCount}
-                        onChange={(e) =>
-                          setNewTaskForm({ ...newTaskForm, photoCount: Number.parseInt(e.target.value) || 1 })
-                        }
-                        className="w-24"
-                      />
-                    </div>
-                  )}
-
                   <div className="flex items-center gap-2">
                     <input
                       type="checkbox"

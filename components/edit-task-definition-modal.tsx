@@ -8,10 +8,11 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { CATEGORY_LABELS } from "@/lib/task-definitions"
-import type { TaskCategory, Department, Priority, TaskDefinition } from "@/lib/task-definitions"
+import type { TaskCategory, Department, Priority, TaskDefinition, PhotoCategory } from "@/lib/task-definitions"
 import type { CustomTaskDefinition } from "@/lib/custom-task-definitions"
 import { updateCustomTaskDefinition, saveCustomTaskDefinition } from "@/lib/custom-task-definitions"
 import { useToast } from "@/hooks/use-toast"
+import { PhotoCategoryConfig } from "@/components/photo-category-config"
 
 interface EditTaskDefinitionModalProps {
   task: (TaskDefinition | CustomTaskDefinition) & { isCustom?: boolean }
@@ -28,8 +29,10 @@ export function EditTaskDefinitionModal({ task, open, onOpenChange, onSuccess }:
     department: task.department,
     duration: task.duration,
     priority: task.priority,
-    photoRequired: task.photoRequired,
-    photoCount: task.photoCount,
+    photoRequired: task.photoRequired || false,
+    photoCount: task.photoCount || 1,
+    photoDocumentationRequired: task.photoDocumentationRequired || false,
+    photoCategories: task.photoCategories || ([] as PhotoCategory[]),
     keywords: task.keywords.join(", "),
     requiresRoom: task.requiresRoom,
     requiresACLocation: task.requiresACLocation,
@@ -42,8 +45,10 @@ export function EditTaskDefinitionModal({ task, open, onOpenChange, onSuccess }:
       department: task.department,
       duration: task.duration,
       priority: task.priority,
-      photoRequired: task.photoRequired,
-      photoCount: task.photoCount,
+      photoRequired: task.photoRequired || false,
+      photoCount: task.photoCount || 1,
+      photoDocumentationRequired: task.photoDocumentationRequired || false,
+      photoCategories: task.photoCategories || ([] as PhotoCategory[]),
       keywords: task.keywords.join(", "),
       requiresRoom: task.requiresRoom,
       requiresACLocation: task.requiresACLocation,
@@ -76,6 +81,8 @@ export function EditTaskDefinitionModal({ task, open, onOpenChange, onSuccess }:
         priority: formData.priority,
         photoRequired: formData.photoRequired,
         photoCount: formData.photoCount,
+        photoDocumentationRequired: formData.photoDocumentationRequired,
+        photoCategories: formData.photoCategories.length > 0 ? formData.photoCategories : undefined,
         keywords: keywordsArray,
         requiresRoom: formData.requiresRoom,
         requiresACLocation: formData.requiresACLocation,
@@ -91,6 +98,8 @@ export function EditTaskDefinitionModal({ task, open, onOpenChange, onSuccess }:
         priority: formData.priority,
         photoRequired: formData.photoRequired,
         photoCount: formData.photoCount,
+        photoDocumentationRequired: formData.photoDocumentationRequired,
+        photoCategories: formData.photoCategories.length > 0 ? formData.photoCategories : undefined,
         keywords: keywordsArray,
         requiresRoom: formData.requiresRoom,
         requiresACLocation: formData.requiresACLocation,
@@ -212,35 +221,23 @@ export function EditTaskDefinitionModal({ task, open, onOpenChange, onSuccess }:
             />
           </div>
 
+          <PhotoCategoryConfig
+            photoRequired={formData.photoRequired}
+            photoCount={formData.photoCount}
+            photoDocumentationRequired={formData.photoDocumentationRequired}
+            categories={formData.photoCategories}
+            onChange={(config) =>
+              setFormData({
+                ...formData,
+                photoRequired: config.photoRequired,
+                photoCount: config.photoCount,
+                photoDocumentationRequired: config.photoDocumentationRequired,
+                photoCategories: config.categories,
+              })
+            }
+          />
+
           <div className="space-y-3">
-            <div className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                id="edit-photo-required"
-                checked={formData.photoRequired}
-                onChange={(e) => setFormData({ ...formData, photoRequired: e.target.checked })}
-                className="h-4 w-4"
-              />
-              <Label htmlFor="edit-photo-required" className="cursor-pointer">
-                Photo documentation required
-              </Label>
-            </div>
-
-            {formData.photoRequired && (
-              <div className="ml-6 space-y-2">
-                <Label htmlFor="edit-photo-count">Minimum photos required</Label>
-                <Input
-                  id="edit-photo-count"
-                  type="number"
-                  min="1"
-                  max="5"
-                  value={formData.photoCount}
-                  onChange={(e) => setFormData({ ...formData, photoCount: Number.parseInt(e.target.value) || 1 })}
-                  className="w-24"
-                />
-              </div>
-            )}
-
             <div className="flex items-center gap-2">
               <input
                 type="checkbox"
