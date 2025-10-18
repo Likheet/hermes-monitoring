@@ -1,10 +1,10 @@
 "use client"
 
 import type React from "react"
-import { useState, useRef } from "react"
+import { useState, useRef, useEffect } from "react"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
-import { Camera, Loader2, AlertCircle, X, Plus, CheckCircle2, Home, Wrench } from "lucide-react"
+import { Camera, Loader2, AlertCircle, X, Plus, CheckCircle2, Clock, Wrench, CheckCheck } from "lucide-react"
 import { compressImage, blobToDataURL } from "@/lib/image-utils"
 import { uploadTaskPhoto } from "@/lib/storage-utils"
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -12,6 +12,7 @@ import { Progress } from "@/components/ui/progress"
 import { triggerHaptic, triggerSuccessHaptic, triggerErrorHaptic } from "@/lib/haptics"
 import { Badge } from "@/components/ui/badge"
 import type { CategorizedPhotos } from "@/lib/types"
+import { toast } from "@/components/ui/use-toast"
 
 interface CategorizedPhotoCaptureModalProps {
   open: boolean
@@ -21,9 +22,10 @@ interface CategorizedPhotoCaptureModalProps {
   existingPhotos?: CategorizedPhotos
   minRoomPhotos?: number
   minProofPhotos?: number
+  mode?: "task" | "maintenance"
 }
 
-type PhotoCategory = "room_photos" | "proof_photos"
+type PhotoCategory = "room_photos" | "proof_photos" | "before_photos" | "after_photos"
 
 export function CategorizedPhotoCaptureModal({
   open,
@@ -33,10 +35,16 @@ export function CategorizedPhotoCaptureModal({
   existingPhotos,
   minRoomPhotos = 1,
   minProofPhotos = 1,
+  mode = "task",
 }: CategorizedPhotoCaptureModalProps) {
   const [roomPhotos, setRoomPhotos] = useState<string[]>(existingPhotos?.room_photos || [])
   const [proofPhotos, setProofPhotos] = useState<string[]>(existingPhotos?.proof_photos || [])
-  const [activeCategory, setActiveCategory] = useState<PhotoCategory>("room_photos")
+  const [beforePhotos, setBeforePhotos] = useState<string[]>(existingPhotos?.before_photos || [])
+  const [afterPhotos, setAfterPhotos] = useState<string[]>(existingPhotos?.after_photos || [])
+
+  const [activeCategory, setActiveCategory] = useState<PhotoCategory>(
+    mode === "maintenance" ? "before_photos" : "room_photos",
+  )
   const [currentPhoto, setCurrentPhoto] = useState<string | null>(null)
   const [compressedBlob, setCompressedBlob] = useState<Blob | null>(null)
   const [uploading, setUploading] = useState(false)
@@ -44,11 +52,11 @@ export function CategorizedPhotoCaptureModal({
   const [error, setError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const categoryConfig = {
+  const taskCategoryConfig = {
     room_photos: {
       label: "Room Photos",
       description: "Full-room photos post-service to verify cleanliness",
-      icon: Home,
+      icon: Clock,
       color: "bg-primary",
       minRequired: minRoomPhotos,
     },
@@ -61,12 +69,56 @@ export function CategorizedPhotoCaptureModal({
     },
   }
 
-  const getCurrentPhotos = () => (activeCategory === "room_photos" ? roomPhotos : proofPhotos)
-  const setCurrentPhotos = (photos: string[]) => {
-    if (activeCategory === "room_photos") {
-      setRoomPhotos(photos)
+  const maintenanceCategoryConfig = {
+    before_photos: {
+      label: "Before Photos",
+      description: "Capture the current state before starting maintenance work",
+      icon: Clock,
+      color: "bg-blue-500",
+      minRequired: 1,
+    },
+    after_photos: {
+      label: "After Photos",
+      description: "Show the completed work and final state after maintenance",
+      icon: CheckCheck,
+      color: "bg-primary",
+      minRequired: 1,
+    },
+  }
+
+  const categoryConfig = mode === "maintenance" ? maintenanceCategoryConfig : taskCategoryConfig
+
+  const getCurrentPhotos = () => {
+    if (mode === "maintenance") {
+      switch (activeCategory) {
+        case "before_photos":
+          return beforePhotos
+        case "after_photos":
+          return afterPhotos
+        default:
+          return []
+      }
     } else {
-      setProofPhotos(photos)
+      return activeCategory === "room_photos" ? roomPhotos : proofPhotos
+    }
+  }
+
+  const setCurrentPhotos = (photos: string[]) => {
+    if (mode === "maintenance") {
+      switch (activeCategory) {
+        case "before_photos":
+          setBeforePhotos(photos)
+          break
+        case "after_photos":
+          setAfterPhotos(photos)
+          break
+      }
+    } else {
+      if (activeCategory === "room_photos") {
+        setRoomPhotos(photos)
+      } else {
+        setProofPhotos(photos)
+      }
     }
   }
 
@@ -144,46 +196,102 @@ export function CategorizedPhotoCaptureModal({
   }
 
   const isValidForSubmission = () => {
-    return roomPhotos.length >= minRoomPhotos && proofPhotos.length >= minProofPhotos
+    if (mode === "maintenance") {
+      return beforePhotos.length >= 1 && afterPhotos.length >= 1
+    } else {
+      return roomPhotos.length >= minRoomPhotos && proofPhotos.length >= minProofPhotos
+    }
   }
 
   const handleConfirm = () => {
     if (!isValidForSubmission()) {
-      setError(
-        `Please capture at least ${minRoomPhotos} Room Photo${minRoomPhotos > 1 ? "s" : ""} and ${minProofPhotos} Proof Photo${minProofPhotos > 1 ? "s" : ""}`,
-      )
+      if (mode === "maintenance") {
+        setError("Please capture at least 1 Before Photo and 1 After Photo")
+      } else {
+        setError(
+          `Please capture at least ${minRoomPhotos} Room Photo${minRoomPhotos > 1 ? "s" : ""} and ${minProofPhotos} Proof Photo${minProofPhotos > 1 ? "s" : ""}`,
+        )
+      }
       triggerErrorHaptic()
       return
     }
-    onPhotosCapture({ room_photos: roomPhotos, proof_photos: proofPhotos })
-    setRoomPhotos([])
-    setProofPhotos([])
-    setCurrentPhoto(null)
+
+    if (mode === "maintenance") {
+      onPhotosCapture({
+        room_photos: [],
+        proof_photos: [],
+        before_photos: beforePhotos,
+        after_photos: afterPhotos,
+      })
+    } else {
+      onPhotosCapture({ room_photos: roomPhotos, proof_photos: proofPhotos })
+    }
+
+    onOpenChange(false)
+  }
+
+  const handleSaveAndContinue = () => {
+    if (mode === "maintenance") {
+      onPhotosCapture({
+        room_photos: [],
+        proof_photos: [],
+        before_photos: beforePhotos,
+        after_photos: afterPhotos,
+      })
+    } else {
+      onPhotosCapture({ room_photos: roomPhotos, proof_photos: proofPhotos })
+    }
+
+    toast({
+      title: "Photos Saved",
+      description: "You can continue adding more photos later",
+    })
     onOpenChange(false)
   }
 
   const handleCancel = () => {
     setRoomPhotos(existingPhotos?.room_photos || [])
     setProofPhotos(existingPhotos?.proof_photos || [])
+    setBeforePhotos(existingPhotos?.before_photos || [])
+    setAfterPhotos(existingPhotos?.after_photos || [])
     setCurrentPhoto(null)
     setCompressedBlob(null)
     setError(null)
     onOpenChange(false)
   }
 
-  const config = categoryConfig[activeCategory]
+  useEffect(() => {
+    if (open && existingPhotos) {
+      setRoomPhotos(existingPhotos.room_photos || [])
+      setProofPhotos(existingPhotos.proof_photos || [])
+      setBeforePhotos(existingPhotos.before_photos || [])
+      setAfterPhotos(existingPhotos.after_photos || [])
+      console.log("[v0] Loaded existing photos:", {
+        before: existingPhotos.before_photos?.length || 0,
+        after: existingPhotos.after_photos?.length || 0,
+      })
+    }
+  }, [open, existingPhotos])
+
+  const config = categoryConfig[activeCategory as keyof typeof categoryConfig]
   const currentPhotos = getCurrentPhotos()
   const CategoryIcon = config.icon
-  const totalRequired = minRoomPhotos + minProofPhotos
+
+  const totalRequired = mode === "maintenance" ? 2 : minRoomPhotos + minProofPhotos
+  const totalCaptured =
+    mode === "maintenance" ? beforePhotos.length + afterPhotos.length : roomPhotos.length + proofPhotos.length
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Photo Documentation</DialogTitle>
+          <DialogTitle>
+            {mode === "maintenance" ? "Maintenance Photo Documentation" : "Photo Documentation"}
+          </DialogTitle>
           <DialogDescription>
-            Capture photos for task completion. Minimum {totalRequired} photo{totalRequired > 1 ? "s" : ""} required (
-            {minRoomPhotos} room + {minProofPhotos} proof).
+            {mode === "maintenance"
+              ? "Capture before and after photos for maintenance documentation. Minimum 2 photos required (1 before + 1 after)."
+              : `Capture photos for task completion. Minimum ${totalRequired} photo${totalRequired > 1 ? "s" : ""} required (${minRoomPhotos} room + ${minProofPhotos} proof).`}
           </DialogDescription>
         </DialogHeader>
 
@@ -197,10 +305,24 @@ export function CategorizedPhotoCaptureModal({
             </Alert>
           )}
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className={`grid ${mode === "maintenance" ? "grid-cols-2" : "grid-cols-2"} gap-3`}>
             {(Object.keys(categoryConfig) as PhotoCategory[]).map((category) => {
-              const cat = categoryConfig[category]
-              const photos = category === "room_photos" ? roomPhotos : proofPhotos
+              const cat = categoryConfig[category as keyof typeof categoryConfig]
+              let photos: string[] = []
+
+              if (mode === "maintenance") {
+                switch (category) {
+                  case "before_photos":
+                    photos = beforePhotos
+                    break
+                  case "after_photos":
+                    photos = afterPhotos
+                    break
+                }
+              } else {
+                photos = category === "room_photos" ? roomPhotos : proofPhotos
+              }
+
               const isComplete = photos.length >= cat.minRequired
               const Icon = cat.icon
 
@@ -219,17 +341,20 @@ export function CategorizedPhotoCaptureModal({
                       : "border-border hover:border-primary/50"
                   }`}
                 >
-                  <div className="flex items-center gap-3">
+                  <div className="flex flex-col items-center gap-2">
                     <div className={`p-2 rounded-lg ${cat.color} text-white`}>
                       <Icon className="h-5 w-5" />
                     </div>
-                    <div className="flex-1 text-left">
+                    <div className="text-center">
                       <div className="font-semibold text-sm">{cat.label}</div>
                       <div className="text-xs text-muted-foreground">
-                        {photos.length}/{cat.minRequired}
+                        {photos.length}
+                        {cat.minRequired > 0 ? `/${cat.minRequired}` : ""}
                       </div>
                     </div>
-                    {isComplete && <CheckCircle2 className="h-5 w-5 text-primary" />}
+                    {isComplete && cat.minRequired > 0 && (
+                      <CheckCircle2 className="h-5 w-5 text-primary absolute top-2 right-2" />
+                    )}
                   </div>
                 </button>
               )
@@ -352,11 +477,16 @@ export function CategorizedPhotoCaptureModal({
             </div>
           )}
 
-          {!currentPhoto && (roomPhotos.length > 0 || proofPhotos.length > 0) && (
+          {!currentPhoto && totalCaptured > 0 && (
             <div className="flex gap-2 pt-4 border-t">
               <Button onClick={handleCancel} variant="outline" className="flex-1 min-h-[48px] bg-transparent" size="lg">
                 Cancel
               </Button>
+              {!isValidForSubmission() && (
+                <Button onClick={handleSaveAndContinue} variant="secondary" className="flex-1 min-h-[48px]" size="lg">
+                  Save & Continue Later
+                </Button>
+              )}
               <Button
                 onClick={handleConfirm}
                 className="flex-1 min-h-[48px]"
@@ -366,7 +496,7 @@ export function CategorizedPhotoCaptureModal({
                 {isValidForSubmission() ? (
                   <>
                     <CheckCircle2 className="mr-2 h-4 w-4" />
-                    Confirm ({roomPhotos.length + proofPhotos.length} photos)
+                    Confirm ({totalCaptured} photos)
                   </>
                 ) : (
                   <>Missing Required Photos</>
@@ -375,7 +505,7 @@ export function CategorizedPhotoCaptureModal({
             </div>
           )}
 
-          {!currentPhoto && (roomPhotos.length > 0 || proofPhotos.length > 0) && (
+          {!currentPhoto && totalCaptured > 0 && (
             <div className="bg-muted/30 p-3 rounded-lg text-sm">
               <div className="flex items-center justify-between mb-2">
                 <span className="font-medium">Documentation Status:</span>
@@ -389,18 +519,38 @@ export function CategorizedPhotoCaptureModal({
                 )}
               </div>
               <div className="space-y-1 text-xs text-muted-foreground">
-                <div className="flex items-center justify-between">
-                  <span>Room Photos:</span>
-                  <span className={roomPhotos.length >= minRoomPhotos ? "text-primary font-medium" : ""}>
-                    {roomPhotos.length >= minRoomPhotos ? "✓" : "✗"} {roomPhotos.length}/{minRoomPhotos} required
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span>Proof Photos:</span>
-                  <span className={proofPhotos.length >= minProofPhotos ? "text-primary font-medium" : ""}>
-                    {proofPhotos.length >= minProofPhotos ? "✓" : "✗"} {proofPhotos.length}/{minProofPhotos} required
-                  </span>
-                </div>
+                {mode === "maintenance" ? (
+                  <>
+                    <div className="flex items-center justify-between">
+                      <span>Before Photos:</span>
+                      <span className={beforePhotos.length >= 1 ? "text-primary font-medium" : ""}>
+                        {beforePhotos.length >= 1 ? "✓" : "✗"} {beforePhotos.length}/1 required
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span>After Photos:</span>
+                      <span className={afterPhotos.length >= 1 ? "text-primary font-medium" : ""}>
+                        {afterPhotos.length >= 1 ? "✓" : "✗"} {afterPhotos.length}/1 required
+                      </span>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="flex items-center justify-between">
+                      <span>Room Photos:</span>
+                      <span className={roomPhotos.length >= minRoomPhotos ? "text-primary font-medium" : ""}>
+                        {roomPhotos.length >= minRoomPhotos ? "✓" : "✗"} {roomPhotos.length}/{minRoomPhotos} required
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span>Proof Photos:</span>
+                      <span className={proofPhotos.length >= minProofPhotos ? "text-primary font-medium" : ""}>
+                        {proofPhotos.length >= minProofPhotos ? "✓" : "✗"} {proofPhotos.length}/{minProofPhotos}{" "}
+                        required
+                      </span>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           )}

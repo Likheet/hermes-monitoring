@@ -37,6 +37,9 @@ export interface PauseRecord {
 export interface CategorizedPhotos {
   room_photos: string[] // Full-room photos post-service
   proof_photos: string[] // Proof-of-completion photos
+  before_photos?: string[] // Before maintenance photos
+  during_photos?: string[] // During maintenance photos (optional)
+  after_photos?: string[] // After maintenance photos
 }
 
 export interface Task {

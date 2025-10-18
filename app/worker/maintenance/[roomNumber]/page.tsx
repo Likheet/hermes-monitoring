@@ -176,7 +176,9 @@ export default function MaintenanceRoomPage() {
                                 ? "bg-primary"
                                 : status === "in_progress"
                                   ? "bg-accent"
-                                  : "bg-muted-foreground/30"
+                                  : status === "paused"
+                                    ? "bg-muted"
+                                    : "bg-muted-foreground/30"
                             }`}
                           />
                           <span className="font-medium text-foreground">{task.location}</span>
@@ -190,6 +192,11 @@ export default function MaintenanceRoomPage() {
                           {status === "in_progress" && (
                             <Badge variant="default" className="bg-accent text-accent-foreground">
                               In Progress
+                            </Badge>
+                          )}
+                          {status === "paused" && (
+                            <Badge variant="secondary" className="bg-muted text-muted-foreground border border-border">
+                              Paused
                             </Badge>
                           )}
                           {status === "pending" && (

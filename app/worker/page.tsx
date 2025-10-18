@@ -978,42 +978,6 @@ function WorkerDashboard() {
               </Card>
             )}
 
-            {isMaintenanceUser && nearbyRooms.length > 0 && (
-              <section>
-                <h2 className="text-base md:text-lg font-semibold mb-3">💡 Smart Suggestions</h2>
-                <p className="text-sm text-muted-foreground mb-3">Rooms on the same floor as your current work</p>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                  {nearbyRooms.map((room) => {
-                    const roomTasks = maintenanceTasksForDisplay.filter((t) => t.room_number === room.roomNumber)
-                    const completedCount = roomTasks.filter((t) => t.status === "completed").length
-
-                    return (
-                      <Card
-                        key={room.roomNumber}
-                        className="cursor-pointer hover:shadow-md transition-shadow border-accent/50"
-                        onClick={() => router.push(`/worker/maintenance/${room.roomNumber}`)}
-                      >
-                        <CardContent className="p-4">
-                          <div className="flex items-center justify-between mb-2">
-                            <h3 className="font-semibold text-lg">{room.roomNumber}</h3>
-                            <Badge variant="outline" className="text-xs">
-                              Floor {room.floor}
-                            </Badge>
-                          </div>
-                          <p className="text-sm text-muted-foreground mb-2">
-                            {completedCount}/{roomTasks.length} tasks
-                          </p>
-                          <Button size="sm" className="w-full">
-                            Start
-                          </Button>
-                        </CardContent>
-                      </Card>
-                    )
-                  })}
-                </div>
-              </section>
-            )}
-
             {isMaintenanceUser && Object.keys(activeMaintenanceByRoom).length > 0 && (
               <section>
                 <h2 className="text-base md:text-lg font-semibold mb-3 text-black">🔧 Active Maintenance Tasks</h2>

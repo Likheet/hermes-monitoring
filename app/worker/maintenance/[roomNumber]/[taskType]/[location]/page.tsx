@@ -30,7 +30,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { ArrowLeft, Play, CheckCircle, Clock, MapPin, Camera, AlertTriangle, Home, Wrench } from "lucide-react"
+import { ArrowLeft, Play, CheckCircle, Clock, MapPin, Camera, AlertTriangle, CheckCheck } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { OfflineIndicator } from "@/components/timer/offline-indicator"
 import type { CategorizedPhotos } from "@/lib/types"
@@ -76,6 +76,8 @@ function MaintenanceTaskPage({ params }: MaintenanceTaskPageProps) {
   const [categorizedPhotos, setCategorizedPhotos] = useState<CategorizedPhotos>({
     room_photos: [],
     proof_photos: [],
+    before_photos: [],
+    after_photos: [],
   })
   const [elapsedTime, setElapsedTime] = useState(0)
   const [isRunning, setIsRunning] = useState(false)
@@ -96,13 +98,19 @@ function MaintenanceTaskPage({ params }: MaintenanceTaskPageProps) {
       started_at: task.started_at,
       timer_duration: task.timer_duration,
       paused_at: task.paused_at,
+      categorized_photos: task.categorized_photos,
     })
 
-    // Load existing photos
     if (task.categorized_photos) {
       setCategorizedPhotos({
-        room_photos: task.categorized_photos.before_photos || [],
-        proof_photos: task.categorized_photos.after_photos || [],
+        room_photos: [],
+        proof_photos: [],
+        before_photos: task.categorized_photos.before_photos || [],
+        after_photos: task.categorized_photos.after_photos || [],
+      })
+      console.log("[v0] Loaded categorized photos from task:", {
+        before: task.categorized_photos.before_photos?.length || 0,
+        after: task.categorized_photos.after_photos?.length || 0,
       })
     }
 
@@ -278,17 +286,16 @@ function MaintenanceTaskPage({ params }: MaintenanceTaskPageProps) {
   }
 
   const handleComplete = () => {
-    const totalPhotoCount = task.photo_count || 2
-    const minRoomPhotos = Math.ceil(totalPhotoCount / 2)
-    const minProofPhotos = Math.floor(totalPhotoCount / 2)
+    const minBeforePhotos = 1
+    const minAfterPhotos = 1
 
     if (
-      categorizedPhotos.room_photos.length < minRoomPhotos ||
-      categorizedPhotos.proof_photos.length < minProofPhotos
+      categorizedPhotos.before_photos.length < minBeforePhotos ||
+      categorizedPhotos.after_photos.length < minAfterPhotos
     ) {
       toast({
         title: "Photos Required",
-        description: `Please upload at least ${minRoomPhotos} room photo${minRoomPhotos > 1 ? "s" : ""} and ${minProofPhotos} proof photo${minProofPhotos > 1 ? "s" : ""}`,
+        description: `Please upload at least ${minBeforePhotos} before photo and ${minAfterPhotos} after photo for maintenance documentation`,
         variant: "destructive",
       })
       setPhotoModalOpen(true)
@@ -300,8 +307,8 @@ function MaintenanceTaskPage({ params }: MaintenanceTaskPageProps) {
     updateMaintenanceTask(task.id, {
       status: "completed",
       categorized_photos: {
-        before_photos: categorizedPhotos.room_photos,
-        after_photos: categorizedPhotos.proof_photos,
+        before_photos: categorizedPhotos.before_photos,
+        after_photos: categorizedPhotos.after_photos,
       },
       timer_duration: elapsedTime,
       completed_at: new Date().toISOString(),
@@ -311,23 +318,36 @@ function MaintenanceTaskPage({ params }: MaintenanceTaskPageProps) {
     console.log("[v0] Task completed:", task.id, "duration:", elapsedTime)
     toast({
       title: "Task Completed",
-      description: "Task has been marked as complete",
+      description: "Maintenance task has been marked as complete",
     })
     router.back()
   }
 
   const handlePhotosCapture = (photos: CategorizedPhotos) => {
-    setCategorizedPhotos(photos)
+    const updatedPhotos = {
+      room_photos: [],
+      proof_photos: [],
+      before_photos: photos.before_photos || categorizedPhotos.before_photos || [],
+      after_photos: photos.after_photos || categorizedPhotos.after_photos || [],
+    }
+
+    setCategorizedPhotos(updatedPhotos)
     updateMaintenanceTask(task.id, {
-      categorized_photos: {
-        before_photos: photos.room_photos,
-        after_photos: photos.proof_photos,
-      },
+      categorized_photos: updatedPhotos,
     })
-    const totalPhotos = photos.room_photos.length + photos.proof_photos.length
+
+    const totalPhotos = (updatedPhotos.before_photos?.length || 0) + (updatedPhotos.after_photos?.length || 0)
+
+    console.log("[v0] Photos saved to task:", {
+      taskId: task.id,
+      before: updatedPhotos.before_photos?.length || 0,
+      after: updatedPhotos.after_photos?.length || 0,
+      total: totalPhotos,
+    })
+
     toast({
-      title: "Photos Captured",
-      description: `${totalPhotos} photo(s) attached (${photos.room_photos.length} room, ${photos.proof_photos.length} proof)`,
+      title: "Photos Saved",
+      description: `${totalPhotos} photo(s) saved (${updatedPhotos.before_photos?.length || 0} before, ${updatedPhotos.after_photos?.length || 0} after)`,
     })
   }
 
@@ -389,11 +409,7 @@ function MaintenanceTaskPage({ params }: MaintenanceTaskPageProps) {
     setOngoingTask(null)
   }
 
-  const totalPhotos = categorizedPhotos.room_photos.length + categorizedPhotos.proof_photos.length
-
-  const totalPhotoCount = task.photo_count || 2
-  const minRoomPhotos = Math.ceil(totalPhotoCount / 2)
-  const minProofPhotos = Math.floor(totalPhotoCount / 2)
+  const totalPhotos = (categorizedPhotos.before_photos?.length || 0) + (categorizedPhotos.after_photos?.length || 0)
 
   return (
     <div className="min-h-screen bg-muted/30 pb-safe">
@@ -501,29 +517,29 @@ function MaintenanceTaskPage({ params }: MaintenanceTaskPageProps) {
                   className="text-xs sm:text-sm"
                 >
                   <Camera className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4" />
-                  Manage
+                  {totalPhotos > 0 ? "Add More" : "Capture"}
                 </Button>
               </div>
             </CardHeader>
             <CardContent className="space-y-3 sm:space-y-4">
-              {categorizedPhotos.room_photos.length > 0 && (
+              {categorizedPhotos.before_photos && categorizedPhotos.before_photos.length > 0 && (
                 <div className="space-y-2">
                   <div className="flex items-center gap-2">
-                    <Home className="h-4 w-4 text-primary shrink-0" />
+                    <Clock className="h-4 w-4 text-blue-500 shrink-0" />
                     <span className="text-xs sm:text-sm font-medium">
-                      Room Photos ({categorizedPhotos.room_photos.length})
+                      Before Photos ({categorizedPhotos.before_photos.length})
                     </span>
                   </div>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                    {categorizedPhotos.room_photos.map((photo, index) => (
+                    {categorizedPhotos.before_photos.map((photo, index) => (
                       <div key={index} className="relative">
                         <img
                           src={photo || "/placeholder.svg"}
-                          alt={`Room photo ${index + 1}`}
-                          className="w-full aspect-square object-cover rounded-lg border-2 border-primary"
+                          alt={`Before photo ${index + 1}`}
+                          className="w-full aspect-square object-cover rounded-lg border-2 border-blue-500"
                         />
-                        <div className="absolute bottom-1 left-1 bg-primary text-primary-foreground text-xs px-2 py-0.5 rounded">
-                          R{index + 1}
+                        <div className="absolute bottom-1 left-1 bg-blue-500 text-white text-xs px-2 py-0.5 rounded">
+                          Before {index + 1}
                         </div>
                       </div>
                     ))}
@@ -531,24 +547,24 @@ function MaintenanceTaskPage({ params }: MaintenanceTaskPageProps) {
                 </div>
               )}
 
-              {categorizedPhotos.proof_photos.length > 0 && (
+              {categorizedPhotos.after_photos && categorizedPhotos.after_photos.length > 0 && (
                 <div className="space-y-2">
                   <div className="flex items-center gap-2">
-                    <Wrench className="h-4 w-4 text-secondary-foreground shrink-0" />
+                    <CheckCheck className="h-4 w-4 text-primary shrink-0" />
                     <span className="text-xs sm:text-sm font-medium">
-                      Proof Photos ({categorizedPhotos.proof_photos.length})
+                      After Photos ({categorizedPhotos.after_photos.length})
                     </span>
                   </div>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                    {categorizedPhotos.proof_photos.map((photo, index) => (
+                    {categorizedPhotos.after_photos.map((photo, index) => (
                       <div key={index} className="relative">
                         <img
                           src={photo || "/placeholder.svg"}
-                          alt={`Proof photo ${index + 1}`}
-                          className="w-full aspect-square object-cover rounded-lg border-2 border-secondary"
+                          alt={`After photo ${index + 1}`}
+                          className="w-full aspect-square object-cover rounded-lg border-2 border-primary"
                         />
-                        <div className="absolute bottom-1 left-1 bg-secondary text-secondary-foreground text-xs px-2 py-0.5 rounded">
-                          P{index + 1}
+                        <div className="absolute bottom-1 left-1 bg-primary text-primary-foreground text-xs px-2 py-0.5 rounded">
+                          After {index + 1}
                         </div>
                       </div>
                     ))}
@@ -674,8 +690,7 @@ function MaintenanceTaskPage({ params }: MaintenanceTaskPageProps) {
         onPhotosCapture={handlePhotosCapture}
         taskId={task.id}
         existingPhotos={categorizedPhotos}
-        minRoomPhotos={minRoomPhotos}
-        minProofPhotos={minProofPhotos}
+        mode="maintenance"
       />
 
       <RaiseIssueModal open={issueModalOpen} onOpenChange={setIssueModalOpen} onSubmit={handleRaiseIssue} />
