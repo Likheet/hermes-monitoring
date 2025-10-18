@@ -1,18 +1,19 @@
 "use client"
-import { useState } from "react"
-import { useRouter } from "next/navigation"
+import { useState, useEffect, useRef } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
 import { ProtectedRoute } from "@/components/protected-route"
 import { useAuth } from "@/lib/auth-context"
 import { useTasks } from "@/lib/task-context"
 import { createDualTimestamp } from "@/lib/mock-data"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { ArrowLeft } from "lucide-react"
+import { ArrowLeft, AlertCircle } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import type { PriorityLevel, Priority, Department } from "@/lib/types"
 import { TaskSearch } from "@/components/task-search"
 import type { TaskDefinition, TaskCategory } from "@/lib/task-definitions"
 import { TaskAssignmentForm, type TaskAssignmentData } from "@/components/task-assignment-form"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 
 function mapPriorityToPriorityLevel(priority: Priority, category: TaskCategory): PriorityLevel {
   if (category === "GUEST_REQUEST") return "GUEST_REQUEST"
@@ -23,13 +24,42 @@ function mapPriorityToPriorityLevel(priority: Priority, category: TaskCategory):
 
 function CreateTaskForm() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { user } = useAuth()
   const { createTask, tasks, users } = useTasks()
   const { toast } = useToast()
 
   const [selectedTaskDef, setSelectedTaskDef] = useState<TaskDefinition | null>(null)
+  const [rejectedTask, setRejectedTask] = useState<any>(null)
+  const hasLoadedRejectedTask = useRef(false)
 
   const workers = users.filter((u) => u.role === "worker")
+
+  useEffect(() => {
+    if (hasLoadedRejectedTask.current) return
+
+    const rejectedTaskId = searchParams.get("rejectedTaskId")
+    if (rejectedTaskId) {
+      const task = tasks.find((t) => t.id === rejectedTaskId)
+      if (task) {
+        hasLoadedRejectedTask.current = true
+        setRejectedTask(task)
+        const taskDef: TaskDefinition = {
+          id: task.task_type,
+          name: task.task_type,
+          category: task.custom_task_category || "DAILY_TASK",
+          priority: task.custom_task_priority || "medium",
+          department: task.department,
+          duration: task.expected_duration_minutes,
+          photoRequired: task.photo_required,
+          photoCount: task.custom_task_photo_count || 1,
+          requiresRoom: !!task.room_number,
+          requiresACLocation: false,
+        }
+        setSelectedTaskDef(taskDef)
+      }
+    }
+  }, [searchParams, tasks])
 
   const handleTaskSelect = (task: TaskDefinition) => {
     setSelectedTaskDef(task)
@@ -37,6 +67,9 @@ function CreateTaskForm() {
 
   const handleCancel = () => {
     setSelectedTaskDef(null)
+    setRejectedTask(null)
+    hasLoadedRejectedTask.current = false
+    router.push("/front-office/create-task")
   }
 
   const handleSubmit = async (data: TaskAssignmentData) => {
@@ -70,7 +103,8 @@ function CreateTaskForm() {
       photo_urls: [],
       categorized_photos: null,
       photo_required: data.photoRequired,
-      worker_remark: data.additionalDetails || "",
+      photo_count: isCustomTask ? null : data.photoCount,
+      worker_remark: data.remarks || "",
       supervisor_remark: "",
       rating: null,
       quality_comment: null,
@@ -86,7 +120,6 @@ function CreateTaskForm() {
     })
 
     if (isCustomTask && trimmedCustomName) {
-      // This will be handled in the task context
       console.log("[v0] Custom task created, admin will be notified:", trimmedCustomName)
     }
 
@@ -99,10 +132,12 @@ function CreateTaskForm() {
       })
     } else {
       toast({
-        title: "Task Created",
-        description: data.customTaskName
-          ? "Custom task created and admin has been notified"
-          : "Task has been assigned successfully",
+        title: rejectedTask ? "Task Re-created" : "Task Created",
+        description: rejectedTask
+          ? "Task has been re-created and assigned successfully"
+          : data.customTaskName
+            ? "Custom task created and admin has been notified"
+            : "Task has been assigned successfully",
       })
     }
 
@@ -117,14 +152,28 @@ function CreateTaskForm() {
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <div>
-            <h1 className="text-xl font-bold">Create New Task</h1>
-            <p className="text-sm text-muted-foreground">Search for a task type and assign it to a worker</p>
+            <h1 className="text-xl font-bold">{rejectedTask ? "Re-create Rejected Task" : "Create New Task"}</h1>
+            <p className="text-sm text-muted-foreground">
+              {rejectedTask
+                ? "Review the rejection reason and make necessary corrections"
+                : "Search for a task type and assign it to a worker"}
+            </p>
           </div>
         </div>
       </header>
 
-      <main className="container mx-auto px-4 py-6 max-w-4xl">
-        {!selectedTaskDef && (
+      <main className="container mx-auto px-4 py-6 max-w-4xl space-y-4">
+        {rejectedTask && (
+          <Alert variant="destructive">
+            <AlertCircle className="h-4 w-4" />
+            <AlertTitle>Task was rejected by supervisor</AlertTitle>
+            <AlertDescription className="mt-2">
+              <strong>Rejection Reason:</strong> {rejectedTask.supervisor_remark || "No reason provided"}
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {!selectedTaskDef && !rejectedTask && (
           <Card>
             <CardHeader>
               <CardTitle>Search for Task</CardTitle>
@@ -141,6 +190,15 @@ function CreateTaskForm() {
             onCancel={handleCancel}
             onSubmit={handleSubmit}
             workers={workers}
+            initialData={
+              rejectedTask
+                ? {
+                    assignedTo: rejectedTask.assigned_to_user_id,
+                    location: rejectedTask.room_number,
+                    remarks: rejectedTask.supervisor_remark || rejectedTask.worker_remark || "",
+                  }
+                : undefined
+            }
           />
         )}
       </main>

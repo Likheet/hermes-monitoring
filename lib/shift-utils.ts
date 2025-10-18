@@ -576,6 +576,9 @@ export function calculateMonthlyAttendance(
   const lastDay = new Date(year, monthNum + 1, 0)
   const totalDays = lastDay.getDate()
 
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+
   const records: AttendanceRecord[] = []
   let daysWorked = 0
   let daysOff = 0
@@ -586,7 +589,12 @@ export function calculateMonthlyAttendance(
   // Iterate through each day of the month
   for (let day = 1; day <= totalDays; day++) {
     const date = new Date(year, monthNum, day)
+    date.setHours(0, 0, 0, 0)
     const dateStr = date.toISOString().split("T")[0]
+
+    if (date > today) {
+      break
+    }
 
     // Check if there's a schedule for this date
     const schedule = shiftSchedules.find((s) => s.worker_id === workerId && s.schedule_date === dateStr)
@@ -612,8 +620,7 @@ export function calculateMonthlyAttendance(
         date: dateStr,
         status,
       })
-    } else if (schedule || date <= new Date()) {
-      // Worker was present (either has a schedule or it's a past date with no override)
+    } else {
       daysWorked++
       records.push({
         date: dateStr,
@@ -624,7 +631,8 @@ export function calculateMonthlyAttendance(
     }
   }
 
-  const attendancePercentage = totalDays > 0 ? Math.round((daysWorked / totalDays) * 100) : 0
+  const daysElapsed = daysWorked + daysOff
+  const attendancePercentage = daysElapsed > 0 ? Math.round((daysWorked / daysElapsed) * 100) : 0
 
   return {
     month: monthStr,

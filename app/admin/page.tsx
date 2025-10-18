@@ -5,6 +5,7 @@ import { useAuth } from "@/lib/auth-context"
 import { useTasks } from "@/lib/task-context"
 import { StatsCard } from "@/components/stats-card"
 import { WorkerStatusCard } from "@/components/worker-status-card"
+import { WorkerProfileDialog } from "@/components/worker-profile-dialog"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -31,6 +32,7 @@ import { ConnectionStatus } from "@/components/connection-status"
 import Link from "next/link"
 import { CATEGORY_LABELS } from "@/lib/task-definitions"
 import { useState } from "react"
+import type { User } from "@/lib/types"
 
 function AdminDashboard() {
   const { user, logout } = useAuth()
@@ -42,10 +44,17 @@ function AdminDashboard() {
   const [customStartDate, setCustomStartDate] = useState("")
   const [customEndDate, setCustomEndDate] = useState("")
   const [showCustomDatePicker, setShowCustomDatePicker] = useState(false)
+  const [selectedWorker, setSelectedWorker] = useState<User | null>(null)
+  const [isProfileDialogOpen, setIsProfileDialogOpen] = useState(false)
 
   const handleLogout = () => {
     logout()
     router.push("/login")
+  }
+
+  const handleWorkerClick = (worker: User) => {
+    setSelectedWorker(worker)
+    setIsProfileDialogOpen(true)
   }
 
   const workers = users.filter((u) => u.role === "worker")
@@ -153,10 +162,11 @@ function AdminDashboard() {
 
   const customTasks = filteredTasks.filter(
     (t) =>
-      t.is_custom_task ||
-      t.custom_task_name ||
-      t.task_type === "Other (Custom Task)" ||
-      t.task_type.startsWith("[CUSTOM]"),
+      !t.custom_task_processed &&
+      (t.is_custom_task ||
+        t.custom_task_name ||
+        t.task_type === "Other (Custom Task)" ||
+        t.task_type.startsWith("[CUSTOM]")),
   )
 
   console.log("[v0] Admin dashboard - Custom tasks found:", {
@@ -237,123 +247,116 @@ function AdminDashboard() {
       : 0
 
   const getRatingColor = (rating: number) => {
-    if (rating >= 4) return "text-green-500"
-    if (rating >= 3) return "text-yellow-500"
-    return "text-red-500"
+    if (rating >= 4) return "text-green-600"
+    if (rating >= 3) return "text-yellow-600"
+    return "text-red-600"
   }
 
   return (
-    <div className="min-h-screen bg-muted/30">
-      <header className="border-b bg-background sticky top-0 z-40">
-        <div className="container mx-auto px-3 sm:px-4 py-3 sm:py-4 space-y-3 sm:space-y-0">
-          <div className="flex items-center justify-between gap-2">
+    <div className="min-h-screen bg-background">
+      <WorkerProfileDialog worker={selectedWorker} open={isProfileDialogOpen} onOpenChange={setIsProfileDialogOpen} />
+
+      <header className="border-b bg-card sticky top-0 z-40">
+        <div className="container mx-auto px-4 py-4">
+          <div className="flex items-center justify-between gap-4 mb-4">
             <div className="min-w-0 flex-1">
-              <h1 className="text-xl sm:text-2xl font-bold">Admin Dashboard</h1>
-              <p className="text-xs sm:text-sm text-muted-foreground truncate">{user?.name}</p>
+              <h1 className="text-2xl font-bold tracking-tight">Admin Dashboard</h1>
+              <p className="text-sm text-muted-foreground mt-0.5">{user?.name}</p>
             </div>
-            <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+            <div className="flex items-center gap-2 shrink-0">
               <ConnectionStatus isConnected={isConnected} />
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleLogout}
-                className="min-h-[44px] min-w-[44px] px-2 sm:px-3 bg-transparent"
-              >
+              <Button variant="ghost" size="sm" onClick={handleLogout} className="min-h-[44px]">
                 <LogOut className="h-4 w-4 sm:mr-2" />
                 <span className="hidden sm:inline">Logout</span>
               </Button>
             </div>
           </div>
-          <div className="flex gap-2 overflow-x-auto pb-2 -mx-3 px-3 sm:mx-0 sm:px-0 sm:pb-0">
-            <Link href="/admin/maintenance-schedule" className="shrink-0">
-              <Button variant="outline" size="sm" className="min-h-[44px] whitespace-nowrap bg-transparent">
-                <Calendar className="mr-2 h-4 w-4" />
-                <span className="hidden sm:inline">Maintenance Schedule</span>
-                <span className="sm:hidden">Schedule</span>
-              </Button>
-            </Link>
-            <Link href="/admin/task-management" className="shrink-0">
-              <Button variant="outline" size="sm" className="min-h-[44px] whitespace-nowrap bg-transparent">
-                <ClipboardList className="mr-2 h-4 w-4" />
-                <span className="hidden sm:inline">Task Management</span>
-                <span className="sm:hidden">Tasks</span>
-              </Button>
-            </Link>
-            <Link href="/admin/add-worker" className="shrink-0">
+
+          <div className="flex gap-2 overflow-x-auto pb-1">
+            <Link href="/admin/add-worker">
               <Button size="sm" className="min-h-[44px] whitespace-nowrap">
                 <UserPlus className="mr-2 h-4 w-4" />
-                <span className="hidden sm:inline">Add Worker</span>
-                <span className="sm:hidden">Add</span>
+                Add Worker
+              </Button>
+            </Link>
+            <Link href="/admin/task-management">
+              <Button variant="outline" size="sm" className="min-h-[44px] whitespace-nowrap bg-transparent">
+                <ClipboardList className="mr-2 h-4 w-4" />
+                Task Management
+              </Button>
+            </Link>
+            <Link href="/admin/maintenance-schedule">
+              <Button variant="outline" size="sm" className="min-h-[44px] whitespace-nowrap bg-transparent">
+                <Calendar className="mr-2 h-4 w-4" />
+                Maintenance
               </Button>
             </Link>
           </div>
         </div>
       </header>
 
-      <main className="container mx-auto px-3 sm:px-4 py-4 sm:py-6 space-y-4 sm:space-y-6">
+      <main className="container mx-auto px-4 py-6 space-y-8">
         {recentCustomTasks.length > 0 && (
-          <section>
-            <Card className="border-accent">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <AlertTriangle className="h-5 w-5 text-accent" />
-                  Custom Task Requests ({customTasks.length})
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  {recentCustomTasks.map((task) => {
-                    const displayName = task.custom_task_name || task.task_type
-                    const categoryLabel =
-                      task.custom_task_category && CATEGORY_LABELS[task.custom_task_category]
-                        ? CATEGORY_LABELS[task.custom_task_category]
-                        : "Custom Request"
-                    const displayPriority = task.custom_task_priority
-                      ? task.custom_task_priority.toUpperCase()
-                      : task.priority_level.replace(/_/g, " ")
+          <Card className="border-l-4 border-l-accent">
+            <CardHeader className="pb-4">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="h-5 w-5 text-accent" />
+                <CardTitle className="text-lg">Custom Task Requests ({customTasks.length})</CardTitle>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                {recentCustomTasks.map((task) => {
+                  const displayName = task.custom_task_name || task.task_type
+                  const categoryLabel =
+                    task.custom_task_category && CATEGORY_LABELS[task.custom_task_category]
+                      ? CATEGORY_LABELS[task.custom_task_category]
+                      : "Custom Request"
+                  const displayPriority = task.custom_task_priority
+                    ? task.custom_task_priority.toUpperCase()
+                    : task.priority_level.replace(/_/g, " ")
 
-                    return (
-                      <div
-                        key={task.id}
-                        className="flex items-start justify-between p-3 bg-accent/10 rounded-lg border border-accent/20"
-                      >
-                        <div className="flex-1">
-                          <p className="text-sm font-medium">{displayName}</p>
-                          <p className="text-xs text-muted-foreground mt-1">
-                            {task.room_number && `Room ${task.room_number} • `}
-                            {task.department} • {categoryLabel}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            Priority: {displayPriority} • Created by {getUserName(task.assigned_by_user_id)}
-                          </p>
-                          {task.worker_remark && (
-                            <p className="text-xs text-muted-foreground mt-1 italic">"{task.worker_remark}"</p>
-                          )}
-                        </div>
-                        <Link href="/admin/task-management">
-                          <Button size="sm" variant="outline">
-                            Review
-                          </Button>
-                        </Link>
+                  return (
+                    <div
+                      key={task.id}
+                      className="flex items-start justify-between p-4 bg-muted/50 rounded-lg hover:bg-muted transition-colors"
+                    >
+                      <div className="flex-1 space-y-1">
+                        <p className="font-medium">{displayName}</p>
+                        <p className="text-sm text-muted-foreground">
+                          {task.room_number && `Room ${task.room_number} • `}
+                          {task.department} • {categoryLabel}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          Priority: {displayPriority} • Created by {getUserName(task.assigned_by_user_id)}
+                        </p>
+                        {task.worker_remark && (
+                          <p className="text-xs text-muted-foreground italic mt-1">"{task.worker_remark}"</p>
+                        )}
                       </div>
-                    )
-                  })}
-                  {customTasks.length > 10 && (
-                    <Link href="/admin/task-management">
-                      <Button variant="link" className="w-full">
-                        View all {customTasks.length} custom tasks →
-                      </Button>
-                    </Link>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          </section>
+                      <Link href="/admin/task-management">
+                        <Button size="sm" variant="outline">
+                          Review
+                        </Button>
+                      </Link>
+                    </div>
+                  )
+                })}
+                {customTasks.length > 10 && (
+                  <Link href="/admin/task-management" className="block">
+                    <Button variant="link" className="w-full">
+                      View all {customTasks.length} custom tasks →
+                    </Button>
+                  </Link>
+                )}
+              </div>
+            </CardContent>
+          </Card>
         )}
 
-        <section>
-          <h2 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4">System Overview</h2>
-          <div className="grid gap-3 sm:gap-4 grid-cols-2 lg:grid-cols-4">
+        <section className="space-y-4">
+          <h2 className="text-lg font-semibold">System Overview</h2>
+          <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
             <StatsCard title="Total Tasks" value={totalTasks} icon={ClipboardList} />
             <StatsCard
               title="In Progress"
@@ -376,9 +379,9 @@ function AdminDashboard() {
           </div>
         </section>
 
-        <section>
-          <h2 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4">Worker Status</h2>
-          <div className="grid gap-3 sm:gap-4 grid-cols-2 lg:grid-cols-4">
+        <section className="space-y-4">
+          <h2 className="text-lg font-semibold">Worker Status</h2>
+          <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
             <StatsCard
               title="Available Workers"
               value={availableWorkers.length}
@@ -403,8 +406,8 @@ function AdminDashboard() {
           </div>
         </section>
 
-        <Tabs defaultValue="workers" className="space-y-4">
-          <TabsList className="w-full justify-start overflow-x-auto">
+        <Tabs defaultValue="workers" className="space-y-6">
+          <TabsList className="w-full justify-start overflow-x-auto bg-muted/50">
             <TabsTrigger value="workers" className="whitespace-nowrap">
               Staff
             </TabsTrigger>
@@ -414,26 +417,22 @@ function AdminDashboard() {
             <TabsTrigger value="discrepancy" className="whitespace-nowrap">
               Discrepancy
               {discrepancyTasks.length > 0 && (
-                <span className="ml-2 px-2 py-0.5 text-xs bg-red-500 text-white rounded-full">
+                <Badge variant="destructive" className="ml-2 text-xs">
                   {discrepancyTasks.length}
-                </span>
+                </Badge>
               )}
             </TabsTrigger>
             <TabsTrigger value="custom" className="whitespace-nowrap">
               Custom Tasks
-              {customTasks.length > 0 && (
-                <span className="ml-2 px-2 py-0.5 text-xs bg-accent text-accent-foreground rounded-full">
-                  {customTasks.length}
-                </span>
-              )}
+              {customTasks.length > 0 && <Badge className="ml-2 text-xs">{customTasks.length}</Badge>}
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="workers" className="space-y-4">
+          <TabsContent value="workers" className="space-y-6">
             <Card>
               <CardHeader>
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-                  <CardTitle className="text-base sm:text-lg">Staff Performance Overview</CardTitle>
+                  <CardTitle>Staff Performance Overview</CardTitle>
                   <div className="flex items-center gap-2 w-full sm:w-auto">
                     <CalendarRange className="h-4 w-4 text-muted-foreground shrink-0" />
                     <select
@@ -447,7 +446,7 @@ function AdminDashboard() {
                           setShowCustomDatePicker(false)
                         }
                       }}
-                      className="flex-1 sm:flex-none px-3 py-1.5 text-sm border border-border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring min-h-[44px]"
+                      className="flex-1 sm:flex-none px-3 py-2 text-sm border rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-ring min-h-[44px]"
                     >
                       <option value="week">This Week</option>
                       <option value="month">This Month</option>
@@ -462,90 +461,88 @@ function AdminDashboard() {
                       type="date"
                       value={customStartDate}
                       onChange={(e) => setCustomStartDate(e.target.value)}
-                      className="flex-1 px-3 py-1.5 text-sm border border-border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring min-h-[44px]"
+                      className="flex-1 px-3 py-2 text-sm border rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-ring min-h-[44px]"
                     />
                     <span className="text-sm text-muted-foreground text-center sm:text-left">to</span>
                     <input
                       type="date"
                       value={customEndDate}
                       onChange={(e) => setCustomEndDate(e.target.value)}
-                      className="flex-1 px-3 py-1.5 text-sm border border-border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring min-h-[44px]"
+                      className="flex-1 px-3 py-2 text-sm border rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-ring min-h-[44px]"
                     />
                   </div>
                 )}
               </CardHeader>
               <CardContent>
-                <div className="overflow-x-auto -mx-3 sm:mx-0">
-                  <div className="inline-block min-w-full align-middle">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="border-b">
-                          <th className="text-left py-3 px-2 font-medium whitespace-nowrap">Worker Name</th>
-                          <th className="text-right py-3 px-2 font-medium whitespace-nowrap">Shift Hrs</th>
-                          <th className="text-right py-3 px-2 font-medium whitespace-nowrap">Worked</th>
-                          <th className="text-right py-3 px-2 font-medium whitespace-nowrap">Idle Time</th>
-                          <th className="text-right py-3 px-2 font-medium whitespace-nowrap">Discrepancy</th>
-                          <th className="text-right py-3 px-2 font-medium whitespace-nowrap">Rating</th>
-                          <th className="text-center py-3 px-2 font-medium whitespace-nowrap">Status</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {workers.map((worker) => {
-                          const performance = calculateWorkerPerformance(worker.id)
-                          const currentTask = getWorkerCurrentTask(worker.id)
-                          const stats = getWorkerStats(worker.id)
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="hover:bg-transparent">
+                        <TableHead className="font-semibold">Worker Name</TableHead>
+                        <TableHead className="text-right font-semibold">Shift Hrs</TableHead>
+                        <TableHead className="text-right font-semibold">Worked</TableHead>
+                        <TableHead className="text-right font-semibold">Idle Time</TableHead>
+                        <TableHead className="text-right font-semibold">Discrepancy</TableHead>
+                        <TableHead className="text-right font-semibold">Rating</TableHead>
+                        <TableHead className="text-center font-semibold">Status</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {workers.map((worker) => {
+                        const performance = calculateWorkerPerformance(worker.id)
+                        const currentTask = getWorkerCurrentTask(worker.id)
+                        const stats = getWorkerStats(worker.id)
 
-                          if (!performance) return null
+                        if (!performance) return null
 
-                          return (
-                            <tr key={worker.id} className="border-b hover:bg-muted/50">
-                              <td className="py-3 px-2">
-                                <div>
-                                  <p className="font-medium">{worker.name}</p>
-                                  <p className="text-xs text-muted-foreground">{worker.department}</p>
-                                </div>
-                              </td>
-                              <td className="text-right py-3 px-2">{performance.shiftHours}h</td>
-                              <td className="text-right py-3 px-2 text-green-600 font-medium">
-                                {performance.actualWorkHours}h
-                              </td>
-                              <td className="text-right py-3 px-2 text-orange-600">{performance.idleHours}h</td>
-                              <td className="text-right py-3 px-2">
-                                <span
-                                  className={`font-medium ${
-                                    Number.parseFloat(performance.discrepancyPercent) > 50
-                                      ? "text-red-600"
-                                      : Number.parseFloat(performance.discrepancyPercent) > 30
-                                        ? "text-orange-600"
-                                        : "text-green-600"
-                                  }`}
-                                >
-                                  {performance.discrepancyPercent}%
-                                </span>
-                              </td>
-                              <td className="text-right py-3 px-2">
-                                {performance.avgRating !== "N/A" ? (
-                                  <span className="font-medium">
-                                    {performance.avgRating} ⭐
-                                    <span className="text-xs text-muted-foreground ml-1">
-                                      ({performance.totalRatings})
-                                    </span>
+                        return (
+                          <TableRow key={worker.id} className="hover:bg-muted/50">
+                            <TableCell>
+                              <div>
+                                <p className="font-medium">{worker.name}</p>
+                                <p className="text-xs text-muted-foreground capitalize">{worker.department}</p>
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-right">{performance.shiftHours}h</TableCell>
+                            <TableCell className="text-right text-green-600 font-medium">
+                              {performance.actualWorkHours}h
+                            </TableCell>
+                            <TableCell className="text-right text-orange-600">{performance.idleHours}h</TableCell>
+                            <TableCell className="text-right">
+                              <span
+                                className={`font-medium ${
+                                  Number.parseFloat(performance.discrepancyPercent) > 50
+                                    ? "text-red-600"
+                                    : Number.parseFloat(performance.discrepancyPercent) > 30
+                                      ? "text-orange-600"
+                                      : "text-green-600"
+                                }`}
+                              >
+                                {performance.discrepancyPercent}%
+                              </span>
+                            </TableCell>
+                            <TableCell className="text-right">
+                              {performance.avgRating !== "N/A" ? (
+                                <span className="font-medium">
+                                  {performance.avgRating} ⭐
+                                  <span className="text-xs text-muted-foreground ml-1">
+                                    ({performance.totalRatings})
                                   </span>
-                                ) : (
-                                  <span className="text-muted-foreground">N/A</span>
-                                )}
-                              </td>
-                              <td className="text-center py-3 px-2">
-                                <Badge variant={currentTask ? "default" : "secondary"} className="text-xs">
-                                  {currentTask ? "Working" : "Available"}
-                                </Badge>
-                              </td>
-                            </tr>
-                          )
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
+                                </span>
+                              ) : (
+                                <span className="text-muted-foreground">N/A</span>
+                              )}
+                            </TableCell>
+                            <TableCell className="text-center">
+                              <Badge variant={currentTask ? "default" : "secondary"} className="text-xs">
+                                {currentTask ? "Working" : "Available"}
+                              </Badge>
+                            </TableCell>
+                          </TableRow>
+                        )
+                      })}
+                    </TableBody>
+                  </Table>
                 </div>
               </CardContent>
             </Card>
@@ -558,11 +555,11 @@ function AdminDashboard() {
                 {availableWorkers.length > 0 ? (
                   <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                     {availableWorkers.map((worker) => (
-                      <WorkerStatusCard key={worker.id} worker={worker} />
+                      <WorkerStatusCard key={worker.id} worker={worker} onClick={() => handleWorkerClick(worker)} />
                     ))}
                   </div>
                 ) : (
-                  <p className="text-sm text-muted-foreground">No workers available</p>
+                  <p className="text-sm text-muted-foreground text-center py-8">No workers available</p>
                 )}
               </CardContent>
             </Card>
@@ -575,11 +572,16 @@ function AdminDashboard() {
                 {busyWorkers.length > 0 ? (
                   <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                     {busyWorkers.map((worker) => (
-                      <WorkerStatusCard key={worker.id} worker={worker} currentTask={getWorkerCurrentTask(worker.id)} />
+                      <WorkerStatusCard
+                        key={worker.id}
+                        worker={worker}
+                        currentTask={getWorkerCurrentTask(worker.id)}
+                        onClick={() => handleWorkerClick(worker)}
+                      />
                     ))}
                   </div>
                 ) : (
-                  <p className="text-sm text-muted-foreground">No workers currently busy</p>
+                  <p className="text-sm text-muted-foreground text-center py-8">No workers currently busy</p>
                 )}
               </CardContent>
             </Card>
@@ -594,12 +596,12 @@ function AdminDashboard() {
                 <div className="space-y-4">
                   {allAuditLogs.map((log, index) => (
                     <div key={index}>
-                      <div className="flex items-start justify-between">
-                        <div className="space-y-1">
-                          <p className="text-sm font-medium">{log.action.replace(/_/g, " ")}</p>
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="space-y-1 flex-1">
+                          <p className="font-medium">{log.action.replace(/_/g, " ")}</p>
                           <p className="text-sm text-muted-foreground">{log.details}</p>
                           <p className="text-xs text-muted-foreground">
-                            {log.taskType} - by {getUserName(log.user_id)}
+                            {log.taskType} • by {getUserName(log.user_id)}
                           </p>
                         </div>
                         <span className="text-xs text-muted-foreground whitespace-nowrap">
@@ -615,35 +617,35 @@ function AdminDashboard() {
           </TabsContent>
 
           <TabsContent value="discrepancy">
-            <div className="space-y-4">
+            <div className="space-y-6">
               <div className="grid gap-4 md:grid-cols-3">
                 <Card>
                   <CardHeader className="pb-3">
-                    <CardTitle className="text-sm font-medium">Total Discrepancies</CardTitle>
+                    <CardTitle className="text-sm font-medium text-muted-foreground">Total Discrepancies</CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold">{discrepancyTasks.length}</div>
+                    <div className="text-3xl font-bold">{discrepancyTasks.length}</div>
                     <p className="text-xs text-muted-foreground mt-1">Tasks requiring attention</p>
                   </CardContent>
                 </Card>
 
                 <Card>
                   <CardHeader className="pb-3">
-                    <CardTitle className="text-sm font-medium">Rework Tasks</CardTitle>
+                    <CardTitle className="text-sm font-medium text-muted-foreground">Rework Tasks</CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold">{reworkTasks}</div>
+                    <div className="text-3xl font-bold">{reworkTasks}</div>
                     <p className="text-xs text-muted-foreground mt-1">Rejected and reassigned</p>
                   </CardContent>
                 </Card>
 
                 <Card>
                   <CardHeader className="pb-3">
-                    <CardTitle className="text-sm font-medium">Avg Overtime</CardTitle>
+                    <CardTitle className="text-sm font-medium text-muted-foreground">Avg Overtime</CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold flex items-center gap-2">
-                      <Clock className="h-5 w-5 text-orange-500" />
+                    <div className="text-3xl font-bold flex items-center gap-2">
+                      <Clock className="h-6 w-6 text-orange-500" />
                       {avgOvertime.toFixed(1)}%
                     </div>
                     <p className="text-xs text-muted-foreground mt-1">Above expected time</p>
@@ -659,15 +661,15 @@ function AdminDashboard() {
                   <div className="overflow-x-auto">
                     <Table>
                       <TableHeader>
-                        <TableRow>
-                          <TableHead>Task Type</TableHead>
-                          <TableHead>Room</TableHead>
-                          <TableHead>Worker</TableHead>
-                          <TableHead className="text-right">Expected</TableHead>
-                          <TableHead className="text-right">Actual</TableHead>
-                          <TableHead className="text-right">Overtime</TableHead>
-                          <TableHead className="text-right">Rating</TableHead>
-                          <TableHead>Issues</TableHead>
+                        <TableRow className="hover:bg-transparent">
+                          <TableHead className="font-semibold">Task Type</TableHead>
+                          <TableHead className="font-semibold">Room</TableHead>
+                          <TableHead className="font-semibold">Worker</TableHead>
+                          <TableHead className="text-right font-semibold">Expected</TableHead>
+                          <TableHead className="text-right font-semibold">Actual</TableHead>
+                          <TableHead className="text-right font-semibold">Overtime</TableHead>
+                          <TableHead className="text-right font-semibold">Rating</TableHead>
+                          <TableHead className="font-semibold">Issues</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -689,7 +691,7 @@ function AdminDashboard() {
                               : "0"
 
                             return (
-                              <TableRow key={task.id}>
+                              <TableRow key={task.id} className="hover:bg-muted/50">
                                 <TableCell className="font-medium">{task.task_type}</TableCell>
                                 <TableCell>{task.room_number}</TableCell>
                                 <TableCell>{getUserName(task.assigned_to_user_id)}</TableCell>
@@ -706,10 +708,10 @@ function AdminDashboard() {
                                       <span
                                         className={
                                           Number.parseInt(overtimePercent) > 50
-                                            ? "text-red-500"
+                                            ? "text-red-600 font-medium"
                                             : Number.parseInt(overtimePercent) > 20
-                                              ? "text-orange-500"
-                                              : "text-yellow-500"
+                                              ? "text-orange-600 font-medium"
+                                              : "text-yellow-600"
                                         }
                                       >
                                         +{overtimePercent}%
@@ -737,12 +739,12 @@ function AdminDashboard() {
                                       </Badge>
                                     )}
                                     {isLowRated && (
-                                      <Badge variant="outline" className="text-xs text-orange-500">
+                                      <Badge variant="outline" className="text-xs text-orange-600 border-orange-600">
                                         Low Quality
                                       </Badge>
                                     )}
                                     {isOvertime && Number.parseInt(overtimePercent) > 50 && (
-                                      <Badge variant="outline" className="text-xs text-red-500">
+                                      <Badge variant="outline" className="text-xs text-red-600 border-red-600">
                                         Excessive Time
                                       </Badge>
                                     )}
@@ -753,7 +755,7 @@ function AdminDashboard() {
                           })
                         ) : (
                           <TableRow>
-                            <TableCell colSpan={8} className="text-center text-muted-foreground">
+                            <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
                               No discrepancy jobs found for the selected period
                             </TableCell>
                           </TableRow>
@@ -786,9 +788,9 @@ function AdminDashboard() {
 
                       return (
                         <div key={task.id}>
-                          <div className="flex items-start justify-between">
+                          <div className="flex items-start justify-between gap-4">
                             <div className="space-y-1 flex-1">
-                              <p className="text-sm font-medium">{displayName}</p>
+                              <p className="font-medium">{displayName}</p>
                               <p className="text-sm text-muted-foreground">
                                 {task.room_number && `Room ${task.room_number} • `}
                                 Department: {task.department} • Category: {categoryLabel}
@@ -806,13 +808,11 @@ function AdminDashboard() {
                                 {new Date(task.assigned_at.client).toLocaleString()}
                               </p>
                             </div>
-                            <div className="flex gap-2">
-                              <Link href="/admin/task-management">
-                                <Button size="sm" variant="outline">
-                                  Add to Library
-                                </Button>
-                              </Link>
-                            </div>
+                            <Link href="/admin/task-management">
+                              <Button size="sm" variant="outline">
+                                Add to Library
+                              </Button>
+                            </Link>
                           </div>
                           {index < customTasks.length - 1 && <Separator className="mt-4" />}
                         </div>
@@ -820,7 +820,7 @@ function AdminDashboard() {
                     })}
                   </div>
                 ) : (
-                  <p className="text-sm text-muted-foreground">No custom task requests</p>
+                  <p className="text-sm text-muted-foreground text-center py-8">No custom task requests</p>
                 )}
               </CardContent>
             </Card>

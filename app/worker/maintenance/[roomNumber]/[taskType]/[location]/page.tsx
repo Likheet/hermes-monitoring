@@ -278,8 +278,9 @@ function MaintenanceTaskPage({ params }: MaintenanceTaskPageProps) {
   }
 
   const handleComplete = () => {
-    const minRoomPhotos = task.photo_count ? Math.ceil(task.photo_count / 2) : 1
-    const minProofPhotos = task.photo_count ? Math.floor(task.photo_count / 2) : 1
+    const totalPhotoCount = task.photo_count || 2
+    const minRoomPhotos = Math.ceil(totalPhotoCount / 2)
+    const minProofPhotos = Math.floor(totalPhotoCount / 2)
 
     if (
       categorizedPhotos.room_photos.length < minRoomPhotos ||
@@ -389,6 +390,10 @@ function MaintenanceTaskPage({ params }: MaintenanceTaskPageProps) {
   }
 
   const totalPhotos = categorizedPhotos.room_photos.length + categorizedPhotos.proof_photos.length
+
+  const totalPhotoCount = task.photo_count || 2
+  const minRoomPhotos = Math.ceil(totalPhotoCount / 2)
+  const minProofPhotos = Math.floor(totalPhotoCount / 2)
 
   return (
     <div className="min-h-screen bg-muted/30 pb-safe">
@@ -669,8 +674,8 @@ function MaintenanceTaskPage({ params }: MaintenanceTaskPageProps) {
         onPhotosCapture={handlePhotosCapture}
         taskId={task.id}
         existingPhotos={categorizedPhotos}
-        minRoomPhotos={task.photo_count ? Math.ceil(task.photo_count / 2) : 1}
-        minProofPhotos={task.photo_count ? Math.floor(task.photo_count / 2) : 1}
+        minRoomPhotos={minRoomPhotos}
+        minProofPhotos={minProofPhotos}
       />
 
       <RaiseIssueModal open={issueModalOpen} onOpenChange={setIssueModalOpen} onSubmit={handleRaiseIssue} />

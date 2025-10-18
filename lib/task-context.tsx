@@ -365,6 +365,9 @@ export function TaskProvider({ children }: { children: ReactNode }) {
       department: taskData.department,
       custom_task_name: customTaskName,
       is_custom_task: taskData.is_custom_task ?? !!customTaskName,
+      photo_count: taskData.photo_count || (taskData.is_custom_task ? null : 1),
+      custom_task_photo_count:
+        taskData.custom_task_photo_count || (taskData.is_custom_task ? taskData.photo_count || 1 : null),
       audit_log: [
         {
           timestamp: createDualTimestamp(),
@@ -379,11 +382,17 @@ export function TaskProvider({ children }: { children: ReactNode }) {
     }
 
     if (taskData.priority_level === "GUEST_REQUEST") {
-      const workerCurrentTask = tasks.find(
-        (t) => t.assigned_to_user_id === taskData.assigned_to_user_id && t.status === "IN_PROGRESS",
-      )
-      if (workerCurrentTask && workerCurrentTask.priority_level !== "GUEST_REQUEST") {
-        pauseTask(workerCurrentTask.id, taskData.assigned_by_user_id, "Auto-paused for urgent guest request")
+      const assignedWorker = users.find((u) => u.id === taskData.assigned_to_user_id)
+
+      if (assignedWorker && assignedWorker.department !== "housekeeping") {
+        const workerCurrentTask = tasks.find(
+          (t) => t.assigned_to_user_id === taskData.assigned_to_user_id && t.status === "IN_PROGRESS",
+        )
+        if (workerCurrentTask && workerCurrentTask.priority_level !== "GUEST_REQUEST") {
+          pauseTask(workerCurrentTask.id, taskData.assigned_by_user_id, "Auto-paused for urgent guest request")
+        }
+      } else {
+        console.log("[v0] Skipping auto-pause for housekeeping staff")
       }
     }
 

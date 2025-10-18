@@ -3,17 +3,14 @@
 import { ProtectedRoute } from "@/components/protected-route"
 import { useAuth } from "@/lib/auth-context"
 import { useTasks } from "@/lib/task-context"
-import { Button } from "@/components/ui/button"
-import { ArrowLeft } from "lucide-react"
-import { useRouter } from "next/navigation"
 import { PerformanceCard } from "@/components/analytics/performance-card"
 import { WorkerPerformanceTable } from "@/components/analytics/worker-performance-table"
 import { calculateDepartmentStats, calculateWorkerPerformance, getTasksByPriority } from "@/lib/analytics-utils"
+import { SupervisorBottomNav } from "@/components/supervisor/supervisor-bottom-nav"
 
 function AnalyticsDashboard() {
   const { user } = useAuth()
   const { tasks, users } = useTasks()
-  const router = useRouter()
 
   // Filter tasks by department
   const departmentTasks = tasks.filter((task) => {
@@ -36,23 +33,18 @@ function AnalyticsDashboard() {
   const sortedWorkers = [...workerPerformance].sort((a, b) => b.onTimeRate - a.onTimeRate)
 
   return (
-    <div className="min-h-screen bg-muted/30">
-      <header className="border-b bg-background">
-        <div className="container mx-auto flex items-center gap-4 px-4 py-4">
-          <Button variant="ghost" size="icon" onClick={() => router.push("/supervisor")}>
-            <ArrowLeft className="h-5 w-5" />
-          </Button>
-          <div>
-            <h1 className="text-xl font-bold">Analytics Dashboard</h1>
-            <p className="text-sm text-muted-foreground">{user?.department} Department</p>
-          </div>
+    <div className="min-h-screen bg-muted/30 pb-20">
+      <header className="border-b bg-background sticky top-0 z-40">
+        <div className="container mx-auto px-3 sm:px-4 py-3 sm:py-4">
+          <h1 className="text-xl sm:text-2xl font-bold">Analytics Dashboard</h1>
+          <p className="text-xs sm:text-sm text-muted-foreground">{user?.department} Department</p>
         </div>
       </header>
 
-      <main className="container mx-auto px-4 py-6 space-y-6">
+      <main className="container mx-auto px-3 sm:px-4 py-4 sm:py-6 space-y-4 sm:space-y-6">
         <section>
-          <h2 className="text-lg font-semibold mb-3">Department Overview</h2>
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          <h2 className="text-base sm:text-lg font-semibold mb-3">Department Overview</h2>
+          <div className="grid gap-3 sm:gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <PerformanceCard title="Total Tasks" value={departmentStats.totalTasks} subtitle="All time" />
             <PerformanceCard
               title="Completed"
@@ -73,8 +65,8 @@ function AnalyticsDashboard() {
         </section>
 
         <section>
-          <h2 className="text-lg font-semibold mb-3">Current Status</h2>
-          <div className="grid gap-4 md:grid-cols-3">
+          <h2 className="text-base sm:text-lg font-semibold mb-3">Current Status</h2>
+          <div className="grid gap-3 sm:gap-4 sm:grid-cols-3">
             <PerformanceCard title="Pending Tasks" value={departmentStats.pendingTasks} />
             <PerformanceCard title="In Progress" value={departmentStats.inProgressTasks} />
             <PerformanceCard
@@ -86,8 +78,8 @@ function AnalyticsDashboard() {
         </section>
 
         <section>
-          <h2 className="text-lg font-semibold mb-3">Priority Breakdown</h2>
-          <div className="grid gap-4 md:grid-cols-4">
+          <h2 className="text-base sm:text-lg font-semibold mb-3">Priority Breakdown</h2>
+          <div className="grid gap-3 sm:gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <PerformanceCard title="Guest Requests" value={priorityBreakdown.guestRequest} subtitle="Urgent" />
             <PerformanceCard title="Time Sensitive" value={priorityBreakdown.timeSensitive} subtitle="High priority" />
             <PerformanceCard title="Daily Tasks" value={priorityBreakdown.dailyTask} subtitle="Regular" />
@@ -103,6 +95,8 @@ function AnalyticsDashboard() {
           <WorkerPerformanceTable workers={sortedWorkers} />
         </section>
       </main>
+
+      <SupervisorBottomNav />
     </div>
   )
 }

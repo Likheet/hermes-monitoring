@@ -14,6 +14,11 @@ interface TaskAssignmentFormProps {
   onCancel: () => void
   onSubmit: (data: TaskAssignmentData) => void
   workers: WorkerType[]
+  initialData?: {
+    assignedTo?: string
+    location?: string
+    remarks?: string
+  }
 }
 
 export interface TaskAssignmentData {
@@ -26,23 +31,29 @@ export interface TaskAssignmentData {
   duration: number
   location?: string
   acLocation?: string
-  additionalDetails?: string
+  remarks?: string
   assignedTo: string
   photoRequired: boolean
   photoCount: number
   isCustomTask: boolean
 }
 
-export function TaskAssignmentForm({ task, onCancel, onSubmit, workers }: TaskAssignmentFormProps) {
+export function TaskAssignmentForm({ task, onCancel, onSubmit, workers, initialData }: TaskAssignmentFormProps) {
   // Form state
   const [priority, setPriority] = useState<Priority>(task.priority)
   const [duration, setDuration] = useState(task.duration)
-  const [location, setLocation] = useState("")
-  const [locationInput, setLocationInput] = useState("")
+  const [location, setLocation] = useState(initialData?.location || "")
+  const [locationInput, setLocationInput] = useState(() => {
+    if (initialData?.location) {
+      const loc = ALL_LOCATIONS.find((l) => l.value === initialData.location)
+      return loc?.label || initialData.location
+    }
+    return ""
+  })
   const [showLocationSuggestions, setShowLocationSuggestions] = useState(false)
   const [acLocation, setAcLocation] = useState("")
-  const [additionalDetails, setAdditionalDetails] = useState("")
-  const [assignedTo, setAssignedTo] = useState("")
+  const [remarks, setRemarks] = useState(initialData?.remarks || "")
+  const [assignedTo, setAssignedTo] = useState(initialData?.assignedTo || "")
   const [errors, setErrors] = useState<Record<string, string>>({})
 
   const [customTaskName, setCustomTaskName] = useState("")
@@ -149,12 +160,19 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers }: TaskAs
       duration,
       location: task.requiresRoom ? location : undefined,
       acLocation: task.requiresACLocation ? acLocation : undefined,
-      additionalDetails: additionalDetails || undefined,
+      remarks: remarks || undefined,
       assignedTo,
       photoRequired: isOtherTask ? photoRequired : task.photoRequired,
       photoCount: isOtherTask ? photoCount : task.photoCount,
       isCustomTask: isOtherTask,
     }
+
+    console.log("[v0] Task assignment data:", {
+      taskName: data.taskName,
+      photoRequired: data.photoRequired,
+      photoCount: data.photoCount,
+      isCustomTask: data.isCustomTask,
+    })
 
     onSubmit(data)
   }
@@ -407,21 +425,19 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers }: TaskAs
           </div>
         )}
 
-        {/* Additional Details - Only for Guest Requests */}
-        {task.category === "GUEST_REQUEST" && (
-          <div>
-            <label className="block text-sm font-semibold text-foreground mb-2">Additional Details (Optional)</label>
-            <textarea
-              value={additionalDetails}
-              onChange={(e) => setAdditionalDetails(e.target.value)}
-              placeholder="e.g., Guest in Room 511 says AC making loud noise..."
-              rows={3}
-              maxLength={500}
-              className="w-full px-4 py-3 border-2 border-border rounded-lg focus:border-ring focus:outline-none resize-none bg-background text-foreground"
-            />
-            <p className="mt-1 text-xs text-muted-foreground text-right">{additionalDetails.length}/500 characters</p>
-          </div>
-        )}
+        {/* Remarks field - now available for all tasks */}
+        <div>
+          <label className="block text-sm font-semibold text-foreground mb-2">Remarks (Optional)</label>
+          <textarea
+            value={remarks}
+            onChange={(e) => setRemarks(e.target.value)}
+            placeholder="Add any additional notes or instructions for the worker..."
+            rows={3}
+            maxLength={500}
+            className="w-full px-4 py-3 border-2 border-border rounded-lg focus:border-ring focus:outline-none resize-none bg-background text-foreground"
+          />
+          <p className="mt-1 text-xs text-muted-foreground text-right">{remarks.length}/500 characters</p>
+        </div>
 
         {/* Assign To Worker */}
         <div>

@@ -53,6 +53,49 @@ function ProfilePage() {
   const REJECTION_QUOTA = 5
   const quotaRemaining = REJECTION_QUOTA - rejectedThisMonth
   const isOverQuota = rejectedThisMonth >= REJECTION_QUOTA
+  const rejectionPercentage = (rejectedThisMonth / REJECTION_QUOTA) * 100
+
+  const getRejectionStyle = () => {
+    if (isOverQuota) {
+      return {
+        bgColor: "bg-red-50 border-red-200",
+        textColor: "text-red-700",
+        barColor: "bg-red-600",
+        icon: <AlertTriangle className="h-4 w-4 text-red-600" />,
+        message: "Over quota - Retraining required",
+        messageColor: "text-red-600",
+      }
+    } else if (rejectedThisMonth >= 4) {
+      return {
+        bgColor: "bg-orange-50 border-orange-200",
+        textColor: "text-orange-700",
+        barColor: "bg-orange-500",
+        icon: <AlertTriangle className="h-4 w-4 text-orange-500" />,
+        message: "Approaching limit",
+        messageColor: "text-orange-600",
+      }
+    } else if (rejectedThisMonth >= 3) {
+      return {
+        bgColor: "bg-yellow-50 border-yellow-200",
+        textColor: "text-yellow-700",
+        barColor: "bg-yellow-500",
+        icon: <AlertTriangle className="h-4 w-4 text-yellow-500" />,
+        message: `${quotaRemaining} remaining`,
+        messageColor: "text-yellow-600",
+      }
+    } else {
+      return {
+        bgColor: "bg-muted/30 border-border",
+        textColor: "text-muted-foreground",
+        barColor: "bg-green-500",
+        icon: <CheckCircle2 className="h-4 w-4 text-green-600" />,
+        message: `${quotaRemaining} remaining`,
+        messageColor: "text-muted-foreground",
+      }
+    }
+  }
+
+  const rejectionStyle = getRejectionStyle()
 
   useEffect(() => {
     console.log("[v0] Profile page loaded with data:", {
@@ -263,23 +306,27 @@ function ProfilePage() {
                 </div>
               </div>
 
-              <div className="flex flex-col items-start sm:items-end gap-2 w-full sm:w-auto">
-                <Badge
-                  variant={isOverQuota ? "destructive" : quotaRemaining <= 2 ? "outline" : "secondary"}
-                  className={`text-xs sm:text-sm font-semibold ${
-                    isOverQuota
-                      ? "bg-red-100 text-red-900 border-red-300"
-                      : quotaRemaining <= 2
-                        ? "bg-orange-100 text-orange-900 border-orange-300"
-                        : ""
-                  }`}
-                >
-                  {rejectedThisMonth}/{REJECTION_QUOTA} Rejections
-                </Badge>
-                {isOverQuota && <span className="text-xs text-red-600 font-medium">Retraining Required</span>}
-                {!isOverQuota && quotaRemaining <= 2 && (
-                  <span className="text-xs text-orange-600 font-medium">{quotaRemaining} remaining</span>
-                )}
+              <div className="w-full sm:w-auto">
+                <Card className={`${rejectionStyle.bgColor} border-2 transition-all duration-300`}>
+                  <CardContent className="p-3 sm:p-4">
+                    <div className="flex items-center justify-between gap-2 mb-2">
+                      <div className="flex items-center gap-2">
+                        {rejectionStyle.icon}
+                        <span className="text-xs font-medium text-muted-foreground">Quality Issues</span>
+                      </div>
+                      <span className={`text-sm font-bold ${rejectionStyle.textColor}`}>
+                        {rejectedThisMonth}/{REJECTION_QUOTA}
+                      </span>
+                    </div>
+                    <div className="w-full h-2 bg-muted/30 rounded-full overflow-hidden mb-2">
+                      <div
+                        className={`h-full transition-all duration-500 ${rejectionStyle.barColor}`}
+                        style={{ width: `${Math.min(rejectionPercentage, 100)}%` }}
+                      />
+                    </div>
+                    <p className={`text-xs font-medium ${rejectionStyle.messageColor}`}>{rejectionStyle.message}</p>
+                  </CardContent>
+                </Card>
               </div>
             </div>
           </CardContent>

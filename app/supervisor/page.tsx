@@ -4,17 +4,17 @@ import { useState, useEffect } from "react"
 import { ProtectedRoute } from "@/components/protected-route"
 import { useAuth } from "@/lib/auth-context"
 import { useTasks } from "@/lib/task-context"
-import { TaskFilters } from "@/components/task-filters"
 import { EscalationBadge } from "@/components/escalation/escalation-badge"
 import { EscalationNotification } from "@/components/escalation/escalation-notification"
+import { WorkerProfileDialog } from "@/components/worker-profile-dialog"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { LogOut, Clock, MapPin, User, BarChart3, AlertTriangle, XCircle } from "lucide-react"
+import { LogOut, Clock, MapPin, User, AlertTriangle, XCircle } from "lucide-react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { IssueCard } from "@/components/issue-card"
-import type { TaskStatus } from "@/lib/types"
+import type { User as UserType } from "@/lib/types"
 import { useRealtimeTasks } from "@/lib/use-realtime-tasks"
 import { ConnectionStatus } from "@/components/connection-status"
 import { detectEscalationLevel, type Escalation } from "@/lib/escalation-utils"
@@ -32,9 +32,11 @@ function SupervisorDashboard() {
     filter: { department: user?.department },
   })
 
-  const [statusFilter, setStatusFilter] = useState<TaskStatus | "ALL">("ALL")
+  const [taskFilter, setTaskFilter] = useState<"all" | "rejected" | "pending" | "in_progress">("all")
   const [workerFilter, setWorkerFilter] = useState("ALL")
   const [escalations, setEscalations] = useState<Escalation[]>([])
+  const [selectedWorker, setSelectedWorker] = useState<UserType | null>(null)
+  const [isProfileDialogOpen, setIsProfileDialogOpen] = useState(false)
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -49,7 +51,6 @@ function SupervisorDashboard() {
           )
 
           if (level) {
-            // Check if escalation already exists
             const existingEscalation = escalations.find((esc) => esc.task_id === task.id && esc.level === level)
 
             if (!existingEscalation) {
@@ -69,7 +70,7 @@ function SupervisorDashboard() {
       if (newEscalations.length > 0) {
         setEscalations((prev) => [...prev, ...newEscalations])
       }
-    }, 30000) // Check every 30 seconds
+    }, 30000)
 
     return () => clearInterval(interval)
   }, [tasks, escalations])
@@ -93,6 +94,14 @@ function SupervisorDashboard() {
     )
   }
 
+  const handleWorkerClick = (workerId: string) => {
+    const worker = users.find((u) => u.id === workerId)
+    if (worker) {
+      setSelectedWorker(worker)
+      setIsProfileDialogOpen(true)
+    }
+  }
+
   const departmentWorkers = users.filter((u) => u.role === "worker" && u.department === user?.department)
 
   const departmentTasks = tasks.filter((task) => {
@@ -110,7 +119,14 @@ function SupervisorDashboard() {
       : []
 
   const filteredTasks = departmentTasks.filter((task) => {
-    const statusMatch = statusFilter === "ALL" || task.status === statusFilter
+    let statusMatch = true
+    if (taskFilter === "rejected") {
+      statusMatch = task.status === "REJECTED"
+    } else if (taskFilter === "pending") {
+      statusMatch = task.status === "PENDING"
+    } else if (taskFilter === "in_progress") {
+      statusMatch = task.status === "IN_PROGRESS" || task.status === "PAUSED"
+    }
     const workerMatch = workerFilter === "ALL" || task.assigned_to_user_id === workerFilter
     return statusMatch && workerMatch
   })
@@ -192,6 +208,8 @@ function SupervisorDashboard() {
 
   return (
     <div className="min-h-screen bg-muted/30 pb-20 md:pb-0">
+      <WorkerProfileDialog worker={selectedWorker} open={isProfileDialogOpen} onOpenChange={setIsProfileDialogOpen} />
+
       <EscalationNotification escalations={escalations} tasks={tasks} onAcknowledge={handleAcknowledgeEscalation} />
 
       <header className="border-b bg-background sticky top-0 z-40">
@@ -203,16 +221,6 @@ function SupervisorDashboard() {
             </p>
           </div>
           <div className="flex items-center gap-2 w-full sm:w-auto">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => router.push("/supervisor/analytics")}
-              className="flex-1 sm:flex-none min-h-[44px]"
-            >
-              <BarChart3 className="mr-2 h-4 w-4" />
-              <span className="hidden sm:inline">Analytics</span>
-              <span className="sm:hidden">Stats</span>
-            </Button>
             <ConnectionStatus isConnected={isConnected} />
             <Button
               variant="outline"
@@ -228,21 +236,6 @@ function SupervisorDashboard() {
       </header>
 
       <main className="container mx-auto px-3 sm:px-4 py-4 sm:py-6 space-y-4 sm:space-y-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>Filters</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <TaskFilters
-              statusFilter={statusFilter}
-              onStatusFilterChange={setStatusFilter}
-              workerFilter={workerFilter}
-              onWorkerFilterChange={setWorkerFilter}
-              workers={departmentWorkers}
-            />
-          </CardContent>
-        </Card>
-
         {(rejectedTasks.length > 0 || rejectedMaintenanceTasks.length > 0) && (
           <section>
             <h2 className="text-base sm:text-lg font-semibold mb-3 flex items-center gap-2">
@@ -431,7 +424,6 @@ function SupervisorDashboard() {
                     issue={issue}
                     task={task}
                     onResolve={(issueId) => {
-                      // Mark issue as resolved
                       console.log("[v0] Resolving issue:", issueId)
                     }}
                   />
@@ -442,7 +434,43 @@ function SupervisorDashboard() {
         )}
 
         <section>
-          <h2 className="text-base sm:text-lg font-semibold mb-3">All Tasks</h2>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
+            <h2 className="text-base sm:text-lg font-semibold">Tasks</h2>
+            <div className="flex items-center gap-2 flex-wrap">
+              <Button
+                variant={taskFilter === "all" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setTaskFilter("all")}
+                className="min-h-[36px]"
+              >
+                All
+              </Button>
+              <Button
+                variant={taskFilter === "rejected" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setTaskFilter("rejected")}
+                className="min-h-[36px]"
+              >
+                Rejected
+              </Button>
+              <Button
+                variant={taskFilter === "pending" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setTaskFilter("pending")}
+                className="min-h-[36px]"
+              >
+                Pending
+              </Button>
+              <Button
+                variant={taskFilter === "in_progress" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setTaskFilter("in_progress")}
+                className="min-h-[36px]"
+              >
+                In Progress
+              </Button>
+            </div>
+          </div>
           {otherTasks.length > 0 ? (
             <div className="grid gap-3 sm:gap-4 md:grid-cols-2 lg:grid-cols-3">
               {otherTasks.map((task) => {
@@ -461,9 +489,12 @@ function SupervisorDashboard() {
                       </div>
                     </CardHeader>
                     <CardContent className="space-y-2">
-                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <div
+                        className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer hover:text-foreground transition-colors"
+                        onClick={() => handleWorkerClick(task.assigned_to_user_id)}
+                      >
                         <User className="h-4 w-4" />
-                        <span>{getWorkerName(task.assigned_to_user_id)}</span>
+                        <span className="underline decoration-dotted">{getWorkerName(task.assigned_to_user_id)}</span>
                       </div>
                       <div className="flex items-center gap-2 text-sm text-muted-foreground">
                         <MapPin className="h-4 w-4" />

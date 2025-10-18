@@ -39,6 +39,10 @@ export function TaskCard({ task }: TaskCardProps) {
               <span className="sm:hidden">{task.priority_level.split("_")[0]}</span>
             </Badge>
           </div>
+          {task.worker_remark && (
+            <p className="text-sm text-muted-foreground mt-2 line-clamp-2 italic">"{task.worker_remark}"</p>
+          )}
+          {/* </CHANGE> */}
         </CardHeader>
         <CardContent className="space-y-2 px-4 sm:px-6 pb-4 sm:pb-6">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">

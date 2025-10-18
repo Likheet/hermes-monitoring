@@ -673,32 +673,77 @@ function WorkerDashboard() {
                       )}
                     </div>
                   </div>
-                  <div className="flex flex-col items-end gap-2">
-                    <Badge
-                      variant={
-                        rejectedThisMonth >= REJECTION_QUOTA
-                          ? "destructive"
-                          : quotaRemaining <= 2
-                            ? "outline"
-                            : "secondary"
-                      }
-                      className={`text-sm font-semibold ${
-                        rejectedThisMonth >= REJECTION_QUOTA
-                          ? "bg-red-100 text-red-900 border-red-300"
-                          : quotaRemaining <= 2
-                            ? "bg-orange-100 text-orange-900 border-orange-300"
-                            : ""
-                      }`}
+                  {/* CHANGE: Replaced simple badge with sophisticated rejection display card */}
+                  <div className="shrink-0">
+                    <Card
+                      className={cn(
+                        "border-2 transition-all duration-300 min-w-[140px]",
+                        rejectedThisMonth === 0 && "bg-green-50/50 border-green-200/50",
+                        rejectedThisMonth >= 1 && rejectedThisMonth <= 2 && "bg-green-50 border-green-300",
+                        rejectedThisMonth === 3 && "bg-yellow-50 border-yellow-300",
+                        rejectedThisMonth === 4 && "bg-orange-50 border-orange-400",
+                        rejectedThisMonth >= REJECTION_QUOTA && "bg-red-50 border-red-400 shadow-md",
+                      )}
                     >
-                      {rejectedThisMonth}/{REJECTION_QUOTA} Rejections
-                    </Badge>
-                    {rejectedThisMonth >= REJECTION_QUOTA && (
-                      <span className="text-xs text-red-600 font-medium text-right">Retraining Required</span>
-                    )}
-                    {rejectedThisMonth < REJECTION_QUOTA && quotaRemaining <= 2 && (
-                      <span className="text-xs text-orange-600 font-medium text-right">{quotaRemaining} remaining</span>
-                    )}
+                      <CardContent className="p-3">
+                        <div className="flex items-center gap-2 mb-2">
+                          {rejectedThisMonth === 0 && <CheckCircle2 className="h-4 w-4 text-green-600" />}
+                          {rejectedThisMonth >= 1 && rejectedThisMonth <= 2 && (
+                            <CheckCircle2 className="h-4 w-4 text-green-600" />
+                          )}
+                          {rejectedThisMonth === 3 && <AlertCircle className="h-4 w-4 text-yellow-600" />}
+                          {rejectedThisMonth === 4 && <AlertCircle className="h-4 w-4 text-orange-600" />}
+                          {rejectedThisMonth >= REJECTION_QUOTA && <XCircle className="h-4 w-4 text-red-600" />}
+                          <span className="text-xs font-medium text-muted-foreground">Quality</span>
+                        </div>
+                        <div className="flex items-baseline gap-1 mb-2">
+                          <span
+                            className={cn(
+                              "text-2xl font-bold",
+                              rejectedThisMonth === 0 && "text-green-600",
+                              rejectedThisMonth >= 1 && rejectedThisMonth <= 2 && "text-green-700",
+                              rejectedThisMonth === 3 && "text-yellow-700",
+                              rejectedThisMonth === 4 && "text-orange-700",
+                              rejectedThisMonth >= REJECTION_QUOTA && "text-red-700",
+                            )}
+                          >
+                            {rejectedThisMonth}
+                          </span>
+                          <span className="text-sm text-muted-foreground">/{REJECTION_QUOTA}</span>
+                        </div>
+                        <div className="w-full h-1.5 bg-muted/30 rounded-full overflow-hidden mb-2">
+                          <div
+                            className={cn(
+                              "h-full transition-all duration-500",
+                              rejectedThisMonth === 0 && "bg-green-500",
+                              rejectedThisMonth >= 1 && rejectedThisMonth <= 2 && "bg-green-500",
+                              rejectedThisMonth === 3 && "bg-yellow-500",
+                              rejectedThisMonth === 4 && "bg-orange-500",
+                              rejectedThisMonth >= REJECTION_QUOTA && "bg-red-600",
+                            )}
+                            style={{ width: `${Math.min((rejectedThisMonth / REJECTION_QUOTA) * 100, 100)}%` }}
+                          />
+                        </div>
+                        <p
+                          className={cn(
+                            "text-xs font-medium",
+                            rejectedThisMonth === 0 && "text-green-600",
+                            rejectedThisMonth >= 1 && rejectedThisMonth <= 2 && "text-green-700",
+                            rejectedThisMonth === 3 && "text-yellow-700",
+                            rejectedThisMonth === 4 && "text-orange-700",
+                            rejectedThisMonth >= REJECTION_QUOTA && "text-red-700",
+                          )}
+                        >
+                          {rejectedThisMonth === 0 && "Perfect!"}
+                          {rejectedThisMonth >= 1 && rejectedThisMonth <= 2 && `${quotaRemaining} left`}
+                          {rejectedThisMonth === 3 && "Be careful"}
+                          {rejectedThisMonth === 4 && "Last chance"}
+                          {rejectedThisMonth >= REJECTION_QUOTA && "Retraining"}
+                        </p>
+                      </CardContent>
+                    </Card>
                   </div>
+                  {/* </CHANGE> */}
                 </div>
               </CardContent>
             </Card>

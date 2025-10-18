@@ -12,14 +12,14 @@ interface SimplePhotoCaptureProps {
   taskId: string
   existingPhotos?: string[]
   onPhotosChange: (photos: string[]) => void
-  minPhotos?: number
+  minPhotos: number // Removed default value of 2, made it required
 }
 
 export function SimplePhotoCapture({
   taskId,
   existingPhotos = [],
   onPhotosChange,
-  minPhotos = 2,
+  minPhotos,
 }: SimplePhotoCaptureProps) {
   const [photos, setPhotos] = useState<string[]>(existingPhotos)
   const fileInputRef = useRef<HTMLInputElement>(null)

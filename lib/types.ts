@@ -55,6 +55,7 @@ export interface Task {
   photo_urls: string[] // Deprecated - keeping for backward compatibility
   categorized_photos: CategorizedPhotos | null
   photo_required: boolean
+  photo_count?: number | null // Added photo_count field for regular tasks from task library
   worker_remark: string
   supervisor_remark: string
   rating: number | null
@@ -70,6 +71,7 @@ export interface Task {
   custom_task_priority?: Priority | null
   custom_task_photo_required?: boolean | null
   custom_task_photo_count?: number | null
+  custom_task_processed?: boolean // Added field to track if custom task has been added to library
   rejection_acknowledged?: boolean
   rejection_acknowledged_at?: DualTimestamp | null
 }

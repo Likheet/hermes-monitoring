@@ -59,6 +59,7 @@ function TaskManagementPage() {
     keywords: "",
     requiresRoom: false,
     requiresACLocation: false,
+    sourceTaskId: undefined as string | undefined,
   })
 
   const [newTaskForm, setNewTaskForm] = useState(createDefaultNewTaskForm)
@@ -69,10 +70,11 @@ function TaskManagementPage() {
 
   const customTasks = tasks.filter(
     (task) =>
-      task.is_custom_task ||
-      task.custom_task_name ||
-      task.task_type === "Other (Custom Task)" ||
-      task.task_type.startsWith("[CUSTOM]"),
+      !task.custom_task_processed &&
+      (task.is_custom_task ||
+        task.custom_task_name ||
+        task.task_type === "Other (Custom Task)" ||
+        task.task_type.startsWith("[CUSTOM]")),
   )
 
   const getUserName = (userId: string) => users.find((u) => u.id === userId)?.name || "Front Office"
@@ -116,9 +118,15 @@ function TaskManagementPage() {
       createdBy: user?.id || "unknown",
     })
 
+    if (newTaskForm.sourceTaskId) {
+      const sourceTask = tasks.find((t) => t.id === newTaskForm.sourceTaskId)
+      if (sourceTask) {
+        sourceTask.custom_task_processed = true
+      }
+    }
+
     setCustomTaskDefs(getCustomTaskDefinitions())
     setIsAddDialogOpen(false)
-
     setNewTaskForm(createDefaultNewTaskForm())
 
     toast({
@@ -133,8 +141,7 @@ function TaskManagementPage() {
     const priority = (task.custom_task_priority as Priority) || "medium"
     const photoRequiredValue = task.custom_task_photo_required ?? task.photo_required ?? false
     const photoRequired = !!photoRequiredValue
-    const photoCount =
-      task.custom_task_photo_count ?? (photoRequired ? Math.max(1, task.photo_urls.length || 1) : 0)
+    const photoCount = task.custom_task_photo_count ?? (photoRequired ? Math.max(1, task.photo_urls.length || 1) : 0)
 
     setNewTaskForm({
       name,
@@ -147,6 +154,7 @@ function TaskManagementPage() {
       keywords: name.toLowerCase(),
       requiresRoom: !!task.room_number,
       requiresACLocation: false,
+      sourceTaskId: task.id,
     })
 
     setIsAddDialogOpen(true)
@@ -492,7 +500,7 @@ function TaskManagementPage() {
                             <div className="flex flex-col items-end gap-2">
                               <Button
                                 variant="outline"
-                                className="gap-2"
+                                className="gap-2 bg-transparent"
                                 onClick={(event) => {
                                   event.stopPropagation()
                                   openAddDialogWithCustomTask(task)

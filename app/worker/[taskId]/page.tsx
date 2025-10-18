@@ -249,10 +249,11 @@ function TaskDetail({ params }: TaskDetailProps) {
   }
 
   const handleComplete = () => {
-    if (task.photo_required && photos.length < (task.custom_task_photo_count || 2)) {
+    const requiredPhotoCount = task.photo_count || task.custom_task_photo_count || 1
+    if (task.photo_required && photos.length < requiredPhotoCount) {
       toast({
         title: "Photos Required",
-        description: `Please capture at least ${task.custom_task_photo_count || 2} photos before completing`,
+        description: `Please capture at least ${requiredPhotoCount} photo${requiredPhotoCount > 1 ? "s" : ""} before completing`,
         variant: "destructive",
       })
       return
@@ -365,6 +366,21 @@ function TaskDetail({ params }: TaskDetailProps) {
               <Clock className="h-4 w-4 shrink-0" />
               <span>Expected: {task.expected_duration_minutes} minutes</span>
             </div>
+            {task.worker_remark && (
+              <div className="mt-4 p-4 border-2 border-blue-500 bg-blue-50 dark:bg-blue-950/20 rounded-lg">
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="h-5 w-5 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-blue-900 dark:text-blue-100 mb-2">
+                      Instructions from Front Office
+                    </p>
+                    <p className="text-sm text-blue-800 dark:text-blue-200 leading-relaxed break-words whitespace-normal">
+                      {task.worker_remark}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
             {task.photo_required && (
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Camera className="h-4 w-4 shrink-0" />
@@ -411,7 +427,7 @@ function TaskDetail({ params }: TaskDetailProps) {
             taskId={taskId}
             existingPhotos={photos}
             onPhotosChange={handlePhotosChange}
-            minPhotos={task.custom_task_photo_count || 2}
+            minPhotos={task.photo_count || task.custom_task_photo_count || 1}
           />
         )}
 

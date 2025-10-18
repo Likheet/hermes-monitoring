@@ -1,3 +1,5 @@
+"use client"
+
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import type { User, Task } from "@/lib/types"
@@ -10,9 +12,10 @@ import { useTasks } from "@/lib/task-context"
 interface WorkerStatusCardProps {
   worker: User
   currentTask?: Task | MaintenanceTask
+  onClick?: () => void
 }
 
-export function WorkerStatusCard({ worker, currentTask }: WorkerStatusCardProps) {
+export function WorkerStatusCard({ worker, currentTask, onClick }: WorkerStatusCardProps) {
   const { shiftSchedules } = useTasks()
 
   const isRegularTask = currentTask && "assigned_to_user_id" in currentTask
@@ -100,7 +103,7 @@ export function WorkerStatusCard({ worker, currentTask }: WorkerStatusCardProps)
   const taskDisplay = getTaskDisplay()
 
   return (
-    <Card>
+    <Card className={onClick ? "cursor-pointer hover:shadow-md transition-shadow" : ""} onClick={onClick}>
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between gap-2">
           <div className="flex items-center gap-2">

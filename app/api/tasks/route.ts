@@ -98,41 +98,52 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Clock skew detected. Please check your device time." }, { status: 400 })
     }
 
-    // Check if worker has an active task and auto-pause if urgent
     if (priority_level === "GUEST_REQUEST") {
-      const { data: activeTasks } = await supabase
-        .from("tasks")
-        .select("*")
-        .eq("assigned_to_user_id", assigned_to_user_id)
-        .eq("status", "IN_PROGRESS")
+      // Get the assigned worker's department
+      const { data: assignedWorker } = await supabase
+        .from("users")
+        .select("department")
+        .eq("id", assigned_to_user_id)
+        .single()
 
-      if (activeTasks && activeTasks.length > 0) {
-        // Auto-pause the current task
-        const activeTask = activeTasks[0]
-        await supabase.from("tasks").update({ status: "PAUSED" }).eq("id", activeTask.id)
+      // Only auto-pause if the worker is NOT from housekeeping department
+      if (assignedWorker && assignedWorker.department !== "housekeeping") {
+        const { data: activeTasks } = await supabase
+          .from("tasks")
+          .select("*")
+          .eq("assigned_to_user_id", assigned_to_user_id)
+          .eq("status", "IN_PROGRESS")
 
-        // Create pause record
-        await supabase.from("pause_records").insert({
-          task_id: activeTask.id,
-          paused_at_client: new Date().toISOString(),
-          reason: "Auto-paused for urgent guest request",
-        })
+        if (activeTasks && activeTasks.length > 0) {
+          // Auto-pause the current task
+          const activeTask = activeTasks[0]
+          await supabase.from("tasks").update({ status: "PAUSED" }).eq("id", activeTask.id)
 
-        // Create audit log
-        await supabase.from("audit_logs").insert({
-          task_id: activeTask.id,
-          user_id: user.id,
-          action: "AUTO_PAUSED",
-          old_status: "IN_PROGRESS",
-          new_status: "PAUSED",
-          timestamp_client: new Date().toISOString(),
-          metadata: { reason: "Urgent guest request assigned" },
-        })
+          // Create pause record
+          await supabase.from("pause_records").insert({
+            task_id: activeTask.id,
+            paused_at_client: new Date().toISOString(),
+            reason: "Auto-paused for urgent guest request",
+          })
+
+          // Create audit log
+          await supabase.from("audit_logs").insert({
+            task_id: activeTask.id,
+            user_id: user.id,
+            action: "AUTO_PAUSED",
+            old_status: "IN_PROGRESS",
+            new_status: "PAUSED",
+            timestamp_client: new Date().toISOString(),
+            metadata: { reason: "Urgent guest request assigned" },
+          })
+        }
+      } else {
+        console.log("[v0] Skipping auto-pause for housekeeping staff")
       }
     }
 
     // Create task
-    const { data: task, error } = await supabase
+    const { data: task, error: taskError } = await supabase
       .from("tasks")
       .insert({
         task_type,
@@ -150,9 +161,9 @@ export async function POST(request: Request) {
       .select()
       .single()
 
-    if (error) {
-      console.error("[v0] Task creation error:", error)
-      return NextResponse.json({ error: error.message }, { status: 400 })
+    if (taskError) {
+      console.error("[v0] Task creation error:", taskError)
+      return NextResponse.json({ error: taskError.message }, { status: 400 })
     }
 
     // Create audit log
