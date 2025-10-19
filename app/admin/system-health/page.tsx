@@ -9,11 +9,10 @@ import { Progress } from "@/components/ui/progress"
 import { ArrowLeft, Database, HardDrive, Users, Activity, AlertTriangle, CheckCircle2 } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { useTasks } from "@/lib/task-context"
-import { mockUsers } from "@/lib/mock-data"
 
 function SystemHealthPage() {
   const router = useRouter()
-  const { tasks } = useTasks()
+  const { tasks, users } = useTasks()
   const [metrics, setMetrics] = useState({
     databaseSize: 0,
     storageUsed: 0,
@@ -23,11 +22,9 @@ function SystemHealthPage() {
   })
 
   useEffect(() => {
-    // Calculate metrics from mock data
     const activeUsers = new Set(tasks.map((t) => t.assigned_to_user_id)).size
     const totalTasks = tasks.length
 
-    // Simulate metrics (in production, these would come from Supabase)
     setMetrics({
       databaseSize: 45, // MB
       storageUsed: 120, // MB
@@ -112,7 +109,7 @@ function SystemHealthPage() {
               <div className="text-2xl font-bold">{metrics.activeUsers}</div>
               <p className="text-xs text-muted-foreground">Last 24 hours</p>
               <Badge variant="secondary" className="mt-2">
-                {mockUsers.length} total users
+                {users.length} total users
               </Badge>
             </CardContent>
           </Card>

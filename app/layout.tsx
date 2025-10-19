@@ -10,7 +10,9 @@ import "./globals.css"
 import { PWAInstallPrompt } from "@/components/pwa-install-prompt"
 import { ErrorBoundary } from "@/components/error-boundary"
 import { StorageCleaner } from "@/components/storage-cleaner"
+import { PWARegister } from "@/components/pwa-register"
 
+import { Geist, Geist_Mono, Source_Serif_4, Geist as V0_Font_Geist, Geist_Mono as V0_Font_Geist_Mono, Source_Serif_4 as V0_Font_Source_Serif_4 } from 'next/font/google'
 import { Geist, Geist_Mono, Source_Serif_4, Geist as V0_Font_Geist, Geist_Mono as V0_Font_Geist_Mono, Source_Serif_4 as V0_Font_Source_Serif_4 } from 'next/font/google'
 
 // Initialize fonts
@@ -73,6 +75,7 @@ export default function RootLayout({
         <ErrorBoundary>
           <Suspense fallback={null}>
             <StorageCleaner />
+            <PWARegister />
             <TaskProvider>
               <AuthProvider>
                 {children}

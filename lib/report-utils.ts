@@ -1,5 +1,4 @@
 import type { Task, User } from "./types"
-import { mockUsers } from "./mock-data"
 
 export type DateRange = "weekly" | "monthly" | "all-time"
 
@@ -80,8 +79,12 @@ function calculateShiftHoursInPeriod(user: User, dateRange: DateRange): number {
   return dailyShiftHours * days
 }
 
-export function generateWorkerPerformanceReport(tasks: Task[], dateRange: DateRange): WorkerPerformanceReport[] {
-  const workers = mockUsers.filter((u) => u.role === "worker")
+export function generateWorkerPerformanceReport(
+  tasks: Task[],
+  users: User[],
+  dateRange: DateRange,
+): WorkerPerformanceReport[] {
+  const workers = users.filter((u) => u.role === "worker")
   const dateFilter = getDateRangeFilter(dateRange)
 
   return workers.map((worker) => {
@@ -134,10 +137,9 @@ export function generateWorkerPerformanceReport(tasks: Task[], dateRange: DateRa
   })
 }
 
-export function generateDiscrepancyReport(tasks: Task[], dateRange: DateRange): DiscrepancyJob[] {
+export function generateDiscrepancyReport(tasks: Task[], users: User[], dateRange: DateRange): DiscrepancyJob[] {
   const dateFilter = getDateRangeFilter(dateRange)
 
-  // Find tasks that took too long or have low ratings
   const discrepancyJobs: DiscrepancyJob[] = []
 
   tasks.forEach((task) => {
@@ -149,12 +151,10 @@ export function generateDiscrepancyReport(tasks: Task[], dateRange: DateRange): 
     const overtimePercentage =
       ((task.actual_duration_minutes - task.expected_duration_minutes) / task.expected_duration_minutes) * 100
 
-    // Check if task is a rework (rejected and reassigned)
     const isRework = task.status === "REJECTED" || task.audit_log.some((log) => log.action === "TASK_REJECTED")
 
-    // Include if: overtime > 20%, rating < 3, or is rework
     if (overtimePercentage > 20 || (task.rating !== null && task.rating < 3) || isRework) {
-      const worker = mockUsers.find((u) => u.id === task.assigned_to_user_id)
+      const worker = users.find((u) => u.id === task.assigned_to_user_id)
 
       discrepancyJobs.push({
         taskId: task.id,
@@ -172,6 +172,5 @@ export function generateDiscrepancyReport(tasks: Task[], dateRange: DateRange): 
     }
   })
 
-  // Sort by overtime percentage (highest first)
   return discrepancyJobs.sort((a, b) => b.overtimePercentage - a.overtimePercentage)
 }

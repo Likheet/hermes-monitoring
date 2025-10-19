@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation"
 import { ProtectedRoute } from "@/components/protected-route"
 import { useAuth } from "@/lib/auth-context"
 import { useTasks } from "@/lib/task-context"
-import { mockUsers } from "@/lib/mock-data"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -29,7 +28,7 @@ function VerifyTask({ params }: VerifyTaskProps) {
 
   const router = useRouter()
   const { user } = useAuth()
-  const { getTaskById, verifyTask } = useTasks()
+  const { getTaskById, verifyTask, users } = useTasks()
   const { toast } = useToast()
 
   const task = getTaskById(taskId)
@@ -48,7 +47,7 @@ function VerifyTask({ params }: VerifyTaskProps) {
     )
   }
 
-  const worker = mockUsers.find((u) => u.id === task.assigned_to_user_id)
+  const worker = users.find((u) => u.id === task.assigned_to_user_id)
 
   const handleApprove = () => {
     setShowRatingModal(true)

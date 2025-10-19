@@ -3,11 +3,24 @@
 import { createContext, useContext, useState, useEffect, type ReactNode } from "react"
 import type { Task, AuditLogEntry, PauseRecord, User, TaskIssue, CategorizedPhotos } from "./types"
 import type { MaintenanceSchedule, MaintenanceTask, MaintenanceTaskType, ShiftSchedule } from "./maintenance-types"
-import { mockTasks, createDualTimestamp, mockUsers, mockIssues } from "./mock-data"
-import { createClient } from "@/lib/supabase/client"
+import { createDualTimestamp, mockUsers } from "./mock-data"
 import { createNotification, playNotificationSound } from "./notification-utils"
 import { triggerHapticFeedback } from "./haptics"
 import { ALL_ROOMS, getMaintenanceItemsForRoom } from "./location-data"
+import {
+  loadTasksFromSupabase,
+  loadUsersFromSupabase,
+  loadShiftSchedulesFromSupabase,
+  loadMaintenanceSchedulesFromSupabase,
+  loadMaintenanceTasksFromSupabase,
+  saveTaskToSupabase,
+  saveUserToSupabase,
+  saveShiftScheduleToSupabase,
+  deleteShiftScheduleFromSupabase,
+  saveMaintenanceScheduleToSupabase,
+  deleteMaintenanceScheduleFromSupabase,
+  saveMaintenanceTaskToSupabase,
+} from "./supabase-task-operations"
 
 interface TaskContextType {
   tasks: Task[]
@@ -65,115 +78,71 @@ interface TaskContextType {
 const TaskContext = createContext<TaskContextType | undefined>(undefined)
 
 export function TaskProvider({ children }: { children: ReactNode }) {
-  const [tasks, setTasks] = useState<Task[]>(mockTasks)
-  const [users, setUsers] = useState<User[]>(mockUsers)
-  const [issues, setIssues] = useState<TaskIssue[]>(mockIssues)
+  const [tasks, setTasks] = useState<Task[]>([])
+  const [users, setUsers] = useState<User[]>([])
+  const [issues, setIssues] = useState<TaskIssue[]>([])
   const [schedules, setSchedules] = useState<MaintenanceSchedule[]>([])
   const [maintenanceTasks, setMaintenanceTasks] = useState<MaintenanceTask[]>([])
   const [shiftSchedules, setShiftSchedules] = useState<ShiftSchedule[]>([])
-  const [isRealtimeEnabled] = useState(false) // Set to true when switching to real database
+  const [isRealtimeEnabled] = useState(true)
+  const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    if (!isRealtimeEnabled) return
+    async function loadData() {
+      console.log("[v0] Loading data from Supabase...")
+      setIsLoading(true)
 
-    const supabase = createClient()
-
-    const channel = supabase
-      .channel("tasks-realtime")
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "tasks",
-        },
-        (payload) => {
-          console.log("[v0] Realtime task change:", payload)
-
-          if (payload.eventType === "INSERT") {
-            setTasks((prev) => [...prev, payload.new as Task])
-          } else if (payload.eventType === "UPDATE") {
-            setTasks((prev) => prev.map((task) => (task.id === payload.new.id ? (payload.new as Task) : task)))
-          } else if (payload.eventType === "DELETE") {
-            setTasks((prev) => prev.filter((task) => task.id !== payload.old.id))
-          }
-        },
-      )
-      .subscribe()
-
-    return () => {
-      channel.unsubscribe()
-    }
-  }, [isRealtimeEnabled])
-
-  useEffect(() => {
-    console.log("[v0] TaskProvider mounted, loading from localStorage")
-    const savedSchedules = localStorage.getItem("maintenance_schedules")
-    const savedTasks = localStorage.getItem("maintenance_tasks")
-    const savedShiftSchedules = localStorage.getItem("shift_schedules")
-
-    console.log("[v0] localStorage check:", {
-      hasSchedules: !!savedSchedules,
-      hasTasks: !!savedTasks,
-      hasShiftSchedules: !!savedShiftSchedules,
-    })
-
-    if (savedSchedules) {
       try {
-        const parsed = JSON.parse(savedSchedules)
-        console.log("[v0] Loaded", parsed.length, "schedules from localStorage")
-        setSchedules(parsed)
+        const [loadedTasks, loadedUsers, loadedShiftSchedules, loadedMaintenanceSchedules, loadedMaintenanceTasks] =
+          await Promise.all([
+            loadTasksFromSupabase(),
+            loadUsersFromSupabase(),
+            loadShiftSchedulesFromSupabase(),
+            loadMaintenanceSchedulesFromSupabase(),
+            loadMaintenanceTasksFromSupabase(),
+          ])
+
+        setTasks(loadedTasks)
+        setUsers(loadedUsers.length > 0 ? loadedUsers : mockUsers)
+        setShiftSchedules(loadedShiftSchedules)
+        setSchedules(loadedMaintenanceSchedules)
+        setMaintenanceTasks(loadedMaintenanceTasks)
+
+        console.log("[v0] ✅ LIVE DATA loaded from Supabase:", {
+          tasks: loadedTasks.length,
+          users: loadedUsers.length,
+          shiftSchedules: loadedShiftSchedules.length,
+          maintenanceSchedules: loadedMaintenanceSchedules.length,
+          maintenanceTasks: loadedMaintenanceTasks.length,
+        })
+
+        if (loadedUsers.length === 0) {
+          console.log("[v0] ⚠️ No users found in database. Please run the seed script: scripts/01-seed-users.sql")
+        }
       } catch (error) {
-        console.error("[v0] Error loading schedules:", error)
+        console.error("[v0] Error loading data from Supabase:", error)
+        // Fallback to mock users if loading fails
+        setUsers(mockUsers)
+      } finally {
+        setIsLoading(false)
       }
     }
 
-    if (savedTasks) {
-      try {
-        const parsed = JSON.parse(savedTasks)
-        console.log("[v0] Loaded", parsed.length, "maintenance tasks from localStorage")
-        setMaintenanceTasks(parsed)
-      } catch (error) {
-        console.error("[v0] Error loading maintenance tasks:", error)
-      }
-    } else {
-      console.log("[v0] No maintenance tasks found in localStorage")
-    }
-
-    if (savedShiftSchedules) {
-      try {
-        const parsed = JSON.parse(savedShiftSchedules)
-        console.log("[v0] Loaded", parsed.length, "shift schedules from localStorage")
-        setShiftSchedules(parsed)
-      } catch (error) {
-        console.error("[v0] Error loading shift schedules:", error)
-      }
-    }
+    loadData()
   }, [])
 
-  useEffect(() => {
-    if (maintenanceTasks.length > 0) {
-      localStorage.setItem("maintenance_tasks", JSON.stringify(maintenanceTasks))
-      console.log("[v0] Saved", maintenanceTasks.length, "maintenance tasks to localStorage")
-    }
-  }, [maintenanceTasks])
-
-  useEffect(() => {
-    if (schedules.length > 0) {
-      localStorage.setItem("maintenance_schedules", JSON.stringify(schedules))
-      console.log("[v0] Saved", schedules.length, "schedules to localStorage")
-    }
-  }, [schedules])
-
-  useEffect(() => {
-    if (shiftSchedules.length > 0) {
-      localStorage.setItem("shift_schedules", JSON.stringify(shiftSchedules))
-      console.log("[v0] Saved", shiftSchedules.length, "shift schedules to localStorage")
-    }
-  }, [shiftSchedules])
-
   const updateTask = (taskId: string, updates: Partial<Task>) => {
-    setTasks((prev) => prev.map((task) => (task.id === taskId ? { ...task, ...updates } : task)))
+    setTasks((prev) => {
+      const updated = prev.map((task) => {
+        if (task.id === taskId) {
+          const updatedTask = { ...task, ...updates }
+          saveTaskToSupabase(updatedTask)
+          return updatedTask
+        }
+        return task
+      })
+      return updated
+    })
   }
 
   const addAuditLog = (taskId: string, entry: Omit<AuditLogEntry, "timestamp">) => {
@@ -416,7 +385,11 @@ export function TaskProvider({ children }: { children: ReactNode }) {
       console.log("[v0] Admin notified about custom task:", notificationName)
     }
 
-    setTasks((prev) => [...prev, newTask])
+    setTasks((prev) => {
+      const updated = [...prev, newTask]
+      saveTaskToSupabase(newTask)
+      return updated
+    })
   }
 
   const verifyTask = (
@@ -502,11 +475,14 @@ export function TaskProvider({ children }: { children: ReactNode }) {
         ],
       }
 
-      setTasks((prev) => [...prev, newTask])
+      setTasks((prev) => {
+        const updated = [...prev, newTask]
+        saveTaskToSupabase(newTask)
+        return updated
+      })
 
       console.log("[v0] Created new rework task from rejection:", newTask.id)
 
-      // Notify supervisor about new task needing assignment
       const supervisors = users.filter((u) => u.role === "supervisor")
       supervisors.forEach((supervisor) => {
         createNotification(
@@ -553,7 +529,6 @@ export function TaskProvider({ children }: { children: ReactNode }) {
       details: `Task reassigned from worker ${oldWorkerId} to ${newWorkerId}. Reason: ${reason}`,
     })
 
-    // Notify new worker
     createNotification(
       newWorkerId,
       "task_assigned",
@@ -635,6 +610,7 @@ export function TaskProvider({ children }: { children: ReactNode }) {
     console.log("[v0] Adding new worker:", newWorker)
     setUsers((prev) => {
       const updated = [...prev, newWorker]
+      saveUserToSupabase(newWorker)
       console.log("[v0] Users after adding worker:", updated.length, "total users")
       return updated
     })
@@ -664,7 +640,6 @@ export function TaskProvider({ children }: { children: ReactNode }) {
       details: `Worker raised issue: ${issueDescription}${photos ? ` (with ${photos.length} photo(s))` : ""}`, // Include photo count in audit log
     })
 
-    // Notify supervisor
     const supervisors = users.filter((u) => u.role === "supervisor")
     supervisors.forEach((supervisor) => {
       createNotification(
@@ -676,7 +651,6 @@ export function TaskProvider({ children }: { children: ReactNode }) {
       )
     })
 
-    // Notify front office
     const frontOfficeUsers = users.filter((u) => u.role === "front_office")
     frontOfficeUsers.forEach((fo) => {
       createNotification(
@@ -701,7 +675,11 @@ export function TaskProvider({ children }: { children: ReactNode }) {
       created_at: createDualTimestamp(),
     }
     console.log("[v0] Adding new schedule:", newSchedule)
-    setSchedules((prev) => [...prev, newSchedule])
+    setSchedules((prev) => {
+      const updated = [...prev, newSchedule]
+      saveMaintenanceScheduleToSupabase(newSchedule)
+      return updated
+    })
 
     if (newSchedule.active) {
       console.log("[v0] Schedule is active, generating tasks")
@@ -713,13 +691,27 @@ export function TaskProvider({ children }: { children: ReactNode }) {
 
   const updateSchedule = (scheduleId: string, updates: Partial<MaintenanceSchedule>) => {
     console.log("[v0] Updating schedule:", scheduleId, updates)
-    setSchedules((prev) => prev.map((s) => (s.id === scheduleId ? { ...s, ...updates } : s)))
+    setSchedules((prev) => {
+      const updated = prev.map((s) => {
+        if (s.id === scheduleId) {
+          const updatedSchedule = { ...s, ...updates }
+          saveMaintenanceScheduleToSupabase(updatedSchedule)
+          return updatedSchedule
+        }
+        return s
+      })
+      return updated
+    })
   }
 
   const deleteSchedule = (scheduleId: string) => {
     console.log("[v0] Deleting schedule:", scheduleId)
-    setSchedules((prev) => prev.filter((s) => s.id !== scheduleId))
-    setMaintenanceTasks((prev) => prev.filter((t) => t.schedule_id !== scheduleId))
+    setSchedules((prev) => {
+      const updated = prev.filter((s) => s.id !== scheduleId)
+      setMaintenanceTasks((prevTasks) => prevTasks.filter((t) => t.schedule_id !== scheduleId))
+      deleteMaintenanceScheduleFromSupabase(scheduleId)
+      return updated
+    })
   }
 
   const toggleSchedule = (scheduleId: string) => {
@@ -772,10 +764,8 @@ export function TaskProvider({ children }: { children: ReactNode }) {
     console.log("[v0] Task types to generate:", taskTypesToGenerate)
 
     roomsToGenerate.forEach((room) => {
-      // Get all maintenance items for this room (includes specific locations)
       const maintenanceItems = getMaintenanceItemsForRoom(room.number)
 
-      // Filter items based on selected task types
       const filteredItems = maintenanceItems.filter((item) => taskTypesToGenerate.includes(item.type))
 
       filteredItems.forEach((item) => {
@@ -784,7 +774,7 @@ export function TaskProvider({ children }: { children: ReactNode }) {
           schedule_id: schedule.id,
           room_number: room.number,
           task_type: item.type,
-          location: item.location, // Specific location like "Hall", "Bedroom 1", etc.
+          location: item.location,
           description: `${item.name} maintenance for room ${room.number}`,
           status: "pending",
           photos: { room_photos: [], proof_photos: [] },
@@ -794,6 +784,7 @@ export function TaskProvider({ children }: { children: ReactNode }) {
           expected_duration_minutes: item.expectedDuration,
         }
         newTasks.push(newTask)
+        saveMaintenanceTaskToSupabase(newTask)
       })
     })
 
@@ -804,7 +795,14 @@ export function TaskProvider({ children }: { children: ReactNode }) {
   const updateMaintenanceTask = (taskId: string, updates: Partial<MaintenanceTask>) => {
     console.log("[v0] Updating maintenance task:", taskId, updates)
     setMaintenanceTasks((prev) => {
-      const updated = prev.map((t) => (t.id === taskId ? { ...t, ...updates } : t))
+      const updated = prev.map((t) => {
+        if (t.id === taskId) {
+          const updatedTask = { ...t, ...updates }
+          saveMaintenanceTaskToSupabase(updatedTask)
+          return updatedTask
+        }
+        return t
+      })
       console.log(
         "[v0] Task updated. Total tasks:",
         updated.length,
@@ -833,16 +831,12 @@ export function TaskProvider({ children }: { children: ReactNode }) {
 
     const now = createDualTimestamp()
 
-    // Pause the current task
-    const newPauseRecord: PauseRecord = {
-      paused_at: now,
-      resumed_at: null,
-      reason: "Swapped to work on another task",
-    }
-
     updateTask(pauseTaskId, {
       status: "PAUSED",
-      pause_history: [...taskToPause.pause_history, newPauseRecord],
+      pause_history: [
+        ...taskToPause.pause_history,
+        { paused_at: now, resumed_at: null, reason: "Swapped to work on another task" },
+      ],
     })
     addAuditLog(pauseTaskId, {
       user_id: userId,
@@ -852,7 +846,6 @@ export function TaskProvider({ children }: { children: ReactNode }) {
       details: "Task paused to resume another task",
     })
 
-    // Resume the paused task
     const updatedPauseHistory = [...taskToResume.pause_history]
     const lastPause = updatedPauseHistory[updatedPauseHistory.length - 1]
     if (lastPause && !lastPause.resumed_at) {
@@ -877,19 +870,20 @@ export function TaskProvider({ children }: { children: ReactNode }) {
   const saveShiftSchedule = (scheduleData: Omit<ShiftSchedule, "id" | "created_at">) => {
     console.log("[v0] Saving shift schedule:", scheduleData)
 
-    // Check if schedule already exists for this worker and date
     const existingIndex = shiftSchedules.findIndex(
       (s) => s.worker_id === scheduleData.worker_id && s.schedule_date === scheduleData.schedule_date,
     )
 
     if (existingIndex >= 0) {
-      // Update existing schedule
       console.log("[v0] Updating existing shift schedule")
-      setShiftSchedules((prev) =>
-        prev.map((s, i) => (i === existingIndex ? { ...s, ...scheduleData, created_at: new Date().toISOString() } : s)),
-      )
+      const updatedSchedule = {
+        ...shiftSchedules[existingIndex],
+        ...scheduleData,
+        created_at: new Date().toISOString(),
+      }
+      setShiftSchedules((prev) => prev.map((s, i) => (i === existingIndex ? updatedSchedule : s)))
+      saveShiftScheduleToSupabase(updatedSchedule)
     } else {
-      // Create new schedule
       const newSchedule: ShiftSchedule = {
         ...scheduleData,
         id: `shift-sched-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
@@ -897,6 +891,7 @@ export function TaskProvider({ children }: { children: ReactNode }) {
       }
       console.log("[v0] Creating new shift schedule:", newSchedule.id)
       setShiftSchedules((prev) => [...prev, newSchedule])
+      saveShiftScheduleToSupabase(newSchedule)
     }
   }
 
@@ -919,7 +914,11 @@ export function TaskProvider({ children }: { children: ReactNode }) {
 
   const deleteShiftSchedule = (scheduleId: string) => {
     console.log("[v0] Deleting shift schedule:", scheduleId)
-    setShiftSchedules((prev) => prev.filter((s) => s.id !== scheduleId))
+    setShiftSchedules((prev) => {
+      const updated = prev.filter((s) => s.id !== scheduleId)
+      deleteShiftScheduleFromSupabase(scheduleId)
+      return updated
+    })
   }
 
   return (
@@ -961,10 +960,12 @@ export function TaskProvider({ children }: { children: ReactNode }) {
   )
 }
 
-export function useTasks() {
+function useTasks() {
   const context = useContext(TaskContext)
   if (context === undefined) {
     throw new Error("useTasks must be used within a TaskProvider")
   }
   return context
 }
+
+export { useTasks }

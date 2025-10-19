@@ -3,7 +3,6 @@
 import { ProtectedRoute } from "@/components/protected-route"
 import { useAuth } from "@/lib/auth-context"
 import { useTasks } from "@/lib/task-context"
-import { mockUsers } from "@/lib/mock-data"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -13,7 +12,7 @@ import { formatFullTimestamp } from "@/lib/date-utils"
 import { ReassignTaskModal } from "@/components/reassign-task-modal"
 import { EditTaskModal } from "@/components/edit-task-modal"
 import { useState } from "react"
-import type { Task } from "@/lib/types"
+import type { Task, User as UserType } from "@/lib/types"
 
 const priorityColors = {
   GUEST_REQUEST: "bg-red-500 text-white",
@@ -32,7 +31,7 @@ const statusColors = {
 
 function AssignmentsHistory() {
   const { user } = useAuth()
-  const { tasks } = useTasks()
+  const { tasks, users } = useTasks()
   const router = useRouter()
   const [reassignTask, setReassignTask] = useState<Task | null>(null)
   const [editTask, setEditTask] = useState<Task | null>(null)
@@ -46,7 +45,7 @@ function AssignmentsHistory() {
     })
 
   const getWorkerName = (workerId: string) => {
-    const worker = mockUsers.find((u) => u.id === workerId)
+    const worker = users.find((u: UserType) => u.id === workerId)
     return worker?.name || "Unknown"
   }
 
