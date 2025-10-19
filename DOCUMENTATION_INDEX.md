@@ -89,7 +89,7 @@
 
 ### ⚡ Path 4: Just Get It Running (5 minutes)
 
-```bash
+\`\`\`bash
 # Install dependencies
 pnpm install
 
@@ -101,13 +101,13 @@ pnpm dev
 
 # Login as "Front Office Staff"
 # → Create a task to verify everything works
-```
+\`\`\`
 
 ---
 
 ## Documentation at a Glance
 
-```
+\`\`\`
 ┌─────────────────────────────────────────────────────────┐
 │  QUICK_START_GUIDE.md                                   │
 │  ├─ Start here if you want to launch immediately       │
@@ -146,7 +146,7 @@ pnpm dev
 │  ├─ Development patterns                                │
 │  └─ Supabase integration notes                          │
 └─────────────────────────────────────────────────────────┘
-```
+\`\`\`
 
 ---
 
@@ -238,7 +238,7 @@ pnpm dev
 
 ## File Structure Reference
 
-```
+\`\`\`
 hermes-monitoring/
 ├── .env.local ✅ (Created with Supabase credentials)
 ├── .github/
@@ -281,7 +281,7 @@ hermes-monitoring/
 │
 └── public/
     └── manifest.json (PWA config)
-```
+\`\`\`
 
 ---
 
@@ -481,4 +481,3 @@ hermes-monitoring/
 **Generated**: October 19, 2025  
 **Status**: 🟢 Ready for Production  
 **Maintainer Contact**: See SUPABASE_SETUP.md
-

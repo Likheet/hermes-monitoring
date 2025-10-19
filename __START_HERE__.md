@@ -9,7 +9,7 @@
 
 ## 📊 What's Been Completed
 
-```
+\`\`\`
 ╔═══════════════════════════════════════════╗
 ║  HERMES TASK MANAGEMENT SYSTEM            ║
 ║  Complete & Production Ready              ║
@@ -52,26 +52,26 @@
 ═══════════════════════════════════════════
 OVERALL: 100% COMPLETE ✅ PRODUCTION READY
 ═══════════════════════════════════════════
-```
+\`\`\`
 
 ---
 
 ## 🚀 Launch in 3 Commands
 
 ### Command 1: Navigate
-```bash
+\`\`\`bash
 cd "c:\Users\likhe\Desktop\Projects\Hermes Task Management\hermes-monitoring"
-```
+\`\`\`
 
 ### Command 2: Start
-```bash
+\`\`\`bash
 pnpm dev
-```
+\`\`\`
 
 ### Command 3: Open Browser
-```
+\`\`\`
 http://localhost:3000
-```
+\`\`\`
 
 **That's it! System is running. ✅**
 
@@ -79,7 +79,7 @@ http://localhost:3000
 
 ## 📚 Documentation Files (14 Total)
 
-```
+\`\`\`
 GETTING STARTED (Read in Order)
 ├─ 1. FINAL_STATUS.md ..................... Status dashboard
 ├─ 2. LAUNCH_SUMMARY.md .................. 3-step launch guide
@@ -105,21 +105,21 @@ NAVIGATION & REFERENCE
 
 ORIGINAL
 └─ 14. SETUP_COMPLETE.md ................. Setup summary (v1)
-```
+\`\`\`
 
 ---
 
 ## 🎯 Next 5 Minutes
 
 ### Step 1: Run Server
-```bash
+\`\`\`bash
 pnpm dev
-```
+\`\`\`
 
 ### Step 2: Open Browser
-```
+\`\`\`
 http://localhost:3000
-```
+\`\`\`
 
 ### Step 3: Login
 - Select: "Front Office Staff"
@@ -215,9 +215,9 @@ http://localhost:3000
 ## 🚀 Go Time!
 
 ### Right Now
-```bash
+\`\`\`bash
 pnpm dev
-```
+\`\`\`
 
 ### In 2 Seconds
 Browser window opens at http://localhost:3000
@@ -314,7 +314,7 @@ You're ready for production deployment
 
 ## 🏆 Achievement Unlocked
 
-```
+\`\`\`
 ╔═══════════════════════════════════════════╗
 ║                                           ║
 ║   HERMES TASK MANAGEMENT SYSTEM           ║
@@ -328,7 +328,7 @@ You're ready for production deployment
 ║   Status: 🟢 READY TO LAUNCH              ║
 ║                                           ║
 ╚═══════════════════════════════════════════╝
-```
+\`\`\`
 
 ---
 
@@ -346,4 +346,3 @@ Everything is in place. Just run `pnpm dev` and start testing.
 **Status**: 🟢 Production Ready  
 **Confidence**: 95%+  
 **Last Updated**: October 19, 2025
-

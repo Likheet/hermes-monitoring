@@ -32,20 +32,20 @@
 
 ## Step 1: Start the Development Server
 
-```bash
+\`\`\`bash
 cd "c:\Users\likhe\Desktop\Projects\Hermes Task Management\hermes-monitoring"
 pnpm install
 pnpm dev
-```
+\`\`\`
 
 Expected output:
-```
+\`\`\`
   ▲ Next.js 15.0.0
   - Local:        http://localhost:3000
   - Environments: .env.local
 
 ✓ Ready in 2.5s
-```
+\`\`\`
 
 ---
 
@@ -169,12 +169,12 @@ If it appears instantly → ✅ **Realtime is working!**
 1. Go to Supabase Dashboard → Authentication → Users
 2. Click the user → Edit User
 3. Ensure metadata has correct role:
-```json
+\`\`\`json
 {
   "role": "worker",
   "department": "housekeeping"
 }
-```
+\`\`\`
 
 ### Issue: "No users found in dropdown"
 
@@ -235,7 +235,7 @@ If it appears instantly → ✅ **Realtime is working!**
 
 Run these in Supabase → SQL Editor to verify:
 
-```sql
+\`\`\`sql
 -- Count all tasks
 SELECT COUNT(*) as total_tasks FROM tasks;
 
@@ -257,7 +257,7 @@ ORDER BY tablename;
 
 -- Check storage bucket
 SELECT * FROM storage.buckets WHERE name = 'task-photos';
-```
+\`\`\`
 
 ---
 
@@ -363,4 +363,3 @@ When ready to go to production:
 **You're all set! Ready to launch.** 🎉
 
 Next: Run `pnpm dev` and test the first workflow.
-

@@ -65,7 +65,7 @@
 
 ## Architecture at a Glance
 
-```
+\`\`\`
 ┌─────────────────────────────────────────────┐
 │   Hermes Task Management System              │
 │   (Next.js 15 + React 19 + TypeScript)       │
@@ -86,7 +86,7 @@
 │   ├─ task-photos storage bucket              │
 │   └─ 3 helper functions                      │
 └─────────────────────────────────────────────┘
-```
+\`\`\`
 
 ### Key Entities (10 Core Types)
 
@@ -130,15 +130,15 @@
 ## Quick Start (5 Steps)
 
 ### 1️⃣ Environment Setup
-```bash
+\`\`\`bash
 # .env.local
 NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...
-```
+\`\`\`
 
 ### 2️⃣ Create Auth Users
 Supabase Dashboard → Authentication → Users → Add User
-```json
+\`\`\`json
 Metadata:
 {
   "name": "Test Worker",
@@ -146,13 +146,13 @@ Metadata:
   "department": "housekeeping",
   "phone": "+1234567890"
 }
-```
+\`\`\`
 
 ### 3️⃣ Start App
-```bash
+\`\`\`bash
 pnpm install
 pnpm dev
-```
+\`\`\`
 
 ### 4️⃣ Test Login
 - Visit http://localhost:3000/login
@@ -189,7 +189,7 @@ pnpm dev
 
 ## Migration Applied Sequence
 
-```
+\`\`\`
 001: Core schema (users, tasks, pause_records, audit_logs)
 002: Task issues table
 003: Maintenance schedules table
@@ -199,7 +199,7 @@ pnpm dev
 007: Auth trigger
 008: Escalation detection function
 009: Notification cleanup function
-```
+\`\`\`
 
 All verified ✅ in Supabase → Database → Migrations
 
@@ -250,7 +250,7 @@ All verified ✅ in Supabase → Database → Migrations
 
 ### Debug Commands (Supabase SQL Editor)
 
-```sql
+\`\`\`sql
 -- Check all tables exist
 SELECT tablename FROM pg_tables WHERE schemaname = 'public';
 
@@ -264,7 +264,7 @@ SELECT COUNT(*) FROM notifications;
 
 -- Run escalation detection
 SELECT * FROM detect_task_escalations();
-```
+\`\`\`
 
 ---
 
@@ -330,16 +330,16 @@ SELECT * FROM detect_task_escalations();
 
 ### DualTimestamp Pattern
 All timestamps stored twice (client + server) for tampering detection:
-```typescript
+\`\`\`typescript
 assigned_at: {
   client: "2025-10-19T10:30:45.123Z",  // Client clock
   server: "2025-10-19T10:30:46.456Z"   // Server clock
 }
-```
+\`\`\`
 
 ### Photo Categorization
 New tasks support flexible photo categories:
-```typescript
+\`\`\`typescript
 categorized_photos: {
   room_photos: ["url1", "url2"],    // Full room
   proof_photos: ["url3"],            // Proof of completion
@@ -350,7 +350,7 @@ categorized_photos: {
     "Final Result": ["url7"]
   }
 }
-```
+\`\`\`
 
 ### Offline Support
 App works offline via localStorage. When reconnected:

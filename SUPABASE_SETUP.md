@@ -70,23 +70,23 @@ The following 13 migrations have been successfully applied to your Supabase proj
 ### 1. Set Environment Variables
 
 Add to `.env.local`:
-```
+\`\`\`
 NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...
-```
+\`\`\`
 
 Get these from your Supabase project dashboard → Settings → API.
 
 ### 2. Enable Realtime in Task Context
 
 Edit `lib/task-context.tsx`, line ~30:
-```typescript
+\`\`\`typescript
 // Change this:
 const [isRealtimeEnabled] = useState(false)
 
 // To this:
 const [isRealtimeEnabled] = useState(true)
-```
+\`\`\`
 
 ### 3. Create Test Users
 
@@ -98,16 +98,16 @@ You need to create Supabase Auth users first. Two options:
 3. Create users with metadata (role, department, name, phone)
 
 **Option B: TypeScript Script**
-```bash
+\`\`\`bash
 cd scripts
 npx ts-node create-test-users.ts
-```
+\`\`\`
 
 ### 4. Restart Dev Server
 
-```bash
+\`\`\`bash
 pnpm dev
-```
+\`\`\`
 
 The app will now:
 - Sync tasks to Supabase (INSERT/UPDATE/DELETE)
@@ -122,7 +122,7 @@ The app will now:
 
 Functions in `lib/task-context.tsx` are ready to call:
 
-```typescript
+\`\`\`typescript
 // These call Supabase instead of localStorage when isRealtimeEnabled=true
 saveTaskToSupabase(task)
 updateTaskSupabase(taskId, updates)
@@ -131,7 +131,7 @@ saveUserToSupabase(user)
 saveMaintenanceScheduleToSupabase(schedule)
 saveMaintenanceTaskToSupabase(task)
 deleteMaintenanceScheduleFromSupabase(scheduleId)
-```
+\`\`\`
 
 ---
 
@@ -177,15 +177,15 @@ deleteMaintenanceScheduleFromSupabase(scheduleId)
 
 ### Cleanup Old Notifications
 Run periodically (e.g., nightly cron):
-```sql
+\`\`\`sql
 SELECT delete_old_notifications();
-```
+\`\`\`
 
 ### Detect Escalations
 Run every 5-10 minutes:
-```sql
+\`\`\`sql
 SELECT * FROM detect_task_escalations();
-```
+\`\`\`
 
 Then create notifications for each escalation.
 
@@ -204,7 +204,7 @@ To reset Supabase database:
 2. Delete all backups
 3. Drop all tables manually via SQL Editor:
 
-```sql
+\`\`\`sql
 DROP TABLE IF EXISTS public.escalations CASCADE;
 DROP TABLE IF EXISTS public.notifications CASCADE;
 DROP TABLE IF EXISTS public.maintenance_tasks CASCADE;
@@ -218,7 +218,7 @@ DROP TABLE IF EXISTS public.users CASCADE;
 DROP FUNCTION IF EXISTS public.handle_new_user();
 DROP FUNCTION IF EXISTS public.detect_task_escalations();
 DROP FUNCTION IF EXISTS public.delete_old_notifications();
-```
+\`\`\`
 
 Then re-run migrations.
 

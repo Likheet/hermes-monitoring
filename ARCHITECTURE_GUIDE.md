@@ -29,7 +29,7 @@
 **Roles**: `worker`, `supervisor`, `front_office`, `admin`  
 **Departments**: `housekeeping`, `maintenance`, `front_desk`
 
-```
+\`\`\`
 Users
 ├─ id: string (UUID or custom)
 ├─ name: string
@@ -42,7 +42,7 @@ Users
 ├─ break_start?: string (HH:MM)
 ├─ break_end?: string (HH:MM)
 └─ is_available: boolean
-```
+\`\`\`
 
 **Relationships**:
 - Worker → assigned tasks (1:many via `tasks.assigned_to_user_id`)
@@ -58,7 +58,7 @@ Users
 **Status**: `PENDING`, `IN_PROGRESS`, `PAUSED`, `COMPLETED`, `REJECTED`  
 **Priority**: `GUEST_REQUEST`, `TIME_SENSITIVE`, `DAILY_TASK`, `PREVENTIVE_MAINTENANCE`
 
-```
+\`\`\`
 Tasks
 ├─ id: string
 ├─ task_type: string (e.g., "Light Not Working", "Room Cleaning")
@@ -102,15 +102,15 @@ Tasks
 ├─ rejection_acknowledged?: boolean
 ├─ rejection_acknowledged_at?: DualTimestamp | null
 └─ custom_task_processed?: boolean
-```
+\`\`\`
 
 **DualTimestamp** (anti-tampering pattern):
-```typescript
+\`\`\`typescript
 interface DualTimestamp {
   client: string  // ISO timestamp from client
   server: string  // ISO timestamp from server (for integrity check)
 }
-```
+\`\`\`
 
 **CategorizedPhotos**:
 - Workers capture photos in categories (room, proof, before, during, after)
@@ -125,7 +125,7 @@ interface DualTimestamp {
 - Task → Issues (1:many, via `task_issues.task_id`)
 
 **Task Lifecycle**:
-```
+\`\`\`
 PENDING 
   ├─→ IN_PROGRESS (worker starts)
   │    ├─→ PAUSED (worker pauses + reason)
@@ -134,7 +134,7 @@ PENDING
   │         └─→ REJECTED (supervisor rejects)
   │              └─ New PENDING rework task created
   └─→ (assigned waiting)
-```
+\`\`\`
 
 ---
 
@@ -142,12 +142,12 @@ PENDING
 
 Track when/why a task was paused.
 
-```
+\`\`\`
 PauseRecord (nested in Task.pause_history or separate table)
 ├─ paused_at: DualTimestamp
 ├─ resumed_at: DualTimestamp | null
 └─ reason: string
-```
+\`\`\`
 
 **Use Case**: Calculate actual duration excluding pause times; audit trail.
 
@@ -157,7 +157,7 @@ PauseRecord (nested in Task.pause_history or separate table)
 
 Track all state changes and user actions on tasks.
 
-```
+\`\`\`
 AuditLogEntry
 ├─ timestamp: DualTimestamp
 ├─ user_id: string (FK → users.id)
@@ -165,7 +165,7 @@ AuditLogEntry
 ├─ old_status: TaskStatus | null
 ├─ new_status: TaskStatus | null
 └─ details: string (human-readable context)
-```
+\`\`\`
 
 **Actions Logged**:
 - `TASK_ASSIGNED` (created)
@@ -186,7 +186,7 @@ AuditLogEntry
 
 Report problems/blockers during task execution.
 
-```
+\`\`\`
 TaskIssue
 ├─ id: string
 ├─ task_id: string (FK → tasks.id)
@@ -195,7 +195,7 @@ TaskIssue
 ├─ issue_description: string
 ├─ issue_photos: string[] (attachments)
 └─ status: "OPEN" | "RESOLVED"
-```
+\`\`\`
 
 **Use Case**: Worker reports blocker (e.g., guest in room, water shut off); notifies supervisors/front-office.
 
@@ -205,7 +205,7 @@ TaskIssue
 
 Define working hours per worker, with overrides (holidays, leave).
 
-```
+\`\`\`
 ShiftSchedule
 ├─ id: string
 ├─ worker_id: string (FK → users.id)
@@ -219,7 +219,7 @@ ShiftSchedule
 ├─ override_reason?: string ("Holiday", "Leave", "Sick", "Emergency")
 ├─ notes?: string
 └─ created_at: string (ISO)
-```
+\`\`\`
 
 **Use Case**: Determine if worker is on shift; handovers between shifts.
 
@@ -230,7 +230,7 @@ ShiftSchedule
 **Preventive maintenance** workflows (AC, fans, exhausts, lifts).
 
 #### MaintenanceSchedule
-```
+\`\`\`
 MaintenanceSchedule
 ├─ id: string
 ├─ task_type: MaintenanceTaskType (ac_indoor | ac_outdoor | fan | exhaust | lift | all)
@@ -239,10 +239,10 @@ MaintenanceSchedule
 ├─ auto_reset: boolean
 ├─ active: boolean
 └─ created_at: DualTimestamp
-```
+\`\`\`
 
 #### MaintenanceTask
-```
+\`\`\`
 MaintenanceTask
 ├─ id: string
 ├─ schedule_id: string (FK → maintenance_schedules.id)
@@ -264,7 +264,7 @@ MaintenanceTask
 ├─ period_month: number
 ├─ period_year: number
 └─ created_at: string
-```
+\`\`\`
 
 **Generation**: Scheduled tasks auto-generate for all rooms when schedule is activated.
 
@@ -272,7 +272,7 @@ MaintenanceTask
 
 ### 2.8 Notifications (In-App)
 
-```
+\`\`\`
 Notification
 ├─ id: string
 ├─ user_id: string (FK → users.id)
@@ -282,7 +282,7 @@ Notification
 ├─ task_id?: string (FK → tasks.id)
 ├─ read: boolean
 └─ created_at: string (ISO)
-```
+\`\`\`
 
 **Use Case**: Real-time alerts (task assigned, rejected, issue reported, escalation).
 
@@ -292,7 +292,7 @@ Notification
 
 Track delayed tasks and overtime situations.
 
-```
+\`\`\`
 Escalation
 ├─ id: string
 ├─ task_id: string (FK → tasks.id)
@@ -305,7 +305,7 @@ Escalation
 ├─ resolved: boolean
 ├─ resolution_notes?: string
 └─ created_at: string
-```
+\`\`\`
 
 **Levels**:
 1. **Level 1** (15-min warning): Task approaching 15 minutes over expected
@@ -321,7 +321,7 @@ Escalation
 - **B Block**: 42 rooms (floors 1–7, mixed 1BHK & 2BHK)
 - **Common Areas**: Pool, lobby, restaurant, corridors, lifts, etc.
 
-```
+\`\`\`
 Room {
   number: string (e.g., "5010", "1101")
   block: "A" | "B"
@@ -339,14 +339,14 @@ CommonArea {
   name: string
   keywords: string[] (for search)
 }
-```
+\`\`\`
 
 ---
 
 ## 3. Data Flows & Workflows
 
 ### 3.1 Task Creation & Assignment
-```
+\`\`\`
 Front Office / Admin (app/front-office, app/admin)
   ↓
 createTask() in TaskContext
@@ -356,10 +356,10 @@ createTask() in TaskContext
   ├─ If Supabase enabled: saveTaskToSupabase()
   ├─ Create initial audit log entry (TASK_ASSIGNED)
   └─ Create notification for assigned worker
-```
+\`\`\`
 
 ### 3.2 Task Execution (Worker)
-```
+\`\`\`
 Worker (app/worker)
   ├─ Sees PENDING tasks assigned to them
   ├─ startTask()
@@ -381,10 +381,10 @@ Worker (app/worker)
      ├─ Set status = COMPLETED
      ├─ Audit: TASK_COMPLETED
      └─ Create notification for supervisor (verify/reject)
-```
+\`\`\`
 
 ### 3.3 Task Verification (Supervisor)
-```
+\`\`\`
 Supervisor (app/supervisor)
   ├─ Sees COMPLETED tasks from their department
   ├─ verifyTask(approved, remark, rating, proof_photo)
@@ -398,10 +398,10 @@ Supervisor (app/supervisor)
   │     ├─ Audit: TASK_REJECTED
   │     └─ Notify worker + supervisors
   └─ dismissRejectedTask() — worker acknowledges rejection
-```
+\`\`\`
 
 ### 3.4 Escalations (Real-Time Monitoring)
-```
+\`\`\`
 Supervisor Dashboard (app/supervisor)
   ├─ Every task in progress is checked for escalation rules:
   │  ├─ If (now - started_at) > expected_duration + 15 min → Level 1
@@ -409,10 +409,10 @@ Supervisor Dashboard (app/supervisor)
   │  └─ If (now - started_at) > expected_duration × 1.5 → Level 3
   ├─ Store escalation record
   └─ Notify supervisor + front-office
-```
+\`\`\`
 
 ### 3.5 Maintenance Schedule Activation
-```
+\`\`\`
 Admin (app/admin/maintenance)
   ├─ Create maintenance schedule (task_type, area, frequency, active)
   ├─ toggleSchedule(id)
@@ -424,16 +424,16 @@ Admin (app/admin/maintenance)
   │  └─ If deactivated:
   │     └─ Mark schedule.active = false
   └─ Workers see generated maintenance tasks + timer
-```
+\`\`\`
 
 ### 3.6 Shift Management
-```
+\`\`\`
 Admin (app/admin)
   ├─ saveShiftSchedule(worker_id, date, shift_start, shift_end, has_break, break_times)
   ├─ getShiftSchedules(worker_id, startDate, endDate) → queried from localStorage
   ├─ isWorkerOnShiftFromUser(user) → checks current shift status
   └─ isWorkerOnShift(shifts[], worker_id) → legacy, uses explicit shifts array
-```
+\`\`\`
 
 ---
 
@@ -441,7 +441,7 @@ Admin (app/admin)
 
 ### 4.1 Tables Overview
 
-```
+\`\`\`
 auth.users (Supabase Auth — provided by default)
 ├─ id (UUID)
 ├─ email
@@ -608,11 +608,11 @@ public.escalations
 ├─ resolved (BOOLEAN)
 ├─ resolution_notes (TEXT, nullable)
 └─ created_at (TIMESTAMPTZ)
-```
+\`\`\`
 
 ### 4.2 Indexes for Performance
 
-```sql
+\`\`\`sql
 -- Tasks queries
 CREATE INDEX idx_tasks_assigned_to ON tasks(assigned_to_user_id);
 CREATE INDEX idx_tasks_status ON tasks(status);
@@ -647,7 +647,7 @@ CREATE INDEX idx_notifications_created_at ON notifications(created_at DESC);
 -- Escalations
 CREATE INDEX idx_escalations_task_id ON escalations(task_id);
 CREATE INDEX idx_escalations_resolved ON escalations(resolved);
-```
+\`\`\`
 
 ### 4.3 Row Level Security (RLS) Policies
 
@@ -676,7 +676,7 @@ CREATE INDEX idx_escalations_resolved ON escalations(resolved);
 
 **Bucket**: `task-photos` (public read, authenticated write)
 
-```
+\`\`\`
 task-photos/
 ├─ {user_id}/
 │  └─ {task_id}/
@@ -684,7 +684,7 @@ task-photos/
 │     ├─ proof_photo_1.jpg
 │     ├─ before_photo_1.jpg
 │     └─ after_photo_1.jpg
-```
+\`\`\`
 
 **Policies**:
 - Authenticated users can upload
@@ -696,9 +696,9 @@ task-photos/
 ### 4.5 Realtime Subscriptions
 
 **Enable in `lib/task-context.tsx`**:
-```typescript
+\`\`\`typescript
 const [isRealtimeEnabled] = useState(true); // Change from false to true
-```
+\`\`\`
 
 **Subscriptions**:
 - `tasks` table: All changes (INSERT, UPDATE, DELETE)
@@ -715,7 +715,7 @@ const [isRealtimeEnabled] = useState(true); // Change from false to true
 **Location**: `lib/task-context.tsx`, `lib/auth-context.tsx`
 
 **Functions for Supabase Integration**:
-```typescript
+\`\`\`typescript
 // Save/delete operations (stub functions in context, ready for Supabase)
 saveTaskToSupabase(task)
 updateTaskSupabase(taskId, updates)
@@ -725,7 +725,7 @@ saveMaintenanceScheduleToSupabase(schedule)
 saveMaintenanceTaskToSupabase(task)
 saveShiftScheduleToSupabase(schedule)
 deleteMaintenanceScheduleFromSupabase(scheduleId)
-```
+\`\`\`
 
 ### 5.2 API Routes (Optional)
 
@@ -740,10 +740,10 @@ Potential routes for server-side logic:
 
 ### 5.3 Environment Variables
 
-```
+\`\`\`
 NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...
-```
+\`\`\`
 
 Both required for Supabase integration. If missing, app falls back to mock data + localStorage.
 
@@ -793,60 +793,60 @@ Both required for Supabase integration. If missing, app falls back to mock data 
 ### To Rebuild Supabase from Scratch:
 
 1. **Reset Supabase Database**:
-   ```bash
+   \`\`\`bash
    # Drop all existing tables (if present)
    # scripts/00-drop-all-tables.sql
-   ```
+   \`\`\`
 
 2. **Run Core Schema**:
-   ```bash
+   \`\`\`bash
    # scripts/001_create_schema.sql
    # Creates: users, tasks, pause_records, audit_logs
    # Enables RLS
-   ```
+   \`\`\`
 
 3. **Run Enhanced Features**:
-   ```bash
+   \`\`\`bash
    # scripts/005_enhanced_features_schema.sql
    # Adds: escalations, shifts, handovers
-   ```
+   \`\`\`
 
 4. **Run Additional Schemas**:
-   ```bash
+   \`\`\`bash
    # scripts/008_notifications_schema.sql
    # scripts/009_user_preferences_schema.sql
    # scripts/010_maintenance_schedules_schema.sql
-   ```
+   \`\`\`
 
 5. **Setup Storage**:
-   ```bash
+   \`\`\`bash
    # scripts/003_storage_setup.sql
    # Creates: task-photos bucket, storage policies
-   ```
+   \`\`\`
 
 6. **Seed Initial Data** (optional):
-   ```bash
+   \`\`\`bash
    # scripts/001_create_schema.sql creates auth trigger
    # Create test auth users via Supabase console or API
    # Seed tasks via API or SQL directly
-   ```
+   \`\`\`
 
 7. **Enable Realtime** (optional):
-   ```typescript
+   \`\`\`typescript
    // lib/task-context.tsx, line ~30
    const [isRealtimeEnabled] = useState(true);
-   ```
+   \`\`\`
 
 8. **Set Environment Variables**:
-   ```
+   \`\`\`
    NEXT_PUBLIC_SUPABASE_URL=...
    NEXT_PUBLIC_SUPABASE_ANON_KEY=...
-   ```
+   \`\`\`
 
 9. **Restart Dev Server**:
-   ```bash
+   \`\`\`bash
    pnpm dev
-   ```
+   \`\`\`
 
 ---
 

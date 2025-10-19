@@ -68,10 +68,10 @@ Your Hermes Task Management system is **fully operational and ready for immediat
 
 ### ✅ Environment Setup
 
-```env
+\`\`\`env
 NEXT_PUBLIC_SUPABASE_URL=https://wtfnntauwvsgohfmhgyo.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
-```
+\`\`\`
 
 **Status**: ✅ Configured in `.env.local`
 
@@ -107,7 +107,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 
 ### User Roster
 
-```
+\`\`\`
 1. Admin User (admin)
    - ID: 00000000-0000-0000-0000-000000000001
    - Phone: +1234567890
@@ -162,7 +162,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
    - Department: maintenance
    - Shift: 09:00-17:00
    - Route: /worker
-```
+\`\`\`
 
 ---
 
@@ -346,9 +346,9 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 ### Today (Priority 1 - Critical)
 
 1. **Start Dev Server**
-   ```bash
+   \`\`\`bash
    pnpm dev
-   ```
+   \`\`\`
 
 2. **Test Login** 
    - Visit http://localhost:3000
@@ -469,4 +469,3 @@ Your Hermes Task Management system is **fully operational** and ready for immedi
 **Generated**: October 19, 2025  
 **System Status**: 🟢 Production Ready  
 **Last Updated**: October 19, 2025
-

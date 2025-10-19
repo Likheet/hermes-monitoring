@@ -31,9 +31,9 @@
 **File**: `001_minimal_test`  
 **Purpose**: Enable UUID support
 
-```sql
+\`\`\`sql
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-```
+\`\`\`
 
 **Result**: ✅ UUID extension ready for table creation
 
@@ -43,7 +43,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 **File**: `002_create_users_table`  
 **Columns**: 11
 
-```
+\`\`\`
 id (UUID, FK → auth.users)
 name (TEXT)
 role (TEXT, CHECK: worker|supervisor|front_office|admin)
@@ -56,7 +56,7 @@ break_start (TEXT, nullable)
 break_end (TEXT, nullable)
 is_available (BOOLEAN)
 created_at (TIMESTAMPTZ)
-```
+\`\`\`
 
 **Result**: ✅ Table created with RLS ready
 
@@ -66,7 +66,7 @@ created_at (TIMESTAMPTZ)
 **File**: `003_create_tasks_table`  
 **Columns**: 42
 
-```
+\`\`\`
 id (UUID, PRIMARY KEY)
 task_type (TEXT)
 priority_level (CHECK: GUEST_REQUEST|TIME_SENSITIVE|DAILY_TASK|PREVENTIVE_MAINTENANCE)
@@ -107,7 +107,7 @@ rejection_acknowledged (BOOLEAN)
 rejection_acknowledged_at_client (TIMESTAMPTZ)
 rejection_acknowledged_at_server (TIMESTAMPTZ)
 created_at (TIMESTAMPTZ)
-```
+\`\`\`
 
 **Indexes**: 5
 - idx_tasks_assigned_to
@@ -125,7 +125,7 @@ created_at (TIMESTAMPTZ)
 **Tables**: 2
 
 #### pause_records
-```
+\`\`\`
 id (UUID, PRIMARY KEY)
 task_id (UUID, FK → tasks, CASCADE)
 paused_at_client (TIMESTAMPTZ)
@@ -134,12 +134,12 @@ resumed_at_client (TIMESTAMPTZ, nullable)
 resumed_at_server (TIMESTAMPTZ, nullable)
 reason (TEXT)
 created_at (TIMESTAMPTZ)
-```
+\`\`\`
 
 **Index**: idx_pause_records_task_id
 
 #### audit_logs
-```
+\`\`\`
 id (UUID, PRIMARY KEY)
 task_id (UUID, FK → tasks, CASCADE)
 user_id (UUID, FK → users, nullable)
@@ -151,7 +151,7 @@ timestamp_client (TIMESTAMPTZ)
 timestamp_server (TIMESTAMPTZ)
 metadata (JSONB)
 created_at (TIMESTAMPTZ)
-```
+\`\`\`
 
 **Indexes**:
 - idx_audit_logs_task_id
@@ -165,12 +165,12 @@ created_at (TIMESTAMPTZ)
 **File**: `005_enable_rls`  
 **Action**: Enable Row Level Security on 4 tables
 
-```sql
+\`\`\`sql
 ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.tasks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.pause_records ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
-```
+\`\`\`
 
 **Result**: ✅ RLS enabled, policies not yet defined
 
@@ -180,7 +180,7 @@ ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
 **File**: `007_create_task_issues_table`  
 **Columns**: 8
 
-```
+\`\`\`
 id (UUID, PRIMARY KEY)
 task_id (UUID, FK → tasks, CASCADE)
 reported_by_user_id (UUID, FK → users, CASCADE)
@@ -190,7 +190,7 @@ issue_description (TEXT)
 issue_photos (TEXT[], default: {})
 status (CHECK: OPEN|RESOLVED, default: OPEN)
 created_at (TIMESTAMPTZ)
-```
+\`\`\`
 
 **Indexes**:
 - idx_task_issues_task_id
@@ -204,7 +204,7 @@ created_at (TIMESTAMPTZ)
 **File**: `009_create_maintenance_schedules_table`  
 **Columns**: 7
 
-```
+\`\`\`
 id (UUID, PRIMARY KEY)
 task_type (TEXT)
 area (TEXT)
@@ -214,7 +214,7 @@ active (BOOLEAN)
 created_at_client (TIMESTAMPTZ)
 created_at_server (TIMESTAMPTZ)
 created_at (TIMESTAMPTZ)
-```
+\`\`\`
 
 **Index**: idx_maintenance_schedules_active
 
@@ -226,7 +226,7 @@ created_at (TIMESTAMPTZ)
 **File**: `010_create_maintenance_tasks_table`  
 **Columns**: 17
 
-```
+\`\`\`
 id (UUID, PRIMARY KEY)
 schedule_id (UUID, FK → maintenance_schedules, CASCADE)
 room_number (TEXT)
@@ -247,7 +247,7 @@ expected_duration_minutes (INTEGER)
 period_month (INTEGER)
 period_year (INTEGER)
 created_at (TIMESTAMPTZ)
-```
+\`\`\`
 
 **Indexes**:
 - idx_maintenance_tasks_schedule_id
@@ -261,10 +261,10 @@ created_at (TIMESTAMPTZ)
 **File**: `013_create_storage_bucket`  
 **Bucket**: task-photos
 
-```sql
+\`\`\`sql
 INSERT INTO storage.buckets (id, name, public)
 VALUES ('task-photos', 'task-photos', true)
-```
+\`\`\`
 
 **Config**:
 - **Bucket ID**: task-photos
@@ -280,7 +280,7 @@ VALUES ('task-photos', 'task-photos', true)
 **File**: `014_create_storage_policies`  
 **Policies**: 3
 
-```sql
+\`\`\`sql
 1. "Authenticated users can upload task photos"
    - INSERT allowed for auth.uid() IS NOT NULL
 
@@ -289,7 +289,7 @@ VALUES ('task-photos', 'task-photos', true)
 
 3. "Users can delete own task photos"
    - DELETE allowed if auth.uid() = owner
-```
+\`\`\`
 
 **Result**: ✅ Storage access control configured
 
@@ -353,12 +353,12 @@ VALUES ('task-photos', 'task-photos', true)
 **Function**: handle_new_user()  
 **Trigger**: on_auth_user_created
 
-```sql
+\`\`\`sql
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW
   EXECUTE FUNCTION public.handle_new_user();
-```
+\`\`\`
 
 **Behavior**: When user signs up via Supabase Auth, automatically:
 1. Extract metadata (name, role, department, phone, shift times)
@@ -373,9 +373,9 @@ CREATE TRIGGER on_auth_user_created
 **File**: `019_escalation_detection_function`  
 **Function**: detect_task_escalations()
 
-```sql
+\`\`\`sql
 SELECT * FROM detect_task_escalations()
-```
+\`\`\`
 
 **Returns**: escalation_id, task_id, worker_id, level
 
@@ -395,9 +395,9 @@ SELECT * FROM detect_task_escalations()
 **File**: `020_notification_cleanup_function`  
 **Function**: delete_old_notifications()
 
-```sql
+\`\`\`sql
 SELECT delete_old_notifications();
-```
+\`\`\`
 
 **Logic**: Delete notifications older than 30 days
 
@@ -440,7 +440,7 @@ SELECT delete_old_notifications();
 
 The migrations were applied in this sequence (not all numbers used sequentially):
 
-```
+\`\`\`
 1. 001_minimal_test
 2. 002_create_users_table
 3. 003_create_tasks_table
@@ -457,7 +457,7 @@ The migrations were applied in this sequence (not all numbers used sequentially)
 11. 018_create_auth_user_trigger
 12. 019_escalation_detection_function
 13. 020_notification_cleanup_function
-```
+\`\`\`
 
 ---
 
@@ -465,7 +465,7 @@ The migrations were applied in this sequence (not all numbers used sequentially)
 
 Run these in Supabase → SQL Editor to verify migrations:
 
-```sql
+\`\`\`sql
 -- Check all tables exist
 SELECT tablename FROM pg_tables 
 WHERE schemaname = 'public' 
@@ -500,7 +500,7 @@ WHERE trigger_schema = 'public';
 
 -- Check storage buckets
 SELECT * FROM storage.buckets WHERE id = 'task-photos';
-```
+\`\`\`
 
 ---
 
@@ -519,7 +519,7 @@ SELECT * FROM storage.buckets WHERE id = 'task-photos';
 
 If you need to reset:
 
-```sql
+\`\`\`sql
 -- Drop all custom objects
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 DROP FUNCTION IF EXISTS public.handle_new_user();
@@ -540,7 +540,7 @@ DROP TABLE IF EXISTS public.users CASCADE;
 
 -- Drop storage bucket
 DELETE FROM storage.buckets WHERE id = 'task-photos';
-```
+\`\`\`
 
 ---
 
@@ -579,4 +579,3 @@ DELETE FROM storage.buckets WHERE id = 'task-photos';
 **✅ All 13 migrations successfully applied to Supabase!**
 
 Your database is now production-ready. Next: Configure `.env.local` and create test users.
-

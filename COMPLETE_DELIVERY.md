@@ -99,11 +99,11 @@ All users ready to login and test immediately.
 ## 🚀 How to Launch
 
 ### Step 1: Start Server (1 minute)
-```bash
+\`\`\`bash
 cd "c:\Users\likhe\Desktop\Projects\Hermes Task Management\hermes-monitoring"
 pnpm install  # First time only
 pnpm dev
-```
+\`\`\`
 
 Expected output: `✓ Ready in 2.5s` → http://localhost:3000
 
@@ -176,7 +176,7 @@ Expected output: `✓ Ready in 2.5s` → http://localhost:3000
 
 ### New Files Created (9)
 
-```
+\`\`\`
 .env.local                          ← Supabase credentials
 QUICK_START_GUIDE.md               ← Launch & test guide
 SYSTEM_STATUS.md                   ← Complete status report
@@ -186,7 +186,7 @@ SUPABASE_SETUP.md                  ← Already created
 .github/copilot-instructions.md    ← Already created
 SETUP_COMPLETE.md                  ← Already created
 MIGRATIONS_APPLIED.md              ← Already created
-```
+\`\`\`
 
 ### Modified Files (0)
 
@@ -239,7 +239,7 @@ MIGRATIONS_APPLIED.md              ← Already created
 
 ### Documentation Roadmap
 
-```
+\`\`\`
 START HERE
     ↓
 QUICK_START_GUIDE.md (get running in 15 min)
@@ -251,11 +251,11 @@ ARCHITECTURE_GUIDE.md (deep dive into design)
 SUPABASE_SETUP.md (detailed configuration)
     ↓
 .github/copilot-instructions.md (code conventions)
-```
+\`\`\`
 
 ### Troubleshooting Flow
 
-```
+\`\`\`
 Something not working?
     ↓
 Check browser console (F12) for errors
@@ -267,7 +267,7 @@ Read SUPABASE_SETUP.md - Troubleshooting section
 Check QUICK_START_GUIDE.md - Troubleshooting section
     ↓
 Review SYSTEM_STATUS.md for configuration details
-```
+\`\`\`
 
 ---
 
@@ -442,9 +442,9 @@ Review SYSTEM_STATUS.md for configuration details
 ## 🚀 Next Steps
 
 ### Right Now (< 5 minutes)
-```bash
+\`\`\`bash
 pnpm dev
-```
+\`\`\`
 
 ### In 15 minutes
 - Follow QUICK_START_GUIDE.md
@@ -488,4 +488,3 @@ Thank you for using the Hermes Task Management System.
 **Confidence Level**: 95%+ (Production-Ready)
 
 🎉 **You're all set!**
-

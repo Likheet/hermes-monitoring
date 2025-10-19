@@ -45,7 +45,7 @@ Your `.env.local` now includes:
 
 ### Table Summary
 
-```
+\`\`\`
 Core System
 ├─ users (8 rows) ................. Test users ready
 ├─ tasks (empty) .................. Ready for data
@@ -75,7 +75,7 @@ Workflows & Notifications
 Admin
 ├─ archived_tasks ................. Ready
 └─ system_metrics ................. Ready
-```
+\`\`\`
 
 ---
 
@@ -96,9 +96,9 @@ Admin
 ## 🚀 Ready to Launch
 
 ### Start Now
-```bash
+\`\`\`bash
 pnpm dev
-```
+\`\`\`
 
 ### Then Test
 1. Open http://localhost:3000
@@ -111,4 +111,3 @@ pnpm dev
 ---
 
 For complete details, see: **ENV_VERIFICATION_AND_TABLE_ANALYSIS.md**
-

@@ -41,24 +41,24 @@ Your Hermes Task Management System is **completely set up and ready to use**. Ev
 ## 🚀 Launch in 3 Steps
 
 ### Step 1: Start Server (Takes 30 seconds)
-```bash
+\`\`\`bash
 cd "c:\Users\likhe\Desktop\Projects\Hermes Task Management\hermes-monitoring"
 pnpm dev
-```
+\`\`\`
 
 Expected output:
-```
+\`\`\`
   ▲ Next.js 15.0.0
   - Local:        http://localhost:3000
   - Environments: .env.local
 
 ✓ Ready in 2.5s
-```
+\`\`\`
 
 ### Step 2: Open Browser
-```
+\`\`\`
 http://localhost:3000
-```
+\`\`\`
 
 ### Step 3: Login & Test
 - Select: "Front Office Staff"
@@ -112,7 +112,7 @@ http://localhost:3000
 
 ## 📊 System At A Glance
 
-```
+\`\`\`
 ┌─────────────────────────────────────────┐
 │      Hermes Task Management v1.0        │
 │    (Production-Ready Infrastructure)    │
@@ -135,7 +135,7 @@ http://localhost:3000
     │ Tailwind│            │ Auth +   │
     │  + PWA  │            │ Storage  │
     └─────────┘            └──────────┘
-```
+\`\`\`
 
 ---
 
@@ -156,7 +156,7 @@ Your system has **enterprise-grade security**:
 ## 🎯 Test Workflows
 
 ### Workflow 1: Create Task (2 minutes)
-```
+\`\`\`
 1. Login as "Front Office Staff"
 2. Go to /front-office
 3. Click "Create New Task"
@@ -164,10 +164,10 @@ Your system has **enterprise-grade security**:
 5. Click "Create Task"
 6. Verify in Supabase: tasks table shows new entry
 ✅ Complete!
-```
+\`\`\`
 
 ### Workflow 2: Assign & Complete (5 minutes)
-```
+\`\`\`
 1. Login as "Housekeeping Supervisor"
 2. Go to /supervisor
 3. See created task
@@ -178,26 +178,26 @@ Your system has **enterprise-grade security**:
 8. Click "Start"
 9. Verify status changed to IN_PROGRESS in database
 ✅ Complete!
-```
+\`\`\`
 
 ### Workflow 3: Realtime Sync (3 minutes)
-```
+\`\`\`
 1. Open two browser windows
 2. Window 1: Login as "Front Office Staff"
 3. Window 2: Login as "Supervisor"
 4. Window 1: Create a new task
 5. Window 2: Watch task appear INSTANTLY (no refresh)
 ✅ Complete! Realtime is working
-```
+\`\`\`
 
 ### Workflow 4: Photo Upload (3 minutes)
-```
+\`\`\`
 1. On a task, enable "Photo Required"
 2. Click "Upload Photo"
 3. Select image from device
 4. Verify in Supabase: Storage → task-photos bucket
 ✅ Complete!
-```
+\`\`\`
 
 ---
 
@@ -218,16 +218,16 @@ Your system has **enterprise-grade security**:
 ### "It's not working!" — Start here
 
 **Step 1**: Check `.env.local` exists
-```bash
+\`\`\`bash
 # Should show Supabase credentials
 cat .env.local
-```
+\`\`\`
 
 **Step 2**: Check dev server is running
-```bash
+\`\`\`bash
 # Terminal should show "✓ Ready in 2.5s"
 pnpm dev
-```
+\`\`\`
 
 **Step 3**: Check browser console (F12)
 - Look for red error messages
@@ -323,7 +323,7 @@ Open browser console (F12) to see:
 
 ### Tip 4: Database Queries
 In Supabase SQL Editor, run:
-```sql
+\`\`\`sql
 -- See all tasks
 SELECT * FROM tasks ORDER BY created_at DESC;
 
@@ -332,7 +332,7 @@ SELECT * FROM audit_logs ORDER BY created_at DESC;
 
 -- See notifications
 SELECT * FROM notifications ORDER BY created_at DESC;
-```
+\`\`\`
 
 ---
 
@@ -435,9 +435,9 @@ See SUPABASE_SETUP.md - Deployment section for details.
 **Everything is set up and ready to use.**
 
 ### Right Now
-```bash
+\`\`\`bash
 pnpm dev
-```
+\`\`\`
 
 ### In 5 Minutes
 - Login with "Front Office Staff"
@@ -512,4 +512,3 @@ Your Hermes Task Management System is **complete, configured, and ready to use.*
 **Last Updated**: October 19, 2025
 
 **Questions?** Check DOCUMENTATION_INDEX.md for navigation.
-

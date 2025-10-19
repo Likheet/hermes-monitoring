@@ -13,34 +13,34 @@
 Your `.env.local` now contains **14 comprehensive environment variables**:
 
 #### Public URLs (Safe to expose)
-```
+\`\`\`
 NEXT_PUBLIC_SUPABASE_URL=https://wtfnntauwvsgohfmhgyo.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 SUPABASE_URL=https://wtfnntauwvsgohfmhgyo.supabase.co
 SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
-```
+\`\`\`
 
 #### Secret Keys (Server-side only)
-```
+\`\`\`
 SUPABASE_JWT_SECRET=JWoGgLSiSvHH/wjnZeJKo5uOoySrDZwBeKUkIlZ/LSH0IvoOo89M...
 SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3M...
-```
+\`\`\`
 
 #### PostgreSQL Connection Strings
-```
+\`\`\`
 POSTGRES_URL (Pooled)
 POSTGRES_PRISMA_URL (Pooled with pgbouncer)
 POSTGRES_URL_NON_POOLING (Direct connection)
-```
+\`\`\`
 
 #### PostgreSQL Credentials
-```
+\`\`\`
 POSTGRES_HOST=db.wtfnntauwvsgohfmhgyo.supabase.co
 POSTGRES_USER=postgres
 POSTGRES_PASSWORD=1bV0t4chulu1wTqq
 POSTGRES_DATABASE=postgres
 POSTGRES_PORT=5432
-```
+\`\`\`
 
 **Total**: 14 environment variables configured ✅
 
@@ -128,7 +128,7 @@ These are safe without RLS because they're either reference tables or don't cont
 
 **Analysis Results**:
 
-```
+\`\`\`
 TABLE NAME COLLISIONS: ✅ None
 ├─ All 20 table names are unique
 └─ No duplicate table definitions
@@ -163,14 +163,14 @@ CONSTRAINT CONFLICTS: ✅ None
 ├─ Check constraints non-conflicting
 ├─ Default values reasonable
 └─ Unique constraints appropriate
-```
+\`\`\`
 
 ---
 
 ## 🔗 Foreign Key Relationships Map
 
 ### Task-Related Foreign Keys
-```
+\`\`\`
 tasks.assigned_to_user_id → users.id
 tasks.assigned_by_user_id → users.id
 tasks.template_id → task_templates.id
@@ -193,10 +193,10 @@ handovers.to_worker_id → users.id
 
 notifications.user_id → users.id
 notifications.task_id → tasks.id
-```
+\`\`\`
 
 ### Scheduling Foreign Keys
-```
+\`\`\`
 shift_schedules.worker_id → users.id
 shift_schedules.created_by → users.id
 
@@ -213,19 +213,19 @@ worker_rotation_assignments.created_by → users.id
 shift_swap_requests.requester_id → users.id
 shift_swap_requests.target_worker_id → users.id
 shift_swap_requests.approved_by → users.id
-```
+\`\`\`
 
 ### Maintenance Foreign Keys
-```
+\`\`\`
 maintenance_tasks.schedule_id → maintenance_schedules.id
 
 task_templates.created_by → users.id
-```
+\`\`\`
 
 ### User Preferences
-```
+\`\`\`
 user_preferences.user_id → users.id
-```
+\`\`\`
 
 **Status**: ✅ All relationships valid, no orphaned references
 
@@ -256,7 +256,7 @@ user_preferences.user_id → users.id
 ## 🚀 Ready to Use
 
 ### Configuration Status
-```
+\`\`\`
 ✅ Public Supabase URLs configured
 ✅ Authentication keys loaded
 ✅ PostgreSQL connections ready
@@ -265,14 +265,14 @@ user_preferences.user_id → users.id
 ✅ Foreign key relationships valid
 ✅ No table clashes
 ✅ Security policies in place
-```
+\`\`\`
 
 ### Next Steps
 
 1. **Verify Connection**
-   ```bash
+   \`\`\`bash
    pnpm dev
-   ```
+   \`\`\`
 
 2. **Test Login**
    - Navigate to http://localhost:3000
@@ -288,24 +288,24 @@ user_preferences.user_id → users.id
 ## 📋 Environment Variables Quick Reference
 
 ### Frontend (Safe to Expose)
-```bash
+\`\`\`bash
 NEXT_PUBLIC_SUPABASE_URL=https://wtfnntauwvsgohfmhgyo.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGci...
-```
+\`\`\`
 
 ### Backend (Keep Secret)
-```bash
+\`\`\`bash
 SUPABASE_SERVICE_ROLE_KEY=eyJhbGci...
 SUPABASE_JWT_SECRET=JWoGgLS...
 POSTGRES_PASSWORD=1bV0t4chulu1wTqq
-```
+\`\`\`
 
 ### Database Access
-```bash
+\`\`\`bash
 POSTGRES_URL=postgres://...  (with pooling)
 POSTGRES_PRISMA_URL=postgres://...  (with pgbouncer)
 POSTGRES_URL_NON_POOLING=postgres://...  (direct)
-```
+\`\`\`
 
 ---
 
@@ -342,7 +342,7 @@ POSTGRES_URL_NON_POOLING=postgres://...  (direct)
 
 ## 🔐 Security Posture
 
-```
+\`\`\`
 AUTHENTICATION          ✅ Complete
 ├─ Supabase Auth enabled
 ├─ JWT tokens configured
@@ -362,7 +362,7 @@ AUDIT TRAIL             ✅ Complete
 ├─ Audit logs enabled
 ├─ User actions tracked
 └─ Tamper detection active
-```
+\`\`\`
 
 ---
 
@@ -385,4 +385,3 @@ AUDIT TRAIL             ✅ Complete
 **Verified**: October 19, 2025  
 **Status**: ✅ All Clear  
 **Confidence**: 100%
-

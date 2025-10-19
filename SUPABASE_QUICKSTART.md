@@ -23,10 +23,10 @@ Your Supabase database has been successfully rebuilt from scratch with a product
 
 Create or update `.env.local`:
 
-```bash
+\`\`\`bash
 NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...
-```
+\`\`\`
 
 👉 **Get these from**: Supabase Dashboard → Settings → API → Project URL & Anon Key
 
@@ -39,26 +39,26 @@ You need at least one auth user to log in. Choose one:
 2. Click **+ Add User**
 3. Enter: `test@example.com` / password: `Test123!`
 4. In **User Metadata**, add:
-   ```json
+   \`\`\`json
    {
      "name": "Test Worker",
      "role": "worker",
      "department": "housekeeping",
      "phone": "+1234567890"
    }
-   ```
+   \`\`\`
 
 **Option B: Script**
-```bash
+\`\`\`bash
 cd scripts
 npx ts-node create-test-users.ts
-```
+\`\`\`
 
 ### Step 3: Start Dev Server
 
-```bash
+\`\`\`bash
 pnpm dev
-```
+\`\`\`
 
 ### Step 4: Test Login
 
@@ -93,7 +93,7 @@ pnpm dev
 
 ## How It Works
 
-```
+\`\`\`
 Your App (Next.js)
     ↓
 TaskProvider (lib/task-context.tsx)
@@ -105,19 +105,19 @@ TaskProvider (lib/task-context.tsx)
          ├─ Tables: tasks, users, audit_logs, notifications...
          ├─ RLS: Role-based row filtering
          └─ Storage: task-photos bucket
-```
+\`\`\`
 
 ### Data Flow
 
 **Creating a Task**:
-```
+\`\`\`
 1. User clicks "Create Task" in /front-office
 2. createTask() adds to React state
 3. saveTaskToSupabase() inserts into DB
 4. Realtime triggers: INSERT event
 5. All connected clients auto-update
 6. Workers see task in their inbox instantly
-```
+\`\`\`
 
 ---
 
@@ -144,9 +144,9 @@ TaskProvider (lib/task-context.tsx)
 
 ### Q: "You don't have permission" error?
 **A**: RLS policies may not have been applied. Run this in Supabase SQL Editor:
-```sql
+\`\`\`sql
 SELECT * FROM pg_policies WHERE schemaname = 'public';
-```
+\`\`\`
 Should see 20+ policies listed.
 
 ### Q: Photos not uploading?
@@ -188,4 +188,3 @@ If something doesn't work:
 **Your Supabase backend is ready! 🎉**
 
 Next step: Test by creating a task and verifying it appears in the database.
-
