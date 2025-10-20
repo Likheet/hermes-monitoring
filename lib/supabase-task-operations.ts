@@ -42,7 +42,7 @@ export async function loadUsersFromSupabase(): Promise<User[]> {
     }
 
     console.log(`[v0] Loaded ${data?.length || 0} users from Supabase`)
-    return (data || []).map((dbUser: DatabaseUser) => databaseUserToApp(dbUser))
+    return (data || []).map((dbUser) => databaseUserToApp(dbUser as DatabaseUser))
   } catch (error) {
     console.error("[v0] Exception loading users:", error)
     return []
@@ -76,14 +76,16 @@ export async function saveTaskToSupabase(task: Task): Promise<boolean> {
   }
 }
 
-export async function saveUserToSupabase(user: User): Promise<boolean> {
+export async function saveUserToSupabase(
+  user: User,
+  credentials: { username: string; passwordHash: string },
+): Promise<boolean> {
   try {
     const supabase = createClient()
-    const dbUser = appUserToDatabase(user)
 
-    const { password_hash, ...userWithoutPassword } = dbUser as any
+    const dbUser = appUserToDatabase(user, credentials.username, credentials.passwordHash)
 
-    const { error } = await supabase.from("users").upsert(userWithoutPassword)
+    const { error } = await supabase.from("users").upsert(dbUser)
 
     if (error) {
       console.error("[v0] Error saving user to Supabase:", error)
@@ -116,13 +118,14 @@ export async function loadShiftSchedulesFromSupabase(): Promise<ShiftSchedule[]>
     return (data || []).map((dbSchedule: any) => ({
       id: dbSchedule.id,
       worker_id: dbSchedule.worker_id,
-      date: dbSchedule.schedule_date,
+      schedule_date: dbSchedule.schedule_date,
       shift_start: dbSchedule.shift_start,
       shift_end: dbSchedule.shift_end,
-      break_start: dbSchedule.break_start || undefined,
-      break_end: dbSchedule.break_end || undefined,
-      is_override: dbSchedule.is_override || false,
-      override_reason: dbSchedule.override_reason || undefined,
+      has_break: Boolean(dbSchedule.break_start && dbSchedule.break_end),
+      break_start: dbSchedule.break_start ?? undefined,
+      break_end: dbSchedule.break_end ?? undefined,
+      is_override: dbSchedule.is_override ?? false,
+  override_reason: dbSchedule.override_reason ?? undefined,
       created_at: dbSchedule.created_at,
     }))
   } catch (error) {
@@ -138,13 +141,13 @@ export async function saveShiftScheduleToSupabase(schedule: ShiftSchedule): Prom
     const dbSchedule = {
       id: schedule.id,
       worker_id: schedule.worker_id,
-      schedule_date: schedule.date,
+      schedule_date: schedule.schedule_date,
       shift_start: schedule.shift_start,
       shift_end: schedule.shift_end,
       break_start: schedule.break_start || null,
       break_end: schedule.break_end || null,
       is_override: schedule.is_override || false,
-      override_reason: schedule.override_reason || null,
+  override_reason: schedule.override_reason || null,
     }
 
     const { error } = await supabase.from("shift_schedules").upsert(dbSchedule)

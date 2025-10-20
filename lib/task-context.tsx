@@ -1,16 +1,18 @@
 "use client"
 
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from "react"
-import type { Task, AuditLogEntry, User, TaskIssue, CategorizedPhotos } from "./types"
+import type { Task, AuditLogEntry, User, TaskIssue, CategorizedPhotos, Department, UserRole } from "./types"
 import type { MaintenanceSchedule, MaintenanceTask, MaintenanceTaskType, ShiftSchedule } from "./maintenance-types"
 import { createDualTimestamp, mockUsers } from "./mock-data"
 import { createNotification, playNotificationSound } from "./notification-utils"
 import { triggerHapticFeedback } from "./haptics"
 import { ALL_ROOMS, getMaintenanceItemsForRoom } from "./location-data"
-import { useRealtimeTasks } from "./use-realtime-tasks"
+import { useRealtimeTasks, type TaskRealtimePayload } from "./use-realtime-tasks"
+import { hashPassword } from "./auth-utils"
 import {
   loadTasksFromSupabase,
   loadUsersFromSupabase,
+  loadShiftSchedulesFromSupabase,
   saveTaskToSupabase,
   saveUserToSupabase,
   saveMaintenanceScheduleToSupabase,
@@ -29,6 +31,45 @@ const DEFAULT_MAINTENANCE_DURATION: Record<MaintenanceTaskType, number> = {
   all: 60,
 }
 
+type NonAdminRole = Exclude<UserRole, "admin">
+
+interface CreateUserInput {
+  username: string
+  password: string
+  role: NonAdminRole
+  name?: string
+  department?: Department
+}
+
+interface CreateUserResult {
+  success: boolean
+  error?: string
+}
+
+const DEFAULT_DEPARTMENT_FOR_ROLE: Record<NonAdminRole, Department> = {
+  worker: "housekeeping",
+  supervisor: "maintenance",
+  front_office: "front_desk",
+}
+
+const DEFAULT_SHIFT_TIMING = {
+  start: "09:00",
+  end: "17:00",
+}
+
+function generateUuid() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID()
+  }
+
+  const segments = [8, 4, 4, 4, 12]
+  return segments
+    .map((length) =>
+      Array.from({ length }, () => Math.floor(Math.random() * 16).toString(16)).join(""),
+    )
+    .join("-")
+}
+
 interface TaskContextType {
   tasks: Task[]
   users: User[]
@@ -36,6 +77,7 @@ interface TaskContextType {
   schedules: MaintenanceSchedule[]
   maintenanceTasks: MaintenanceTask[]
   shiftSchedules: ShiftSchedule[]
+  isBusy: boolean
   updateTask: (taskId: string, updates: Partial<Task>) => Promise<void>
   addAuditLog: (taskId: string, entry: Omit<AuditLogEntry, "timestamp">) => void
   startTask: (taskId: string, userId: string) => Promise<{ success: boolean; error?: string }>
@@ -69,7 +111,7 @@ interface TaskContextType {
     breakStart?: string,
     breakEnd?: string,
   ) => void
-  addWorker: (worker: Omit<User, "id" | "is_available">) => void
+  addWorker: (input: CreateUserInput) => Promise<CreateUserResult>
   raiseIssue: (taskId: string, userId: string, issueDescription: string, photos?: string[]) => void
   addSchedule: (schedule: Omit<MaintenanceSchedule, "id" | "created_at">) => void
   updateSchedule: (scheduleId: string, updates: Partial<MaintenanceSchedule>) => void
@@ -91,33 +133,75 @@ export function TaskProvider({ children }: { children: ReactNode }) {
   const [schedules, setSchedules] = useState<MaintenanceSchedule[]>([])
   const [maintenanceTasks, setMaintenanceTasks] = useState<MaintenanceTask[]>([])
   const [shiftSchedules, setShiftSchedules] = useState<ShiftSchedule[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+  const [activeRequests, setActiveRequests] = useState(0)
 
-  const refreshTasks = useCallback(async () => {
-    try {
-      const data = await loadTasksFromSupabase()
-      setTasks(data)
-    } catch (error) {
-      console.error("[v0] Error loading tasks from Supabase:", error)
-    }
+  const beginRequest = useCallback(() => {
+    setActiveRequests((prev) => prev + 1)
   }, [])
 
-  const refreshUsers = useCallback(async () => {
+  const settleRequest = useCallback(() => {
+    setActiveRequests((prev) => (prev > 0 ? prev - 1 : 0))
+  }, [])
+
+  const runWithGlobalLoading = useCallback(<T,>(operation: () => Promise<T>) => {
+    beginRequest()
+
+    let operationPromise: Promise<T>
     try {
-      const data = await loadUsersFromSupabase()
-      if (data.length > 0) {
-        setUsers(data)
-      } else {
+      operationPromise = operation()
+    } catch (error) {
+      settleRequest()
+      return Promise.reject(error)
+    }
+
+    return operationPromise.finally(() => {
+      settleRequest()
+    })
+  }, [beginRequest, settleRequest])
+
+  const isBusy = activeRequests > 0
+
+  const refreshTasks = useCallback(() => {
+    return runWithGlobalLoading(async () => {
+      try {
+        const data = await loadTasksFromSupabase()
+        setTasks(data)
+      } catch (error) {
+        console.error("[v0] Error loading tasks from Supabase:", error)
+      }
+    })
+  }, [runWithGlobalLoading])
+
+  const refreshUsers = useCallback(() => {
+    return runWithGlobalLoading(async () => {
+      try {
+        const data = await loadUsersFromSupabase()
+        if (data.length > 0) {
+          setUsers(data)
+        } else {
+          setUsers(mockUsers)
+        }
+      } catch (error) {
+        console.error("[v0] Error loading users from Supabase:", error)
         setUsers(mockUsers)
       }
-    } catch (error) {
-      console.error("[v0] Error loading users from Supabase:", error)
-      setUsers(mockUsers)
-    }
-  }, [])
+    })
+  }, [runWithGlobalLoading])
+
+  const refreshShiftSchedules = useCallback(() => {
+    return runWithGlobalLoading(async () => {
+      try {
+        const data = await loadShiftSchedulesFromSupabase()
+        setShiftSchedules(data)
+      } catch (error) {
+        console.error("[v0] Error loading shift schedules from Supabase:", error)
+        setShiftSchedules([])
+      }
+    })
+  }, [runWithGlobalLoading])
 
   const handleRealtimeTaskUpdate = useCallback(
-    (payload: any) => {
+    (payload: TaskRealtimePayload) => {
       console.log("[v0] Realtime task update received:", payload.eventType)
       void refreshTasks()
     },
@@ -136,58 +220,57 @@ export function TaskProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     async function loadData() {
       console.log("[v0] Loading data from Supabase...")
-      setIsLoading(true)
 
       try {
-        await Promise.all([refreshTasks(), refreshUsers()])
+        await Promise.all([refreshTasks(), refreshUsers(), refreshShiftSchedules()])
 
         console.log("[v0] ✅ Data loaded from Supabase")
       } catch (error) {
         console.error("[v0] Error loading data:", error)
         setUsers(mockUsers)
-      } finally {
-        setIsLoading(false)
       }
     }
 
     loadData()
-  }, [refreshTasks, refreshUsers])
+  }, [refreshTasks, refreshUsers, refreshShiftSchedules])
 
   const updateTask = async (taskId: string, updates: Partial<Task>) => {
-    try {
-      const response = await fetch(`/api/tasks/${taskId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(updates),
-      })
+    await runWithGlobalLoading(async () => {
+      try {
+        const response = await fetch(`/api/tasks/${taskId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(updates),
+        })
 
-      if (response.ok) {
-        const { task } = await response.json()
-        setTasks((prev) =>
-          prev.map((t) => {
-            if (t.id !== taskId) return t
-            const merged = {
-              ...t,
-              ...task,
-              department: t.department ?? task.department,
-            }
-
-            Object.entries(updates).forEach(([key, value]) => {
-              if (typeof value !== "undefined") {
-                ;(merged as Record<string, unknown>)[key] = value as unknown
+        if (response.ok) {
+          const { task } = await response.json()
+          setTasks((prev) =>
+            prev.map((t) => {
+              if (t.id !== taskId) return t
+              const merged = {
+                ...t,
+                ...task,
+                department: t.department ?? task.department,
               }
-            })
 
-            return merged
-          }),
-        )
-        console.log("[v0] Task updated successfully via API:", taskId)
-      } else {
-        console.error("[v0] Failed to update task via API:", await response.text())
+              Object.entries(updates).forEach(([key, value]) => {
+                if (typeof value !== "undefined") {
+                  ;(merged as Record<string, unknown>)[key] = value as unknown
+                }
+              })
+
+              return merged
+            }),
+          )
+          console.log("[v0] Task updated successfully via API:", taskId)
+        } else {
+          console.error("[v0] Failed to update task via API:", await response.text())
+        }
+      } catch (error) {
+        console.error("[v0] Error updating task:", error)
       }
-    } catch (error) {
-      console.error("[v0] Error updating task:", error)
-    }
+    })
   }
 
   const addAuditLog = (taskId: string, entry: Omit<AuditLogEntry, "timestamp">) => {
@@ -225,24 +308,26 @@ export function TaskProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    try {
-      const response = await fetch(`/api/tasks/${taskId}/start`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId }),
-      })
+    return runWithGlobalLoading(async () => {
+      try {
+        const response = await fetch(`/api/tasks/${taskId}/start`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ userId }),
+        })
 
-      if (response.ok) {
-  await refreshTasks()
-        return { success: true }
-      } else {
-        const error = await response.json()
-        return { success: false, error: error.message || "Failed to start task" }
+        if (response.ok) {
+          await refreshTasks()
+          return { success: true }
+        } else {
+          const error = await response.json()
+          return { success: false, error: error.message || "Failed to start task" }
+        }
+      } catch (error) {
+        console.error("[v0] Error starting task:", error)
+        return { success: false, error: "Network error" }
       }
-    } catch (error) {
-      console.error("[v0] Error starting task:", error)
-      return { success: false, error: "Network error" }
-    }
+    })
   }
 
   const pauseTask = async (taskId: string, userId: string, reason: string) => {
@@ -260,24 +345,26 @@ export function TaskProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    try {
-      const response = await fetch(`/api/tasks/${taskId}/pause`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId, reason }),
-      })
+    return runWithGlobalLoading(async () => {
+      try {
+        const response = await fetch(`/api/tasks/${taskId}/pause`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ userId, reason }),
+        })
 
-      if (response.ok) {
-  await refreshTasks()
-        return { success: true }
-      } else {
-        const error = await response.json()
-        return { success: false, error: error.message || "Failed to pause task" }
+        if (response.ok) {
+          await refreshTasks()
+          return { success: true }
+        } else {
+          const error = await response.json()
+          return { success: false, error: error.message || "Failed to pause task" }
+        }
+      } catch (error) {
+        console.error("[v0] Error pausing task:", error)
+        return { success: false, error: "Network error" }
       }
-    } catch (error) {
-      console.error("[v0] Error pausing task:", error)
-      return { success: false, error: "Network error" }
-    }
+    })
   }
 
   const resumeTask = async (taskId: string, userId: string) => {
@@ -295,43 +382,47 @@ export function TaskProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    try {
-      const response = await fetch(`/api/tasks/${taskId}/resume`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId }),
-      })
+    return runWithGlobalLoading(async () => {
+      try {
+        const response = await fetch(`/api/tasks/${taskId}/resume`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ userId }),
+        })
 
-      if (response.ok) {
-  await refreshTasks()
-        return { success: true }
-      } else {
-        const error = await response.json()
-        return { success: false, error: error.message || "Failed to resume task" }
+        if (response.ok) {
+          await refreshTasks()
+          return { success: true }
+        } else {
+          const error = await response.json()
+          return { success: false, error: error.message || "Failed to resume task" }
+        }
+      } catch (error) {
+        console.error("[v0] Error resuming task:", error)
+        return { success: false, error: "Network error" }
       }
-    } catch (error) {
-      console.error("[v0] Error resuming task:", error)
-      return { success: false, error: "Network error" }
-    }
+    })
   }
 
   const completeTask = async (taskId: string, userId: string, categorizedPhotos: CategorizedPhotos, remark: string) => {
-    try {
-      const response = await fetch(`/api/tasks/${taskId}/complete`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId, categorizedPhotos, remark }),
-      })
+    await runWithGlobalLoading(async () => {
+      try {
+        const response = await fetch(`/api/tasks/${taskId}/complete`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ userId, categorizedPhotos, remark }),
+        })
 
-      if (response.ok) {
-        await refreshTasks()
-        console.log("[v0] Task completed successfully via API:", taskId)
-      } else {
-        console.error("[v0] Failed to complete task via API:", await response.text())
+        if (response.ok) {
+          await refreshTasks()
+          console.log("[v0] Task completed successfully via API:", taskId)
+        } else {
+          console.error("[v0] Failed to complete task via API:", await response.text())
+        }
+      } catch (error) {
+        console.error("[v0] Error completing task:", error)
       }
-    } catch (error) {
-      console.error("[v0] Error completing task:", error)
-    }
+    })
   }
 
   const getTaskById = (taskId: string) => {
@@ -339,40 +430,42 @@ export function TaskProvider({ children }: { children: ReactNode }) {
   }
 
   const createTask = async (taskData: Omit<Task, "id" | "audit_log" | "pause_history">) => {
-    try {
-      const response = await fetch("/api/tasks", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...taskData,
-          assigned_at_client: taskData.assigned_at.client,
-        }),
-      })
+    await runWithGlobalLoading(async () => {
+      try {
+        const response = await fetch("/api/tasks", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ...taskData,
+            assigned_at_client: taskData.assigned_at.client,
+          }),
+        })
 
-      if (response.ok) {
-        const { task } = await response.json()
-        setTasks((prev) => [...prev, task])
-        console.log("[v0] Task created successfully via API:", task.id)
+        if (response.ok) {
+          const { task } = await response.json()
+          setTasks((prev) => [...prev, task])
+          console.log("[v0] Task created successfully via API:", task.id)
 
-        if (task.is_custom_task || task.custom_task_name) {
-          const adminUsers = users.filter((u) => u.role === "admin")
-          const notificationName = task.custom_task_name || task.task_type
-          adminUsers.forEach((admin) => {
-            createNotification(
-              admin.id,
-              "system",
-              "Custom Task Created",
-              `Front office created a custom task: "${notificationName}" at ${task.room_number || "N/A"}. Consider adding this as a permanent task type.`,
-              task.id,
-            )
-          })
+          if (task.is_custom_task || task.custom_task_name) {
+            const adminUsers = users.filter((u) => u.role === "admin")
+            const notificationName = task.custom_task_name || task.task_type
+            adminUsers.forEach((admin) => {
+              createNotification(
+                admin.id,
+                "system",
+                "Custom Task Created",
+                `Front office created a custom task: "${notificationName}" at ${task.room_number || "N/A"}. Consider adding this as a permanent task type.`,
+                task.id,
+              )
+            })
+          }
+        } else {
+          console.error("[v0] Failed to create task via API:", await response.text())
         }
-      } else {
-        console.error("[v0] Failed to create task via API:", await response.text())
+      } catch (error) {
+        console.error("[v0] Error creating task:", error)
       }
-    } catch (error) {
-      console.error("[v0] Error creating task:", error)
-    }
+    })
   }
 
   const verifyTask = (
@@ -598,20 +691,51 @@ export function TaskProvider({ children }: { children: ReactNode }) {
     console.log("[v0] Worker shift update complete")
   }
 
-  const addWorker = (workerData: Omit<User, "id" | "is_available">) => {
-    const newWorker: User = {
-      ...workerData,
-      id: `u${Date.now()}`,
-      is_available: true,
-    }
-    console.log("[v0] Adding new worker:", newWorker)
-    setUsers((prev) => {
-      const updated = [...prev, newWorker]
-      saveUserToSupabase(newWorker)
-      console.log("[v0] Users after adding worker:", updated.length, "total users")
-      return updated
-    })
-  }
+  const addWorker = useCallback(
+    (input: CreateUserInput) => {
+      return runWithGlobalLoading(async () => {
+        const username = input.username.trim().toLowerCase()
+        const password = input.password.trim()
+
+        if (!username || !password) {
+          return { success: false, error: "Username and password are required." }
+        }
+
+        const role: NonAdminRole = input.role
+        try {
+          const passwordHash = await hashPassword(password)
+          const department = input.department ?? DEFAULT_DEPARTMENT_FOR_ROLE[role]
+          const newUser: User = {
+            id: generateUuid(),
+            name: input.name?.trim() || username,
+            role,
+            phone: "",
+            department,
+            shift_start: DEFAULT_SHIFT_TIMING.start,
+            shift_end: DEFAULT_SHIFT_TIMING.end,
+            has_break: false,
+            break_start: undefined,
+            break_end: undefined,
+            is_available: true,
+          }
+
+          const saved = await saveUserToSupabase(newUser, { username, passwordHash })
+          if (!saved) {
+            return { success: false, error: "Unable to store the new user in the database." }
+          }
+
+          setUsers((prev) => [...prev, newUser])
+          console.log("[v0] Added new team member:", newUser.id, "role:", role)
+          return { success: true }
+        } catch (error) {
+          console.error("[v0] Error adding new user:", error)
+          const message = error instanceof Error ? error.message : "Failed to add user"
+          return { success: false, error: message }
+        }
+      })
+    },
+    [runWithGlobalLoading],
+  )
 
   const raiseIssue = (taskId: string, userId: string, issueDescription: string, photos?: string[]) => {
     const task = tasks.find((t) => t.id === taskId)
@@ -881,19 +1005,29 @@ export function TaskProvider({ children }: { children: ReactNode }) {
       const updatedSchedule = {
         ...shiftSchedules[existingIndex],
         ...scheduleData,
+        has_break: Boolean(scheduleData.break_start && scheduleData.break_end),
         created_at: new Date().toISOString(),
       }
       setShiftSchedules((prev) => prev.map((s, i) => (i === existingIndex ? updatedSchedule : s)))
-      saveShiftScheduleToSupabase(updatedSchedule)
+      runWithGlobalLoading(async () => {
+        await saveShiftScheduleToSupabase(updatedSchedule)
+      }).catch((error) => {
+        console.error("[v0] Error saving shift schedule:", error)
+      })
     } else {
       const newSchedule: ShiftSchedule = {
         ...scheduleData,
-        id: `shift-sched-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        has_break: Boolean(scheduleData.break_start && scheduleData.break_end),
+        id: generateUuid(),
         created_at: new Date().toISOString(),
       }
       console.log("[v0] Creating new shift schedule:", newSchedule.id)
       setShiftSchedules((prev) => [...prev, newSchedule])
-      saveShiftScheduleToSupabase(newSchedule)
+      runWithGlobalLoading(async () => {
+        await saveShiftScheduleToSupabase(newSchedule)
+      }).catch((error) => {
+        console.error("[v0] Error saving new shift schedule:", error)
+      })
     }
   }
 
@@ -918,7 +1052,11 @@ export function TaskProvider({ children }: { children: ReactNode }) {
     console.log("[v0] Deleting shift schedule:", scheduleId)
     setShiftSchedules((prev) => {
       const updated = prev.filter((s) => s.id !== scheduleId)
-      deleteShiftScheduleFromSupabase(scheduleId)
+      runWithGlobalLoading(async () => {
+        await deleteShiftScheduleFromSupabase(scheduleId)
+      }).catch((error) => {
+        console.error("[v0] Error deleting shift schedule:", error)
+      })
       return updated
     })
   }
@@ -932,6 +1070,7 @@ export function TaskProvider({ children }: { children: ReactNode }) {
         schedules,
         maintenanceTasks,
         shiftSchedules,
+  isBusy,
         updateTask,
         addAuditLog,
         startTask,

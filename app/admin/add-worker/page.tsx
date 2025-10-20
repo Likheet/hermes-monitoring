@@ -4,7 +4,6 @@ import type React from "react"
 
 import { useState } from "react"
 import { ProtectedRoute } from "@/components/protected-route"
-import { useAuth } from "@/lib/auth-context"
 import { useTasks } from "@/lib/task-context"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -14,145 +13,136 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ArrowLeft, UserPlus } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { useToast } from "@/hooks/use-toast"
-import type { Department, UserRole } from "@/lib/types"
-import { calculateShiftHours } from "@/lib/date-utils"
+import type { UserRole } from "@/lib/types"
 
-function AddWorker() {
-  const { user } = useAuth()
-  const { addWorker } = useTasks()
+type NonAdminRole = Exclude<UserRole, "admin">
+
+function AddAccountForm(): JSX.Element {
   const router = useRouter()
   const { toast } = useToast()
+  const { addWorker } = useTasks()
 
   const [formData, setFormData] = useState({
-    name: "",
-    phone: "",
-    role: "worker" as UserRole,
-    department: "" as Department | "",
-    shift_start: "09:00",
-    shift_end: "17:00",
+    username: "",
+    password: "",
+    role: "worker" as NonAdminRole,
   })
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
-  const handleRoleChange = (value: UserRole) => {
-    setFormData((prev) => {
-      let nextDepartment: Department | "" = prev.department
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
 
-      if (value === "front_office") {
-        nextDepartment = "front_desk"
-      } else if (prev.department === "front_desk" && value !== "supervisor") {
-        nextDepartment = ""
-      }
+    const username = formData.username.trim()
+    const password = formData.password
 
-      return {
-        ...prev,
-        role: value,
-        department: nextDepartment,
-      }
-    })
-  }
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-
-    if (
-      !formData.name ||
-      !formData.phone ||
-      !formData.department ||
-      !formData.shift_start ||
-      !formData.shift_end ||
-      !formData.role
-    ) {
+    if (!username || !password) {
       toast({
-        title: "Error",
-        description: "Please fill in all fields",
+        title: "Missing details",
+        description: "Please enter both a username and password.",
         variant: "destructive",
       })
       return
     }
 
-    addWorker({
-      name: formData.name,
-      role: formData.role,
-      phone: formData.phone,
-      department: formData.department as Department,
-      shift_start: formData.shift_start,
-      shift_end: formData.shift_end,
-      has_break: false,
-    })
+    if (password.length < 6) {
+      toast({
+        title: "Password too short",
+        description: "Use at least 6 characters so the account is harder to guess.",
+        variant: "destructive",
+      })
+      return
+    }
 
-    toast({
-      title: "Staff Member Added",
-      description: `${formData.name} has been added successfully`,
-    })
+    setIsSubmitting(true)
+    try {
+      const result = await addWorker({
+        username,
+        password,
+        role: formData.role,
+      })
 
-    router.push("/admin")
+      if (result.success) {
+        toast({
+          title: "Account created",
+          description: `${username} can now sign in with the credentials provided.`,
+        })
+        router.push("/admin")
+      } else {
+        toast({
+          title: "Could not create account",
+          description: result.error ?? "Please try again.",
+          variant: "destructive",
+        })
+      }
+    } finally {
+      setIsSubmitting(false)
+    }
   }
-
-  const shiftHours = calculateShiftHours(formData.shift_start, formData.shift_end)
-  const departmentOptions: Array<{ value: Department; label: string }> = (() => {
-    if (formData.role === "front_office") {
-      return [{ value: "front_desk", label: "Front Desk" }]
-    }
-
-    const options: Array<{ value: Department; label: string }> = [
-      { value: "housekeeping", label: "Housekeeping" },
-      { value: "maintenance", label: "Maintenance" },
-    ]
-
-    if (formData.role === "supervisor") {
-      options.push({ value: "front_desk", label: "Front Desk" })
-    }
-
-    return options
-  })()
 
   return (
     <div className="min-h-screen bg-muted/30">
       <header className="border-b bg-background">
         <div className="container mx-auto flex items-center gap-4 px-4 py-4">
-          <Button variant="ghost" size="icon" onClick={() => router.push("/admin")}>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => router.push("/admin")}
+            aria-label="Back to admin dashboard"
+          >
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <div>
-            <h1 className="text-2xl font-bold">Add Worker</h1>
-            <p className="text-sm text-muted-foreground">Add housekeeping, maintenance, or front office staff</p>
+            <h1 className="text-2xl font-bold">Add Team Member</h1>
+            <p className="text-sm text-muted-foreground">
+              Create worker, supervisor, or front office accounts with a username and password.
+            </p>
           </div>
         </div>
       </header>
 
-      <main className="container mx-auto px-4 py-6 max-w-2xl">
+      <main className="container mx-auto max-w-2xl px-4 py-6">
         <Card>
           <CardHeader>
-            <CardTitle>Worker Information</CardTitle>
+            <CardTitle>Account Credentials</CardTitle>
           </CardHeader>
           <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <Label htmlFor="name">Full Name</Label>
+            <form onSubmit={handleSubmit} className="space-y-5">
+              <div className="space-y-2">
+                <Label htmlFor="username">Username</Label>
                 <Input
-                  id="name"
-                  value={formData.name}
-                  onChange={(e) => setFormData((prev) => ({ ...prev, name: e.target.value }))}
-                  placeholder="Enter worker's full name"
-                  className="mt-2"
+                  id="username"
+                  value={formData.username}
+                  onChange={(event) =>
+                    setFormData((prev) => ({ ...prev, username: event.target.value }))
+                  }
+                  autoComplete="username"
+                  placeholder="e.g. jdoe"
                 />
               </div>
 
-              <div>
-                <Label htmlFor="phone">Phone Number</Label>
+              <div className="space-y-2">
+                <Label htmlFor="password">Password</Label>
                 <Input
-                  id="phone"
-                  type="tel"
-                  value={formData.phone}
-                  onChange={(e) => setFormData((prev) => ({ ...prev, phone: e.target.value }))}
-                  placeholder="Enter phone number"
-                  className="mt-2"
+                  id="password"
+                  type="password"
+                  value={formData.password}
+                  onChange={(event) =>
+                    setFormData((prev) => ({ ...prev, password: event.target.value }))
+                  }
+                  autoComplete="new-password"
+                  placeholder="Enter a temporary password"
                 />
               </div>
 
-              <div>
+              <div className="space-y-2">
                 <Label htmlFor="role">Role</Label>
-                <Select value={formData.role} onValueChange={(value) => handleRoleChange(value as UserRole)}>
-                  <SelectTrigger className="mt-2">
+                <Select
+                  value={formData.role}
+                  onValueChange={(value) =>
+                    setFormData((prev) => ({ ...prev, role: value as NonAdminRole }))
+                  }
+                >
+                  <SelectTrigger id="role">
                     <SelectValue placeholder="Select role" />
                   </SelectTrigger>
                   <SelectContent>
@@ -163,71 +153,23 @@ function AddWorker() {
                 </Select>
               </div>
 
-              <div>
-                <Label htmlFor="department">Department</Label>
-                <Select
-                  value={formData.department}
-                  onValueChange={(value) => setFormData((prev) => ({ ...prev, department: value as Department }))}
+              <p className="text-sm text-muted-foreground">
+                We fill in the rest of the profile with sensible defaults. You can fine-tune their
+                department, contact info, or shifts later from the admin dashboard.
+              </p>
+
+              <div className="flex gap-2 pt-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => router.push("/admin")}
+                  className="flex-1"
                 >
-                  <SelectTrigger className="mt-2">
-                    <SelectValue placeholder="Select department" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {departmentOptions.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {formData.role === "front_office" && (
-                  <p className="mt-2 text-xs text-muted-foreground">
-                    Front office staff are automatically assigned to the Front Desk.
-                  </p>
-                )}
-              </div>
-
-              <div className="space-y-3">
-                <Label>Shift Timing</Label>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <Label htmlFor="shift_start" className="text-sm text-muted-foreground">
-                      Start Time
-                    </Label>
-                    <Input
-                      id="shift_start"
-                      type="time"
-                      value={formData.shift_start}
-                      onChange={(e) => setFormData((prev) => ({ ...prev, shift_start: e.target.value }))}
-                      className="mt-1"
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="shift_end" className="text-sm text-muted-foreground">
-                      End Time
-                    </Label>
-                    <Input
-                      id="shift_end"
-                      type="time"
-                      value={formData.shift_end}
-                      onChange={(e) => setFormData((prev) => ({ ...prev, shift_end: e.target.value }))}
-                      className="mt-1"
-                    />
-                  </div>
-                </div>
-                <div className="flex items-center justify-between text-sm bg-muted/50 p-3 rounded-md">
-                  <span className="text-muted-foreground">Total Shift Duration:</span>
-                  <span className="font-semibold">{shiftHours}</span>
-                </div>
-              </div>
-
-              <div className="flex gap-2 pt-4">
-                <Button type="button" variant="outline" onClick={() => router.push("/admin")} className="flex-1">
                   Cancel
                 </Button>
-                <Button type="submit" className="flex-1">
+                <Button type="submit" className="flex-1" disabled={isSubmitting}>
                   <UserPlus className="mr-2 h-4 w-4" />
-                  Add Worker
+                  {isSubmitting ? "Creating..." : "Create Account"}
                 </Button>
               </div>
             </form>
@@ -238,10 +180,10 @@ function AddWorker() {
   )
 }
 
-export default function AddWorkerPage() {
+export default function AddWorkerPage(): JSX.Element {
   return (
     <ProtectedRoute allowedRoles={["admin"]}>
-      <AddWorker />
+      <AddAccountForm />
     </ProtectedRoute>
   )
 }

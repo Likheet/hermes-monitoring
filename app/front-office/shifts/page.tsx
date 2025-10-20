@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { ProtectedRoute } from "@/components/protected-route"
 import { useAuth } from "@/lib/auth-context"
 import { useTasks } from "@/lib/task-context"
@@ -25,9 +25,9 @@ function ShiftManagement() {
   const router = useRouter()
   const { toast } = useToast()
 
-  const workers = users.filter((u) => u.role === "worker")
+  const workers = useMemo(() => users.filter((u) => u.role === "worker"), [users])
 
-  const today = new Date()
+  const today = useMemo(() => new Date(), [])
 
   const [editingShifts, setEditingShifts] = useState<
     Record<
@@ -40,12 +40,16 @@ function ShiftManagement() {
         breakEnd: string
       }
     >
-  >(
-    Object.fromEntries(
-      workers.map((w) => {
-        const todayShift = getWorkerShiftForDate(w, today, shiftSchedules)
+  >({})
+
+  const [offDutyStatus, setOffDutyStatus] = useState<Record<string, boolean>>({})
+
+  useEffect(() => {
+    const nextEditing = Object.fromEntries(
+      workers.map((worker) => {
+        const todayShift = getWorkerShiftForDate(worker, today, shiftSchedules)
         return [
-          w.id,
+          worker.id,
           {
             start: todayShift.shift_start,
             end: todayShift.shift_end,
@@ -55,17 +59,18 @@ function ShiftManagement() {
           },
         ]
       }),
-    ),
-  )
+    )
 
-  const [offDutyStatus, setOffDutyStatus] = useState<Record<string, boolean>>(
-    Object.fromEntries(
-      workers.map((w) => {
-        const todayShift = getWorkerShiftForDate(w, today, shiftSchedules)
-        return [w.id, todayShift.is_override || false]
+    const nextOffDuty = Object.fromEntries(
+      workers.map((worker) => {
+        const todayShift = getWorkerShiftForDate(worker, today, shiftSchedules)
+        return [worker.id, todayShift.is_override || false]
       }),
-    ),
-  )
+    )
+
+    setEditingShifts(nextEditing)
+    setOffDutyStatus(nextOffDuty)
+  }, [shiftSchedules, today, workers])
 
   const handleSaveShift = (workerId: string) => {
     const shift = editingShifts[workerId]

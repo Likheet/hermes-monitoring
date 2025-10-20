@@ -357,10 +357,10 @@ export function getWorkerShiftForDate(
     shift_start: string
     shift_end: string
     has_break: boolean
-    break_start: string
-    break_end: string
+    break_start?: string
+    break_end?: string
     is_override: boolean
-    override_reason: string
+    override_reason?: string
   }>,
 ): {
   shift_start: string
@@ -410,10 +410,10 @@ export function isWorkerOnShiftWithSchedule(
     shift_start: string
     shift_end: string
     has_break: boolean
-    break_start: string
-    break_end: string
+    break_start?: string
+    break_end?: string
     is_override: boolean
-    override_reason: string
+    override_reason?: string
   }>,
 ): WorkerAvailability {
   const today = new Date()
@@ -564,7 +564,7 @@ export function calculateMonthlyAttendance(
     shift_start: string
     shift_end: string
     is_override: boolean
-    override_reason: string
+    override_reason?: string
   }>,
 ): MonthlyAttendance {
   const year = month.getFullYear()
@@ -656,7 +656,7 @@ export function getCurrentMonthAttendance(
     shift_start: string
     shift_end: string
     is_override: boolean
-    override_reason: string
+    override_reason?: string
   }>,
 ): MonthlyAttendance {
   return calculateMonthlyAttendance(workerId, new Date(), shiftSchedules)

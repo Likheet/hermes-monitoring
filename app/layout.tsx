@@ -11,9 +11,9 @@ import { PWAInstallPrompt } from "@/components/pwa-install-prompt"
 import { ErrorBoundary } from "@/components/error-boundary"
 import { StorageCleaner } from "@/components/storage-cleaner"
 import { PWARegister } from "@/components/pwa-register"
+import { GlobalLoadingOverlay } from "@/components/global-loading-overlay"
 
-import { Geist, Geist_Mono, Source_Serif_4, Geist as V0_Font_Geist, Geist_Mono as V0_Font_Geist_Mono, Source_Serif_4 as V0_Font_Source_Serif_4 } from 'next/font/google'
-import { Geist, Geist_Mono, Source_Serif_4, Geist as V0_Font_Geist, Geist_Mono as V0_Font_Geist_Mono, Source_Serif_4 as V0_Font_Source_Serif_4 } from 'next/font/google'
+import { Geist, Geist_Mono, Source_Serif_4, Geist as V0_Font_Geist, Geist_Mono as V0_Font_Geist_Mono, Source_Serif_4 as V0_Font_Source_Serif_4 } from "next/font/google"
 
 // Initialize fonts
 const _geist = V0_Font_Geist({ subsets: ['latin'], weight: ["100","200","300","400","500","600","700","800","900"] })
@@ -82,6 +82,7 @@ export default function RootLayout({
                 <Toaster />
                 <PWAInstallPrompt />
               </AuthProvider>
+              <GlobalLoadingOverlay />
             </TaskProvider>
           </Suspense>
         </ErrorBoundary>

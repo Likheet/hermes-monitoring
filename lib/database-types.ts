@@ -481,9 +481,14 @@ export function databaseShiftScheduleToApp(dbSchedule: DatabaseShiftSchedule): S
 
 export function appUserToDatabase(
   user: User,
-  username: string,
-  passwordHash: string,
+  username?: string,
+  passwordHash?: string,
 ): Omit<DatabaseUser, "created_at"> {
+  if (!username || !passwordHash) {
+    // Supabase enforces unique credential fields, so we skip sync when they are missing
+    throw new Error("Username and password hash are required to sync user records with Supabase")
+  }
+
   // Convert shift object to JSON string
   const shiftTiming = JSON.stringify({
     start: user.shift_start,

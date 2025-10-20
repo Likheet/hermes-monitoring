@@ -2,7 +2,9 @@
 
 import { useEffect, useState, useCallback, useRef } from "react"
 import { createClient } from "@/lib/supabase/client"
-import type { RealtimeChannel } from "@supabase/supabase-js"
+import type { RealtimeChannel, RealtimePostgresChangesPayload } from "@supabase/supabase-js"
+
+type TaskRealtimePayload = RealtimePostgresChangesPayload<Record<string, unknown>>
 
 interface UseRealtimeTasksOptions {
   enabled?: boolean
@@ -10,7 +12,7 @@ interface UseRealtimeTasksOptions {
     userId?: string
     department?: string
   }
-  onTaskUpdate?: (payload: any) => void
+  onTaskUpdate?: (payload: TaskRealtimePayload) => void
 }
 
 export function useRealtimeTasks(options: UseRealtimeTasksOptions = {}) {
@@ -24,8 +26,8 @@ export function useRealtimeTasks(options: UseRealtimeTasksOptions = {}) {
   const attemptReconnectHandlerRef = useRef<() => void>(() => {})
 
   const handleTaskUpdate = useCallback(
-    (payload: any) => {
-      console.log("[v0] Realtime task change:", payload.eventType, payload.new?.id)
+    (payload: TaskRealtimePayload) => {
+      console.log("[v0] Realtime task change:", payload.eventType, payload.new)
       if (onTaskUpdate) {
         onTaskUpdate(payload)
       }
@@ -148,3 +150,5 @@ export function useRealtimeTasks(options: UseRealtimeTasksOptions = {}) {
     channel: channelRef.current,
   }
 }
+
+export type { TaskRealtimePayload }

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo, useCallback } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -51,7 +51,7 @@ const OVERRIDE_REASONS = [
 
 export function WeeklyScheduleView({ workers }: WeeklyScheduleViewProps) {
   const { toast } = useToast()
-  const { saveShiftSchedule, getShiftSchedules } = useTasks()
+  const { saveShiftSchedule, getShiftSchedules, shiftSchedules } = useTasks()
   const [schedules, setSchedules] = useState<Record<string, WeekSchedule>>({})
   const [loading, setLoading] = useState(true)
   const [selectedWorker, setSelectedWorker] = useState<string | null>(null)
@@ -72,7 +72,7 @@ export function WeeklyScheduleView({ workers }: WeeklyScheduleViewProps) {
     })
   }
 
-  const weekDates = getWeekDates()
+  const weekDates = useMemo(() => getWeekDates(), [weekOffset])
 
   const isPastDate = (dateString: string) => {
     const date = new Date(dateString)
@@ -91,12 +91,7 @@ export function WeeklyScheduleView({ workers }: WeeklyScheduleViewProps) {
     )
   }
 
-  useEffect(() => {
-    console.log("[v0] WeeklyScheduleView mounted with workers:", workers.length)
-    loadSchedules()
-  }, [weekOffset])
-
-  const loadSchedules = () => {
+  const loadSchedules = useCallback(() => {
     console.log("[v0] Loading schedules for workers:", workers.length)
     setLoading(true)
     const newSchedules: Record<string, WeekSchedule> = {}
@@ -145,7 +140,12 @@ export function WeeklyScheduleView({ workers }: WeeklyScheduleViewProps) {
     setSchedules(newSchedules)
     setLoading(false)
     console.log("[v0] Schedules loaded successfully")
-  }
+  }, [getShiftSchedules, weekDates, workers])
+
+  useEffect(() => {
+    console.log("[v0] WeeklyScheduleView syncing schedules. workers:", workers.length, "shiftSchedules:", shiftSchedules.length)
+    loadSchedules()
+  }, [loadSchedules, shiftSchedules])
 
   const updateSchedule = (workerId: string, day: string, updates: Partial<DaySchedule>) => {
     setSchedules((prev) => ({
