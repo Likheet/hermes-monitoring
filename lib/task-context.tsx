@@ -20,6 +20,7 @@ import {
   deleteMaintenanceScheduleFromSupabase,
   saveShiftScheduleToSupabase,
   deleteShiftScheduleFromSupabase,
+  type LoadOptions,
 } from "./supabase-task-operations"
 
 const DEFAULT_MAINTENANCE_DURATION: Record<MaintenanceTaskType, number> = {
@@ -161,10 +162,10 @@ export function TaskProvider({ children }: { children: ReactNode }) {
 
   const isBusy = activeRequests > 0
 
-  const refreshTasks = useCallback(() => {
+  const refreshTasks = useCallback((options?: LoadOptions) => {
     return runWithGlobalLoading(async () => {
       try {
-        const data = await loadTasksFromSupabase()
+        const data = await loadTasksFromSupabase(options)
         setTasks(data)
       } catch (error) {
         console.error("[v0] Error loading tasks from Supabase:", error)
@@ -172,10 +173,10 @@ export function TaskProvider({ children }: { children: ReactNode }) {
     })
   }, [runWithGlobalLoading])
 
-  const refreshUsers = useCallback(() => {
+  const refreshUsers = useCallback((options?: LoadOptions) => {
     return runWithGlobalLoading(async () => {
       try {
-        const data = await loadUsersFromSupabase()
+        const data = await loadUsersFromSupabase(options)
         if (data.length > 0) {
           setUsers(data)
         } else {
@@ -188,10 +189,10 @@ export function TaskProvider({ children }: { children: ReactNode }) {
     })
   }, [runWithGlobalLoading])
 
-  const refreshShiftSchedules = useCallback(() => {
+  const refreshShiftSchedules = useCallback((options?: LoadOptions) => {
     return runWithGlobalLoading(async () => {
       try {
-        const data = await loadShiftSchedulesFromSupabase()
+        const data = await loadShiftSchedulesFromSupabase(options)
         setShiftSchedules(data)
       } catch (error) {
         console.error("[v0] Error loading shift schedules from Supabase:", error)
@@ -203,7 +204,7 @@ export function TaskProvider({ children }: { children: ReactNode }) {
   const handleRealtimeTaskUpdate = useCallback(
     (payload: TaskRealtimePayload) => {
       console.log("[v0] Realtime task update received:", payload.eventType)
-      void refreshTasks()
+      void refreshTasks({ forceRefresh: true })
     },
     [refreshTasks],
   )
@@ -513,7 +514,7 @@ export function TaskProvider({ children }: { children: ReactNode }) {
       const originalPhotos = task.categorized_photos || { room_photos: [], proof_photos: [] }
 
       const newTask: Task = {
-        id: `t${Date.now()}`,
+        id: generateUuid(),
         task_type: `[REWORK] ${task.task_type}`,
         priority_level: task.priority_level,
         status: "PENDING",
@@ -729,6 +730,7 @@ export function TaskProvider({ children }: { children: ReactNode }) {
           }
 
           setUsers((prev) => [...prev, newUser])
+          void refreshUsers({ forceRefresh: true })
           console.log("[v0] Added new team member:", newUser.id, "role:", role)
           return { success: true }
         } catch (error) {
@@ -738,7 +740,7 @@ export function TaskProvider({ children }: { children: ReactNode }) {
         }
       })
     },
-    [runWithGlobalLoading],
+    [runWithGlobalLoading, refreshUsers],
   )
 
   const raiseIssue = (taskId: string, userId: string, issueDescription: string, photos?: string[]) => {
@@ -1171,3 +1173,4 @@ function useTasks() {
 }
 
 export { useTasks }
+

@@ -3,6 +3,13 @@ import { createClient } from "@/lib/supabase/server"
 import { verifyPassword } from "@/lib/auth-utils"
 import { databaseUserToApp } from "@/lib/database-types"
 
+const SESSION_COOKIE_NAME = "session"
+const SESSION_PAYLOAD_COOKIE = "session_payload"
+
+function encodeSessionPayload(payload: unknown) {
+  return Buffer.from(JSON.stringify(payload), "utf-8").toString("base64url")
+}
+
 export async function POST(request: Request) {
   try {
     const { username, password } = await request.json()
@@ -44,13 +51,16 @@ export async function POST(request: Request) {
     const response = NextResponse.json({ user: appUser })
 
     // Set session cookie (httpOnly for security)
-    response.cookies.set("session", user.id, {
+    const cookieOptions = {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
       maxAge: 60 * 60 * 24 * 7, // 7 days
       path: "/",
-    })
+    } as const
+
+    response.cookies.set(SESSION_COOKIE_NAME, user.id, cookieOptions)
+    response.cookies.set(SESSION_PAYLOAD_COOKIE, encodeSessionPayload(appUser), cookieOptions)
 
     return response
   } catch (error) {

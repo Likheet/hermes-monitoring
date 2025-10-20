@@ -6,6 +6,7 @@ export async function POST() {
 
     // Clear session cookie
     response.cookies.delete("session")
+    response.cookies.delete("session_payload")
 
     console.log("[v0] Logout successful")
 

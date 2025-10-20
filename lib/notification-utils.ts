@@ -1,5 +1,22 @@
 import { createClient } from "@/lib/supabase/client"
 
+function isValidUuid(value: unknown): value is string {
+  return typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
+}
+
+function generateUuid(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID()
+  }
+
+  const segments = [8, 4, 4, 4, 12]
+  return segments
+    .map((length) =>
+      Array.from({ length }, () => Math.floor(Math.random() * 16).toString(16)).join(""),
+    )
+    .join("-")
+}
+
 export type NotificationType =
   | "task_assigned"
   | "task_completed"
@@ -16,6 +33,7 @@ export interface Notification {
   message: string
   task_id: string | null
   read: boolean
+  read_at?: string | null
   created_at: string
 }
 
@@ -26,23 +44,8 @@ export async function createNotification(
   message: string,
   taskId?: string,
 ) {
-  // In production with real Supabase, this would work with proper UUID task IDs
-  if (taskId && !taskId.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)) {
-    console.log("[v0] Skipping Supabase notification for mock task ID:", taskId)
-    // Return a mock notification for local state management
-    return {
-      id: `notif-${Date.now()}`,
-      user_id: userId,
-      type,
-      title,
-      message,
-      task_id: taskId,
-      read: false,
-      created_at: new Date().toISOString(),
-    }
-  }
-
   const supabase = createClient()
+  const sanitizedTaskId = taskId && isValidUuid(taskId) ? taskId : null
 
   const { data, error } = await supabase
     .from("notifications")
@@ -51,17 +54,28 @@ export async function createNotification(
       type,
       title,
       message,
-      task_id: taskId || null,
+      task_id: sanitizedTaskId,
     })
     .select()
     .single()
 
-  if (error) {
-    console.error("[v0] Failed to create notification:", error.message)
-    return null
+  if (!error && data) {
+    return data as Notification
   }
 
-  return data
+  console.error("[v0] Failed to create notification via Supabase, returning local fallback:", error)
+
+  return {
+    id: generateUuid(),
+    user_id: userId,
+    type,
+    title,
+    message,
+    task_id: sanitizedTaskId,
+    read: false,
+    read_at: null,
+    created_at: new Date().toISOString(),
+  }
 }
 
 export async function getUnreadNotifications(userId: string) {
@@ -103,7 +117,10 @@ export async function getAllNotifications(userId: string, limit = 50) {
 export async function markNotificationAsRead(notificationId: string) {
   const supabase = createClient()
 
-  const { error } = await supabase.from("notifications").update({ read: true }).eq("id", notificationId)
+  const { error } = await supabase
+    .from("notifications")
+    .update({ read: true, read_at: new Date().toISOString() })
+    .eq("id", notificationId)
 
   if (error) {
     console.error("[v0] Failed to mark notification as read:", error)
