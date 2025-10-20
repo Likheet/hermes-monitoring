@@ -1,17 +1,18 @@
 import { createClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
+import { cookies } from "next/headers"
+import { databaseUserToApp } from "@/lib/database-types"
 
 export async function GET() {
   try {
-    const supabase = await createClient()
+    const cookieStore = await cookies()
+    const sessionCookie = cookieStore.get("session")
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
-
-    if (!user) {
+    if (!sessionCookie) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
+
+    const supabase = await createClient()
 
     // Get all workers
     const { data: workers, error: workersError } = await supabase.from("users").select("*").eq("role", "worker")
@@ -30,8 +31,10 @@ export async function GET() {
           .eq("assigned_to_user_id", worker.id)
           .in("status", ["IN_PROGRESS", "PAUSED"])
 
+        const appWorker = databaseUserToApp(worker)
+
         return {
-          ...worker,
+          ...appWorker,
           is_available: !activeTasks || activeTasks.length === 0,
           current_task: activeTasks && activeTasks.length > 0 ? activeTasks[0] : null,
         }

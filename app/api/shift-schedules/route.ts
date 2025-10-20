@@ -1,38 +1,26 @@
 import { createClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
+import { cookies } from "next/headers"
 
 // POST/PUT - Save or update shift schedule
 export async function POST(request: Request) {
   try {
+    const cookieStore = await cookies()
+    const sessionCookie = cookieStore.get("session")
+
+    if (!sessionCookie) {
+      console.error("[v0] Unauthorized: No session cookie found")
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
+    const userId = sessionCookie.value
     const supabase = await createClient()
     const body = await request.json()
 
     console.log("[v0] Shift schedule save request:", body)
 
-    const {
-      worker_id,
-      schedule_date,
-      shift_start,
-      shift_end,
-      has_break,
-      break_start,
-      break_end,
-      is_override,
-      override_reason,
-      notes,
-    } = body
-
-    // Get current user
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
-
-    if (!user) {
-      console.error("[v0] Unauthorized: No user found")
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
-
-    console.log("[v0] User authenticated:", user.id)
+    const { worker_id, schedule_date, shift_start, shift_end, break_start, break_end, is_override, override_reason } =
+      body
 
     // Validate required fields
     if (!worker_id || !schedule_date) {
@@ -49,14 +37,10 @@ export async function POST(request: Request) {
           schedule_date,
           shift_start: shift_start || "09:00",
           shift_end: shift_end || "17:00",
-          has_break: has_break || false,
           break_start: break_start || "12:00",
           break_end: break_end || "13:00",
           is_override: is_override || false,
           override_reason: override_reason || null,
-          notes: notes || null,
-          created_by: user.id,
-          updated_at: new Date().toISOString(),
         },
         {
           onConflict: "worker_id,schedule_date",
@@ -82,19 +66,18 @@ export async function POST(request: Request) {
 // GET - Fetch shift schedules for a worker
 export async function GET(request: Request) {
   try {
+    const cookieStore = await cookies()
+    const sessionCookie = cookieStore.get("session")
+
+    if (!sessionCookie) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
     const supabase = await createClient()
     const { searchParams } = new URL(request.url)
     const workerId = searchParams.get("worker_id")
     const startDate = searchParams.get("start_date")
     const endDate = searchParams.get("end_date")
-
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
-
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
 
     let query = supabase.from("shift_schedules").select("*")
 

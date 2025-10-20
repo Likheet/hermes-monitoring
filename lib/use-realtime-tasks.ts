@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useCallback, useRef } from "react"
 import { createClient } from "@/lib/supabase/client"
 import type { RealtimeChannel } from "@supabase/supabase-js"
 
@@ -10,21 +10,79 @@ interface UseRealtimeTasksOptions {
     userId?: string
     department?: string
   }
+  onTaskUpdate?: (payload: any) => void
 }
 
 export function useRealtimeTasks(options: UseRealtimeTasksOptions = {}) {
-  const { enabled = true, filter } = options
+  const { enabled = true, filter, onTaskUpdate } = options
   const [isConnected, setIsConnected] = useState(false)
-  const [channel, setChannel] = useState<RealtimeChannel | null>(null)
+  const [connectionStatus, setConnectionStatus] = useState<string>("IDLE")
+  const channelRef = useRef<RealtimeChannel | null>(null)
+  const reconnectTimeoutRef = useRef<NodeJS.Timeout>()
+  const reconnectAttemptsRef = useRef(0)
 
-  useEffect(() => {
-    if (!enabled) return
+  const handleTaskUpdate = useCallback(
+    (payload: any) => {
+      console.log("[v0] Realtime task change:", payload.eventType, payload.new?.id)
+      if (onTaskUpdate) {
+        onTaskUpdate(payload)
+      }
+    },
+    [onTaskUpdate],
+  )
+
+  const cleanup = useCallback(() => {
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current)
+    }
+    if (channelRef.current) {
+      const supabase = createClient()
+      console.log("[v0] Removing realtime channel")
+      supabase.removeChannel(channelRef.current)
+      channelRef.current = null
+    }
+  }, [])
+
+  const attemptReconnect = useCallback(() => {
+    const maxAttempts = 5
+    const baseDelay = 2000
+
+    if (reconnectAttemptsRef.current >= maxAttempts) {
+      console.error("[v0] Max reconnection attempts reached")
+      setConnectionStatus("FAILED")
+      return
+    }
+
+    const delay = baseDelay * Math.pow(2, reconnectAttemptsRef.current)
+    console.log(
+      `[v0] Attempting reconnection in ${delay}ms (attempt ${reconnectAttemptsRef.current + 1}/${maxAttempts})`,
+    )
+
+    reconnectTimeoutRef.current = setTimeout(() => {
+      reconnectAttemptsRef.current++
+      setupChannel()
+    }, delay)
+  }, [])
+
+  const setupChannel = useCallback(() => {
+    cleanup()
+
+    if (!enabled) {
+      console.log("[v0] Realtime disabled")
+      setConnectionStatus("DISABLED")
+      return
+    }
 
     const supabase = createClient()
+    setConnectionStatus("CONNECTING")
 
-    // Create a channel for task updates
     const taskChannel = supabase
-      .channel("tasks-changes")
+      .channel("tasks-realtime", {
+        config: {
+          broadcast: { self: false },
+          presence: { key: "" },
+        },
+      })
       .on(
         "postgres_changes",
         {
@@ -33,24 +91,41 @@ export function useRealtimeTasks(options: UseRealtimeTasksOptions = {}) {
           table: "tasks",
           filter: filter?.userId ? `assigned_to_user_id=eq.${filter.userId}` : undefined,
         },
-        (payload) => {
-          console.log("[v0] Realtime task update:", payload)
-          // The task context will handle the update via the subscription callback
-        },
+        handleTaskUpdate,
       )
-      .subscribe((status) => {
-        console.log("[v0] Realtime connection status:", status)
-        setIsConnected(status === "SUBSCRIBED")
+      .subscribe((status, err) => {
+        console.log("[v0] Realtime subscription status:", status)
+        setConnectionStatus(status)
+
+        if (err) {
+          console.error("[v0] Realtime subscription error:", err)
+          setIsConnected(false)
+          attemptReconnect()
+          return
+        }
+
+        if (status === "SUBSCRIBED") {
+          setIsConnected(true)
+          reconnectAttemptsRef.current = 0 // Reset on successful connection
+        } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+          setIsConnected(false)
+          attemptReconnect()
+        } else if (status === "CLOSED") {
+          setIsConnected(false)
+        }
       })
 
-    setChannel(taskChannel)
+    channelRef.current = taskChannel
+  }, [enabled, filter?.userId, handleTaskUpdate, cleanup, attemptReconnect])
 
-    // Cleanup on unmount
-    return () => {
-      console.log("[v0] Cleaning up realtime subscription")
-      taskChannel.unsubscribe()
-    }
-  }, [enabled, filter?.userId, filter?.department])
+  useEffect(() => {
+    setupChannel()
+    return cleanup
+  }, [setupChannel, cleanup])
 
-  return { isConnected, channel }
+  return {
+    isConnected,
+    connectionStatus,
+    channel: channelRef.current,
+  }
 }

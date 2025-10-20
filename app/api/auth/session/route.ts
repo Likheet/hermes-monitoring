@@ -1,28 +1,29 @@
 import { createClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
+import { cookies } from "next/headers"
+import { databaseUserToApp } from "@/lib/database-types"
 
 export async function GET() {
   try {
+    const cookieStore = await cookies()
+    const sessionId = cookieStore.get("session")?.value
+
+    if (!sessionId) {
+      return NextResponse.json({ user: null }, { status: 401 })
+    }
+
     const supabase = await createClient()
 
-    const {
-      data: { user },
-      error,
-    } = await supabase.auth.getUser()
+    const { data: user, error } = await supabase.from("users").select("*").eq("id", sessionId).single()
 
     if (error || !user) {
+      console.error("[v0] Session validation error:", error)
       return NextResponse.json({ user: null }, { status: 401 })
     }
 
-    // Get user profile from users table
-    const { data: profile, error: profileError } = await supabase.from("users").select("*").eq("id", user.id).single()
+    const appUser = databaseUserToApp(user)
 
-    if (profileError) {
-      console.error("[v0] Profile fetch error:", profileError)
-      return NextResponse.json({ user: null }, { status: 401 })
-    }
-
-    return NextResponse.json({ user: profile }, { status: 200 })
+    return NextResponse.json({ user: appUser }, { status: 200 })
   } catch (error) {
     console.error("[v0] Session error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })

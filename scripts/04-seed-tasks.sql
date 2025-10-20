@@ -1,32 +1,97 @@
 -- Seed sample tasks for testing
+-- Mix of housekeeping and maintenance tasks in different statuses
 
-INSERT INTO public.tasks (
-  task_type, 
-  priority_level, 
-  status, 
-  assigned_to_user_id, 
-  assigned_by_user_id,
-  expected_duration_minutes,
+-- Clear existing tasks
+TRUNCATE TABLE tasks CASCADE;
+
+-- Use assigned_at JSONB field instead of separate client/server columns
+INSERT INTO tasks (
+  id,
+  task_type,
+  priority_level,
   room_number,
-  photo_required
+  status,
+  assigned_to_user_id,
+  assigned_by_user_id,
+  assigned_at,
+  description,
+  estimated_duration,
+  requires_verification,
+  created_at,
+  updated_at
 )
-VALUES
-  -- Housekeeping tasks
-  ('Room Cleaning', 'DAILY_TASK', 'PENDING', '00000000-0000-0000-0000-000000000005', '00000000-0000-0000-0000-000000000002', 30, '101', false),
-  ('Deep Cleaning', 'TIME_SENSITIVE', 'PENDING', '00000000-0000-0000-0000-000000000005', '00000000-0000-0000-0000-000000000003', 60, '102', true),
-  ('Linen Change', 'DAILY_TASK', 'IN_PROGRESS', '00000000-0000-0000-0000-000000000006', '00000000-0000-0000-0000-000000000002', 20, '103', false),
+VALUES 
+  -- Pending housekeeping tasks
+  (gen_random_uuid(), 'room_cleaning', 'high', 'A-101', 'pending', 
+   '00000000-0000-0000-0000-000000000004'::uuid, 
+   '00000000-0000-0000-0000-000000000002'::uuid,
+   jsonb_build_object('client', NOW(), 'server', NOW()),
+   'Standard room cleaning with fresh linens',
+   45,
+   true,
+   NOW(), NOW()),
   
-  -- Maintenance tasks
-  ('AC Repair', 'GUEST_REQUEST', 'PENDING', '00000000-0000-0000-0000-000000000007', '00000000-0000-0000-0000-000000000002', 45, '201', true),
-  ('Plumbing Fix', 'TIME_SENSITIVE', 'IN_PROGRESS', '00000000-0000-0000-0000-000000000007', '00000000-0000-0000-0000-000000000004', 90, '202', true),
-  ('Electrical Check', 'PREVENTIVE_MAINTENANCE', 'PENDING', '00000000-0000-0000-0000-000000000008', '00000000-0000-0000-0000-000000000004', 30, '203', false);
+  (gen_random_uuid(), 'room_cleaning', 'medium', 'A-102', 'pending',
+   '00000000-0000-0000-0000-000000000004'::uuid, 
+   '00000000-0000-0000-0000-000000000002'::uuid,
+   jsonb_build_object('client', NOW(), 'server', NOW()),
+   'Quick turnover cleaning',
+   30,
+   false,
+   NOW(), NOW()),
+
+  -- Active housekeeping task
+  (gen_random_uuid(), 'deep_cleaning', 'high', 'A-103', 'in_progress',
+   '00000000-0000-0000-0000-000000000004'::uuid, 
+   '00000000-0000-0000-0000-000000000002'::uuid,
+   jsonb_build_object('client', NOW() - interval '30 minutes', 'server', NOW() - interval '30 minutes'),
+   'Deep cleaning with carpet shampooing',
+   90,
+   true,
+   NOW() - interval '30 minutes', NOW()),
+
+  -- Pending maintenance tasks
+  (gen_random_uuid(), 'ac_repair', 'urgent', 'B-201', 'pending',
+   '00000000-0000-0000-0000-000000000005'::uuid, 
+   '00000000-0000-0000-0000-000000000002'::uuid,
+   jsonb_build_object('client', NOW(), 'server', NOW()),
+   'AC not cooling properly - guest complaint',
+   60,
+   true,
+   NOW(), NOW()),
+
+  (gen_random_uuid(), 'plumbing', 'high', 'B-202', 'pending',
+   '00000000-0000-0000-0000-000000000005'::uuid, 
+   '00000000-0000-0000-0000-000000000002'::uuid,
+   jsonb_build_object('client', NOW(), 'server', NOW()),
+   'Leaking faucet in bathroom',
+   45,
+   true,
+   NOW(), NOW()),
+
+  -- Completed task (for testing verification)
+  (gen_random_uuid(), 'room_cleaning', 'medium', 'A-104', 'completed',
+   '00000000-0000-0000-0000-000000000004'::uuid, 
+   '00000000-0000-0000-0000-000000000002'::uuid,
+   jsonb_build_object('client', NOW() - interval '2 hours', 'server', NOW() - interval '2 hours'),
+   'Standard room cleaning - checkout',
+   40,
+   true,
+   NOW() - interval '2 hours', NOW());
 
 -- Log the seed operation
-INSERT INTO public.audit_logs (user_id, action, metadata)
-VALUES ('00000000-0000-0000-0000-000000000001', 'SEED_TASKS', '{"count": 6, "script": "04-seed-tasks.sql"}'::jsonb);
+INSERT INTO audit_logs (task_id, user_id, action, metadata, created_at)
+VALUES 
+  (NULL, '00000000-0000-0000-0000-000000000001'::uuid, 'seed_tasks', 
+   '{"count": 6, "script": "04-seed-tasks.sql"}'::jsonb, NOW());
 
+-- Return summary
 SELECT 
-  'Tasks seeded successfully' AS status,
-  COUNT(*) AS task_count,
-  json_agg(json_build_object('type', task_type, 'status', status, 'room', room_number)) AS tasks
-FROM public.tasks;
+  'Tasks seeded successfully' as message,
+  COUNT(*) as total_tasks,
+  COUNT(*) FILTER (WHERE status = 'pending') as pending,
+  COUNT(*) FILTER (WHERE status = 'in_progress') as in_progress,
+  COUNT(*) FILTER (WHERE status = 'completed') as completed,
+  COUNT(*) FILTER (WHERE task_type LIKE '%cleaning%') as housekeeping,
+  COUNT(*) FILTER (WHERE task_type IN ('ac_repair', 'plumbing')) as maintenance
+FROM tasks;

@@ -12,7 +12,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { AlertCircle } from "lucide-react"
 
 export default function LoginPage() {
-  const [email, setEmail] = useState("")
+  const [username, setUsername] = useState("")
   const [password, setPassword] = useState("")
   const [error, setError] = useState("")
   const [isLoading, setIsLoading] = useState(false)
@@ -25,13 +25,12 @@ export default function LoginPage() {
     setIsLoading(true)
 
     try {
-      const success = await login(email, password)
+      const success = await login(username, password)
 
       if (success) {
-        // Redirect will be handled by the login function based on user role
         router.push("/")
       } else {
-        setError("Invalid email or password")
+        setError("Invalid username or password")
       }
     } catch (err) {
       setError("An error occurred during login. Please try again.")
@@ -58,15 +57,15 @@ export default function LoginPage() {
             )}
 
             <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="username">Username</Label>
               <Input
-                id="email"
-                type="email"
-                placeholder="admin@resort.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                id="username"
+                type="text"
+                placeholder="admin"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
                 required
-                autoComplete="email"
+                autoComplete="username"
               />
             </div>
 
@@ -83,19 +82,18 @@ export default function LoginPage() {
               />
             </div>
 
-            <Button type="submit" disabled={isLoading || !email || !password} className="w-full">
+            <Button type="submit" disabled={isLoading || !username || !password} className="w-full">
               {isLoading ? "Signing in..." : "Sign In"}
             </Button>
 
             <div className="mt-4 rounded-md bg-muted p-3 text-sm text-muted-foreground">
               <p className="font-semibold mb-2">Test Accounts:</p>
               <ul className="space-y-1 text-xs">
-                <li>Admin: admin@resort.com / admin123</li>
-                <li>Front Office: frontdesk@resort.com / front123</li>
-                <li>HK Supervisor: hk-supervisor@resort.com / super123</li>
-                <li>Maintenance Supervisor: maint-supervisor@resort.com / super123</li>
-                <li>HK Worker: hk-worker@resort.com / worker123</li>
-                <li>Maintenance Worker: maint-worker@resort.com / worker123</li>
+                <li>Admin: admin / admin123</li>
+                <li>Front Office: frontdesk / front123</li>
+                <li>HK Supervisor: hk-super / super123</li>
+                <li>HK Worker: hk-worker / worker123</li>
+                <li>Maintenance Worker: maint-worker / worker123</li>
               </ul>
             </div>
           </form>

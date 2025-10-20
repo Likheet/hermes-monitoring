@@ -1,25 +1,25 @@
 import { createClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
+import { cookies } from "next/headers"
 
 // GET audit logs
 export async function GET(request: Request) {
   try {
+    const cookieStore = await cookies()
+    const sessionCookie = cookieStore.get("session")
+
+    if (!sessionCookie) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
     const supabase = await createClient()
     const { searchParams } = new URL(request.url)
     const taskId = searchParams.get("task_id")
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
-
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
-
     let query = supabase
       .from("audit_logs")
       .select("*, user:users(name, role), task:tasks(task_type, room_number)")
-      .order("timestamp_server", { ascending: false })
+      .order("created_at", { ascending: false })
 
     if (taskId) {
       query = query.eq("task_id", taskId)
