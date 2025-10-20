@@ -1,6 +1,16 @@
+import type { DualTimestamp } from "./types"
+
 export type MaintenanceTaskType = "ac_indoor" | "ac_outdoor" | "fan" | "exhaust" | "lift" | "all"
 export type MaintenanceArea = "a_block" | "b_block" | "both"
-export type ScheduleFrequency = "monthly" | "biweekly" | "semiannual"
+export type ScheduleFrequency =
+  | "daily"
+  | "weekly"
+  | "biweekly"
+  | "monthly"
+  | "quarterly"
+  | "semiannual"
+  | "annual"
+  | "custom"
 
 export interface MaintenanceSchedule {
   id: string
@@ -9,11 +19,39 @@ export interface MaintenanceSchedule {
   frequency: ScheduleFrequency
   auto_reset: boolean
   active: boolean
-  created_at: {
-    client: string
-    server: string
-  }
+  created_at: DualTimestamp
+  schedule_name?: string
+  last_completed?: string | null
+  next_due?: string | null
+  updated_at?: string | null
+  frequency_weeks?: number | null
+  day_range_start?: number | null
+  day_range_end?: number | null
+  created_by?: string | null
+  metadata_version?: number
 }
+
+export const MAINTENANCE_TASK_TYPES: ReadonlyArray<MaintenanceTaskType> = [
+  "ac_indoor",
+  "ac_outdoor",
+  "fan",
+  "exhaust",
+  "lift",
+  "all",
+]
+
+export const MAINTENANCE_AREAS: ReadonlyArray<MaintenanceArea> = ["a_block", "b_block", "both"]
+
+export const MAINTENANCE_FREQUENCIES: ReadonlyArray<ScheduleFrequency> = [
+  "daily",
+  "weekly",
+  "biweekly",
+  "monthly",
+  "quarterly",
+  "semiannual",
+  "annual",
+  "custom",
+]
 
 export interface MaintenanceTask {
   id: string
@@ -73,7 +111,12 @@ export const AREA_LABELS: Record<MaintenanceArea, string> = {
 }
 
 export const FREQUENCY_LABELS: Record<ScheduleFrequency, string> = {
-  monthly: "Monthly (Deadline: End of Month)",
+  daily: "Daily",
+  weekly: "Weekly",
   biweekly: "Every 2 Weeks (Bi-weekly)",
+  monthly: "Monthly (Deadline: End of Month)",
+  quarterly: "Quarterly",
   semiannual: "Every 6 Months (Semi-annual)",
+  annual: "Annual",
+  custom: "Custom Frequency",
 }

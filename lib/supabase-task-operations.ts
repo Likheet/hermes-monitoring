@@ -1,6 +1,17 @@
 import { createClient } from "@/lib/supabase/client"
 import type { Task, User, ShiftSchedule } from "./types"
-import type { MaintenanceSchedule, MaintenanceTask } from "./maintenance-types"
+import {
+  AREA_LABELS,
+  MAINTENANCE_AREAS,
+  MAINTENANCE_FREQUENCIES,
+  MAINTENANCE_TASK_TYPES,
+  TASK_TYPE_LABELS,
+  type MaintenanceArea,
+  type MaintenanceSchedule,
+  type MaintenanceTask,
+  type MaintenanceTaskType,
+  type ScheduleFrequency,
+} from "./maintenance-types"
 import {
   databaseTaskToApp,
   appTaskToDatabase,
@@ -8,7 +19,27 @@ import {
   appUserToDatabase,
   type DatabaseTask,
   type DatabaseUser,
+  type DatabaseMaintenanceSchedule,
 } from "./database-types"
+
+function isValidUuid(value: unknown): value is string {
+  return typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
+}
+
+function normalizeMaintenanceStatus(status: MaintenanceTask["status"]): "pending" | "in_progress" | "completed" | "verified" {
+  switch (status) {
+    case "pending":
+      return "pending"
+    case "in_progress":
+      return "in_progress"
+    case "completed":
+      return "completed"
+    case "paused":
+      return "in_progress"
+    default:
+      return "pending"
+  }
+}
 
 export async function loadTasksFromSupabase(): Promise<Task[]> {
   try {
@@ -197,7 +228,7 @@ export async function loadMaintenanceSchedulesFromSupabase(): Promise<Maintenanc
     }
 
     console.log(`[v0] Loaded ${data?.length || 0} maintenance schedules from Supabase`)
-    return data || []
+    return (data || []).map((dbSchedule) => databaseToMaintenanceSchedule(dbSchedule as DatabaseMaintenanceSchedule))
   } catch (error) {
     console.error("[v0] Exception loading maintenance schedules:", error)
     return []
@@ -207,7 +238,8 @@ export async function loadMaintenanceSchedulesFromSupabase(): Promise<Maintenanc
 export async function saveMaintenanceScheduleToSupabase(schedule: MaintenanceSchedule): Promise<boolean> {
   try {
     const supabase = createClient()
-    const { error } = await supabase.from("maintenance_schedules").upsert(schedule)
+    const dbSchedule = maintenanceScheduleToDatabase(schedule)
+    const { error } = await supabase.from("maintenance_schedules").upsert(dbSchedule)
 
     if (error) {
       console.error("[v0] Error saving maintenance schedule to Supabase:", error)
@@ -280,26 +312,292 @@ export async function saveMaintenanceTaskToSupabase(task: MaintenanceTask): Prom
   }
 }
 
+interface MaintenanceScheduleMetadata {
+  version?: number
+  label?: string
+  task_type?: string
+  area?: string
+  frequency?: string
+  auto_reset?: boolean
+  active?: boolean
+  created_at?: {
+    client?: string | null
+    server?: string | null
+  }
+  last_completed?: string | null
+  next_due?: string | null
+  frequency_weeks?: number | null
+  day_range_start?: number | null
+  day_range_end?: number | null
+  created_by?: string | null
+  updated_at?: string | null
+}
+
+function isMaintenanceTaskTypeValue(value: unknown): value is MaintenanceTaskType {
+  return typeof value === "string" && MAINTENANCE_TASK_TYPES.includes(value as MaintenanceTaskType)
+}
+
+function isMaintenanceAreaValue(value: unknown): value is MaintenanceArea {
+  return typeof value === "string" && MAINTENANCE_AREAS.includes(value as MaintenanceArea)
+}
+
+function isScheduleFrequencyValue(value: unknown): value is ScheduleFrequency {
+  return typeof value === "string" && MAINTENANCE_FREQUENCIES.includes(value as ScheduleFrequency)
+}
+
+function sanitizeIsoDate(value?: string | null): string | null {
+  if (!value) {
+    return null
+  }
+
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) {
+    return null
+  }
+
+  return date.toISOString()
+}
+
+function toDualTimestampFromParts(client?: string | null, server?: string | null) {
+  const serverIso = sanitizeIsoDate(server) ?? new Date().toISOString()
+  const clientIso = sanitizeIsoDate(client) ?? serverIso
+  return { client: clientIso, server: serverIso }
+}
+
+function buildScheduleLabel(schedule: MaintenanceSchedule): string {
+  const taskLabel = TASK_TYPE_LABELS[schedule.task_type] ?? schedule.task_type
+  const areaLabel = AREA_LABELS[schedule.area] ?? schedule.area
+  return `${taskLabel} • ${areaLabel}`
+}
+
+function parseMaintenanceScheduleMetadata(raw: unknown): MaintenanceScheduleMetadata {
+  if (typeof raw !== "string") {
+    return {}
+  }
+
+  const trimmed = raw.trim()
+  if (!trimmed) {
+    return {}
+  }
+
+  const firstChar = trimmed[0]
+  if (firstChar !== "{" && firstChar !== "[") {
+    return { label: trimmed }
+  }
+
+  try {
+    const parsed = JSON.parse(trimmed)
+    if (parsed && typeof parsed === "object") {
+      return parsed as MaintenanceScheduleMetadata
+    }
+  } catch (error) {
+    console.warn("[v0] maintenance schedule metadata parse failed, using fallback label:", error)
+  }
+
+  return { label: trimmed }
+}
+
+function maintenanceScheduleToDatabase(schedule: MaintenanceSchedule) {
+  if (!isValidUuid(schedule.id)) {
+    throw new Error(`Maintenance schedule id must be a UUID. Received: ${schedule.id}`)
+  }
+
+  const frequency = isScheduleFrequencyValue(schedule.frequency) ? schedule.frequency : "monthly"
+  const dbFrequencyValue = frequency === "custom" ? "monthly" : frequency
+  const timestamp = toDualTimestampFromParts(schedule.created_at?.client, schedule.created_at?.server)
+  const lastCompleted = sanitizeIsoDate(schedule.last_completed)
+  const nextDue = sanitizeIsoDate(schedule.next_due)
+  const updatedAt = sanitizeIsoDate(schedule.updated_at)
+
+  const metadata: MaintenanceScheduleMetadata = {
+    version: typeof schedule.metadata_version === "number" ? schedule.metadata_version : 1,
+    label: schedule.schedule_name ?? buildScheduleLabel(schedule),
+    task_type: schedule.task_type,
+    area: schedule.area,
+    frequency,
+    auto_reset: schedule.auto_reset,
+    active: schedule.active,
+    created_at: timestamp,
+    last_completed: lastCompleted,
+    next_due: nextDue,
+    frequency_weeks: typeof schedule.frequency_weeks === "number" ? schedule.frequency_weeks : null,
+    day_range_start: typeof schedule.day_range_start === "number" ? schedule.day_range_start : null,
+    day_range_end: typeof schedule.day_range_end === "number" ? schedule.day_range_end : null,
+    created_by: schedule.created_by ?? null,
+    updated_at: updatedAt,
+  }
+
+  return {
+    id: schedule.id,
+    schedule_name: JSON.stringify(metadata),
+    area: schedule.area,
+    frequency: dbFrequencyValue,
+    auto_reset: schedule.auto_reset,
+    last_completed: lastCompleted,
+    next_due: nextDue,
+    created_at: timestamp.server,
+  }
+}
+
+function databaseToMaintenanceSchedule(dbSchedule: DatabaseMaintenanceSchedule): MaintenanceSchedule {
+  const metadata = parseMaintenanceScheduleMetadata(dbSchedule.schedule_name)
+
+  const area = isMaintenanceAreaValue(metadata.area)
+    ? metadata.area
+    : isMaintenanceAreaValue(dbSchedule.area)
+      ? (dbSchedule.area as MaintenanceArea)
+      : "both"
+
+  const frequency = isScheduleFrequencyValue(metadata.frequency)
+    ? metadata.frequency
+    : isScheduleFrequencyValue(dbSchedule.frequency)
+      ? (dbSchedule.frequency as ScheduleFrequency)
+      : "monthly"
+
+  const candidateTaskType = metadata.task_type ?? dbSchedule.task_type
+  const taskType = isMaintenanceTaskTypeValue(candidateTaskType) ? candidateTaskType : "ac_indoor"
+
+  const active =
+    typeof metadata.active === "boolean"
+      ? metadata.active
+      : typeof dbSchedule.active === "boolean"
+        ? dbSchedule.active
+        : true
+
+  const autoReset =
+    typeof metadata.auto_reset === "boolean"
+      ? metadata.auto_reset
+      : typeof dbSchedule.auto_reset === "boolean"
+        ? dbSchedule.auto_reset
+        : Boolean(dbSchedule.auto_reset)
+
+  const createdAtMeta = metadata.created_at ?? {}
+  const createdAtServer = sanitizeIsoDate(createdAtMeta.server ?? dbSchedule.created_at) ?? new Date().toISOString()
+  const createdAtClient = sanitizeIsoDate(createdAtMeta.client) ?? createdAtServer
+
+  const lastCompleted = sanitizeIsoDate(dbSchedule.last_completed ?? metadata.last_completed)
+  const nextDue = sanitizeIsoDate(dbSchedule.next_due ?? metadata.next_due)
+
+  const frequencyWeeks =
+    typeof metadata.frequency_weeks === "number"
+      ? metadata.frequency_weeks
+      : typeof dbSchedule.frequency_weeks === "number"
+        ? dbSchedule.frequency_weeks
+        : null
+
+  const dayRangeStart =
+    typeof metadata.day_range_start === "number"
+      ? metadata.day_range_start
+      : typeof dbSchedule.day_range_start === "number"
+        ? dbSchedule.day_range_start
+        : null
+
+  const dayRangeEnd =
+    typeof metadata.day_range_end === "number"
+      ? metadata.day_range_end
+      : typeof dbSchedule.day_range_end === "number"
+        ? dbSchedule.day_range_end
+        : null
+
+  const scheduleLabel =
+    typeof metadata.label === "string" && metadata.label.trim().length > 0
+      ? metadata.label
+      : typeof dbSchedule.schedule_name === "string"
+        ? dbSchedule.schedule_name
+        : undefined
+
+  const createdBy =
+    typeof metadata.created_by === "string"
+      ? metadata.created_by
+      : typeof dbSchedule.created_by === "string"
+        ? dbSchedule.created_by
+        : null
+
+  const updatedAt = sanitizeIsoDate(metadata.updated_at ?? dbSchedule.updated_at)
+  const metadataVersion = typeof metadata.version === "number" ? metadata.version : undefined
+
+  return {
+    id: dbSchedule.id,
+    task_type: taskType,
+    area,
+    frequency,
+    auto_reset: Boolean(autoReset),
+    active,
+    created_at: {
+      client: createdAtClient,
+      server: createdAtServer,
+    },
+    schedule_name: scheduleLabel,
+    last_completed: lastCompleted ?? undefined,
+    next_due: nextDue ?? undefined,
+    frequency_weeks: frequencyWeeks ?? undefined,
+    day_range_start: dayRangeStart ?? undefined,
+    day_range_end: dayRangeEnd ?? undefined,
+    created_by: createdBy ?? undefined,
+    updated_at: updatedAt ?? undefined,
+    metadata_version: metadataVersion,
+  }
+}
+
 function maintenanceTaskToDatabase(task: MaintenanceTask): any {
+  if (!isValidUuid(task.id)) {
+    throw new Error(`Maintenance task id must be a UUID. Received: ${task.id}`)
+  }
+
+  const scheduleId = isValidUuid(task.schedule_id) ? task.schedule_id : null
+  const assignedTo = isValidUuid(task.assigned_to) ? task.assigned_to : null
+  const startedAt = task.started_at ? new Date(task.started_at).toISOString() : null
+  const completedAt = task.completed_at ? new Date(task.completed_at).toISOString() : null
+  const timerDuration = typeof task.timer_duration === "number" ? Math.round(task.timer_duration) : null
+  const photosPayload =
+    task.categorized_photos && Object.keys(task.categorized_photos).length > 0
+      ? task.categorized_photos
+      : Array.isArray(task.photos)
+        ? task.photos
+        : []
+
   return {
     id: task.id,
-    schedule_id: task.schedule_id,
+    schedule_id: scheduleId,
     task_type: task.task_type,
     room_number: task.room_number || null,
     ac_location: task.location,
-    status: task.status,
-    assigned_to: task.assigned_to || null,
-    started_at: task.started_at ? { client: task.started_at, server: new Date().toISOString() } : null,
-    completed_at: task.completed_at ? { client: task.completed_at, server: new Date().toISOString() } : null,
-    timer_duration: task.timer_duration ? { client: task.timer_duration, server: task.timer_duration } : null,
-    photos: task.categorized_photos || task.photos || [],
-    period_month: task.period_month,
-    period_year: task.period_year,
-    created_at: task.created_at,
+    status: normalizeMaintenanceStatus(task.status),
+    assigned_to: assignedTo,
+    started_at: startedAt,
+    completed_at: completedAt,
+    timer_duration: timerDuration,
+    photos: photosPayload,
+    period_month: task.period_month ?? null,
+    period_year: task.period_year ?? null,
+    created_at: task.created_at ? new Date(task.created_at).toISOString() : new Date().toISOString(),
   }
 }
 
 function databaseToMaintenanceTask(dbTask: any): MaintenanceTask {
+  const startedAt =
+    typeof dbTask.started_at === "string"
+      ? dbTask.started_at
+      : dbTask.started_at?.client ?? dbTask.started_at?.server ?? undefined
+
+  const completedAt =
+    typeof dbTask.completed_at === "string"
+      ? dbTask.completed_at
+      : dbTask.completed_at?.client ?? dbTask.completed_at?.server ?? undefined
+
+  const timerDuration =
+    typeof dbTask.timer_duration === "number"
+      ? dbTask.timer_duration
+      : typeof dbTask.timer_duration?.client === "number"
+        ? dbTask.timer_duration.client
+        : undefined
+
+  const photos = Array.isArray(dbTask.photos) ? dbTask.photos : undefined
+  const categorizedPhotos =
+    dbTask.photos && !Array.isArray(dbTask.photos) && typeof dbTask.photos === "object"
+      ? dbTask.photos
+      : undefined
+
   return {
     id: dbTask.id,
     schedule_id: dbTask.schedule_id,
@@ -309,11 +607,11 @@ function databaseToMaintenanceTask(dbTask: any): MaintenanceTask {
     description: `${dbTask.task_type} - ${dbTask.room_number || "N/A"}`,
     status: dbTask.status,
     assigned_to: dbTask.assigned_to || undefined,
-    started_at: dbTask.started_at?.client || dbTask.started_at || undefined,
-    completed_at: dbTask.completed_at?.client || dbTask.completed_at || undefined,
-    timer_duration: dbTask.timer_duration?.client || dbTask.timer_duration || undefined,
-    photos: Array.isArray(dbTask.photos) ? dbTask.photos : [],
-    categorized_photos: typeof dbTask.photos === "object" && !Array.isArray(dbTask.photos) ? dbTask.photos : undefined,
+    started_at: startedAt,
+    completed_at: completedAt,
+    timer_duration: timerDuration,
+    photos: photos ?? [],
+    categorized_photos: categorizedPhotos,
     period_month: dbTask.period_month,
     period_year: dbTask.period_year,
     created_at: dbTask.created_at,

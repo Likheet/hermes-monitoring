@@ -553,7 +553,11 @@ export function TaskProvider({ children }: { children: ReactNode }) {
 
       setTasks((prev) => {
         const updated = [...prev, newTask]
-        saveTaskToSupabase(newTask)
+        runWithGlobalLoading(async () => {
+          await saveTaskToSupabase(newTask)
+        }).catch((error) => {
+          console.error("[v0] Error saving rework task to Supabase:", error)
+        })
         return updated
       })
 
@@ -792,36 +796,56 @@ export function TaskProvider({ children }: { children: ReactNode }) {
   const addSchedule = (scheduleData: Omit<MaintenanceSchedule, "id" | "created_at">) => {
     const newSchedule: MaintenanceSchedule = {
       ...scheduleData,
-      id: `sched${Date.now()}`,
+      id: generateUuid(),
       created_at: createDualTimestamp(),
+      metadata_version: 1,
     }
     console.log("[v0] Adding new schedule:", newSchedule)
-    setSchedules((prev) => {
-      const updated = [...prev, newSchedule]
-      saveMaintenanceScheduleToSupabase(newSchedule)
-      return updated
-    })
+    setSchedules((prev) => [...prev, newSchedule])
 
-    if (newSchedule.active) {
-      console.log("[v0] Schedule is active, generating tasks")
-      generateMaintenanceTasksFromSchedule(newSchedule)
+    const persistSchedule = async () => {
+      try {
+        const saved = await runWithGlobalLoading(() => saveMaintenanceScheduleToSupabase(newSchedule))
+
+        if (!saved) {
+          console.warn("[v0] Failed to save maintenance schedule, skipping task generation")
+          setSchedules((prev) => prev.filter((schedule) => schedule.id !== newSchedule.id))
+          return
+        }
+
+        console.log("[v0] Maintenance schedule stored in Supabase, id:", newSchedule.id)
+
+        if (newSchedule.active) {
+          console.log("[v0] Schedule is active, generating tasks")
+          await runWithGlobalLoading(() => generateMaintenanceTasksFromSchedule(newSchedule))
+        }
+
+        console.log("[v0] Schedule added successfully")
+      } catch (error) {
+        console.error("[v0] Error persisting maintenance schedule:", error)
+      }
     }
 
-    console.log("[v0] Schedule added successfully")
+    void persistSchedule()
   }
 
   const updateSchedule = (scheduleId: string, updates: Partial<MaintenanceSchedule>) => {
     console.log("[v0] Updating schedule:", scheduleId, updates)
-    setSchedules((prev) => {
-      const updated = prev.map((s) => {
-        if (s.id === scheduleId) {
-          const updatedSchedule = { ...s, ...updates }
-          saveMaintenanceScheduleToSupabase(updatedSchedule)
-          return updatedSchedule
-        }
-        return s
-      })
-      return updated
+
+    const existing = schedules.find((s) => s.id === scheduleId)
+    if (!existing) {
+      console.warn("[v0] Attempted to update missing schedule", scheduleId)
+      return
+    }
+
+    const scheduleSnapshot: MaintenanceSchedule = { ...existing, ...updates }
+
+    setSchedules((prev) => prev.map((s) => (s.id === scheduleId ? scheduleSnapshot : s)))
+
+    runWithGlobalLoading(async () => {
+      await saveMaintenanceScheduleToSupabase(scheduleSnapshot)
+    }).catch((error) => {
+      console.error("[v0] Error updating maintenance schedule:", error)
     })
   }
 
@@ -830,33 +854,45 @@ export function TaskProvider({ children }: { children: ReactNode }) {
     setSchedules((prev) => {
       const updated = prev.filter((s) => s.id !== scheduleId)
       setMaintenanceTasks((prevTasks) => prevTasks.filter((t) => t.schedule_id !== scheduleId))
-      deleteMaintenanceScheduleFromSupabase(scheduleId)
       return updated
+    })
+    runWithGlobalLoading(async () => {
+      await deleteMaintenanceScheduleFromSupabase(scheduleId)
+    }).catch((error) => {
+      console.error("[v0] Error deleting maintenance schedule:", error)
     })
   }
 
   const toggleSchedule = (scheduleId: string) => {
     console.log("[v0] Toggling schedule:", scheduleId)
-    setSchedules((prev) => {
-      const updated = prev.map((s) => {
-        if (s.id === scheduleId) {
-          const newActive = !s.active
-          const updatedSchedule = { ...s, active: newActive }
 
-          if (newActive) {
-            console.log("[v0] Schedule activated, generating tasks")
-            generateMaintenanceTasksFromSchedule(updatedSchedule)
-          }
+    const existing = schedules.find((s) => s.id === scheduleId)
+    if (!existing) {
+      console.warn("[v0] Attempted to toggle missing schedule", scheduleId)
+      return
+    }
 
-          return updatedSchedule
-        }
-        return s
-      })
-      return updated
+    const scheduleSnapshot: MaintenanceSchedule = { ...existing, active: !existing.active }
+
+    setSchedules((prev) => prev.map((s) => (s.id === scheduleId ? scheduleSnapshot : s)))
+
+    runWithGlobalLoading(async () => {
+      await saveMaintenanceScheduleToSupabase(scheduleSnapshot)
+    }).catch((error) => {
+      console.error("[v0] Error toggling maintenance schedule:", error)
     })
+
+    if (scheduleSnapshot.active) {
+      console.log("[v0] Schedule activated, generating tasks")
+      runWithGlobalLoading(async () => {
+        await generateMaintenanceTasksFromSchedule(scheduleSnapshot)
+      }).catch((error) => {
+        console.error("[v0] Error generating maintenance tasks for toggled schedule:", error)
+      })
+    }
   }
 
-  const generateMaintenanceTasksFromSchedule = (schedule: MaintenanceSchedule) => {
+  const generateMaintenanceTasksFromSchedule = async (schedule: MaintenanceSchedule) => {
     if (!schedule.active) {
       console.log("[v0] Schedule is not active, skipping task generation")
       return
@@ -877,12 +913,12 @@ export function TaskProvider({ children }: { children: ReactNode }) {
 
     console.log("[v0] Generating tasks for", roomsToGenerate.length, "rooms")
 
-    const newTasks: MaintenanceTask[] = []
-
     const taskTypesToGenerate: MaintenanceTaskType[] =
       schedule.task_type === "all" ? ["ac_indoor", "ac_outdoor", "fan", "exhaust"] : [schedule.task_type]
 
     console.log("[v0] Task types to generate:", taskTypesToGenerate)
+
+    const tasksToPersist: MaintenanceTask[] = []
 
     roomsToGenerate.forEach((room) => {
       const maintenanceItems = getMaintenanceItemsForRoom(room.number)
@@ -891,7 +927,7 @@ export function TaskProvider({ children }: { children: ReactNode }) {
 
       filteredItems.forEach((item) => {
         const newTask: MaintenanceTask = {
-          id: `mtask${Date.now()}-${room.number}-${item.type}-${item.location}-${Math.random().toString(36).substr(2, 9)}`,
+          id: generateUuid(),
           schedule_id: schedule.id,
           room_number: room.number,
           task_type: item.type,
@@ -909,26 +945,45 @@ export function TaskProvider({ children }: { children: ReactNode }) {
           created_at: new Date().toISOString(),
           expected_duration_minutes: DEFAULT_MAINTENANCE_DURATION[item.type] ?? DEFAULT_MAINTENANCE_DURATION.all,
         }
-        newTasks.push(newTask)
-        saveMaintenanceTaskToSupabase(newTask)
+        tasksToPersist.push(newTask)
       })
     })
 
-    console.log("[v0] Generated", newTasks.length, "maintenance tasks")
-    setMaintenanceTasks((prev) => [...prev, ...newTasks])
+    console.log("[v0] Generated", tasksToPersist.length, "maintenance tasks")
+
+    if (tasksToPersist.length === 0) {
+      return
+    }
+
+    const persistenceOutcomes = await Promise.all(
+      tasksToPersist.map(async (task) => ({ task, saved: await saveMaintenanceTaskToSupabase(task) })),
+    )
+
+    const successfulTasks = persistenceOutcomes.filter((outcome) => outcome.saved).map((outcome) => outcome.task)
+    const failedTasks = persistenceOutcomes.filter((outcome) => !outcome.saved).map((outcome) => outcome.task.id)
+
+    if (successfulTasks.length > 0) {
+      setMaintenanceTasks((prev) => [...prev, ...successfulTasks])
+      console.log(`[v0] Persisted ${successfulTasks.length} maintenance tasks to Supabase`)
+    }
+
+    if (failedTasks.length > 0) {
+      console.warn("[v0] Failed to persist maintenance tasks:", failedTasks)
+    }
   }
 
   const updateMaintenanceTask = (taskId: string, updates: Partial<MaintenanceTask>) => {
     console.log("[v0] Updating maintenance task:", taskId, updates)
+    const existing = maintenanceTasks.find((t) => t.id === taskId)
+    if (!existing) {
+      console.warn("[v0] Attempted to update missing maintenance task", taskId)
+      return
+    }
+
+    const updatedTask: MaintenanceTask = { ...existing, ...updates }
+
     setMaintenanceTasks((prev) => {
-      const updated = prev.map((t) => {
-        if (t.id === taskId) {
-          const updatedTask = { ...t, ...updates }
-          saveMaintenanceTaskToSupabase(updatedTask)
-          return updatedTask
-        }
-        return t
-      })
+      const updated = prev.map((t) => (t.id === taskId ? updatedTask : t))
       console.log(
         "[v0] Task updated. Total tasks:",
         updated.length,
@@ -936,6 +991,12 @@ export function TaskProvider({ children }: { children: ReactNode }) {
         updated.filter((t) => t.status === "in_progress" || t.status === "paused").length,
       )
       return updated
+    })
+
+    runWithGlobalLoading(async () => {
+      await saveMaintenanceTaskToSupabase(updatedTask)
+    }).catch((error) => {
+      console.error("[v0] Error saving maintenance task to Supabase:", error)
     })
   }
 

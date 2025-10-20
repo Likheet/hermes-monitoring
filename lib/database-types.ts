@@ -96,11 +96,18 @@ export interface DatabaseMaintenanceSchedule {
   id: string
   schedule_name: string
   area: string
-  frequency: "daily" | "weekly" | "biweekly" | "monthly" | "quarterly" | "semiannual" | "annual"
+  frequency: "daily" | "weekly" | "biweekly" | "monthly" | "quarterly" | "semiannual" | "annual" | "custom"
   last_completed: string | null
   next_due: string | null
   auto_reset: boolean
   created_at: string
+  task_type?: string | null
+  active?: boolean | null
+  frequency_weeks?: number | null
+  day_range_start?: number | null
+  day_range_end?: number | null
+  created_by?: string | null
+  updated_at?: string | null
 }
 
 // ============================================================================
