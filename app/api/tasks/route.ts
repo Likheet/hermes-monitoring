@@ -3,6 +3,49 @@ import { NextResponse } from "next/server"
 import { cookies } from "next/headers"
 import { databaseTaskToApp } from "@/lib/database-types"
 
+const PRIORITY_APP_TO_DB: Record<string, "low" | "medium" | "high" | "urgent"> = {
+  GUEST_REQUEST: "medium",
+  TIME_SENSITIVE: "urgent",
+  DAILY_TASK: "low",
+  PREVENTIVE_MAINTENANCE: "high",
+}
+
+function toDualTimestamp() {
+  const iso = new Date().toISOString()
+  return { client: iso, server: iso }
+}
+
+function normalizePriority(priority: string | null | undefined) {
+  if (!priority) return null
+
+  const upper = priority.toUpperCase()
+  if (upper in PRIORITY_APP_TO_DB) {
+    return PRIORITY_APP_TO_DB[upper]
+  }
+
+  const lower = priority.toLowerCase()
+  if (lower === "low" || lower === "medium" || lower === "high" || lower === "urgent") {
+    return lower as "low" | "medium" | "high" | "urgent"
+  }
+
+  return null
+}
+
+function normalizeStatus(status: string) {
+  const lower = status.toLowerCase()
+  switch (lower) {
+    case "pending":
+    case "in_progress":
+    case "paused":
+    case "completed":
+    case "verified":
+    case "rejected":
+      return lower
+    default:
+      return "pending"
+  }
+}
+
 // GET all tasks (filtered by user role)
 export async function GET(request: Request) {
   try {
@@ -60,20 +103,39 @@ export async function POST(request: Request) {
     const supabase = await createClient()
     const body = await request.json()
 
-    const { task_type, priority_level, assigned_to_user_id, expected_duration_minutes, photo_required, room_number } =
-      body
+    const {
+      task_type,
+      priority_level,
+      assigned_to_user_id,
+      expected_duration_minutes,
+      photo_required,
+      room_number,
+      photo_documentation_required,
+      photo_categories,
+    } = body
 
-    const clientTime = new Date()
-    const serverTime = new Date()
+    const assigned_at = toDualTimestamp()
+    const normalizedPriority = normalizePriority(priority_level)
+    const baseStatus = normalizeStatus("pending")
 
-    const assigned_at = {
-      client: clientTime.toISOString(),
-      server: serverTime.toISOString(),
-      validated: true,
+    const categorizedPhotosPayload = {
+      room_photos: [] as string[],
+      proof_photos: [] as string[],
     }
 
+    const photoRequirementsPayload = photo_documentation_required
+      ? photo_categories ?? []
+      : photo_required
+        ? {
+            simple: {
+              required: true,
+              count: typeof body.photo_count === "number" ? body.photo_count : null,
+            },
+          }
+        : null
+
     // Handle auto-pause for urgent guest requests
-    if (priority_level === "GUEST_REQUEST") {
+    if (priority_level === "GUEST_REQUEST" || normalizedPriority === "medium") {
       const { data: assignedWorker } = await supabase
         .from("users")
         .select("department")
@@ -85,26 +147,26 @@ export async function POST(request: Request) {
           .from("tasks")
           .select("*")
           .eq("assigned_to_user_id", assigned_to_user_id)
-          .eq("status", "IN_PROGRESS")
+          .eq("status", normalizeStatus("IN_PROGRESS"))
 
         if (activeTasks && activeTasks.length > 0) {
           const activeTask = activeTasks[0]
-          await supabase.from("tasks").update({ status: "PAUSED" }).eq("id", activeTask.id)
+          await supabase.from("tasks").update({ status: normalizeStatus("PAUSED") }).eq("id", activeTask.id)
 
           await supabase.from("pause_records").insert({
             task_id: activeTask.id,
-            paused_at: { client: new Date().toISOString(), server: new Date().toISOString(), validated: true },
+            paused_at: toDualTimestamp(),
             reason: "Auto-paused for urgent guest request",
           })
 
           const auditLog = [
             {
-              timestamp: new Date().toISOString(),
+              timestamp: toDualTimestamp(),
               user_id: sessionUserId,
               action: "AUTO_PAUSED",
               old_status: "IN_PROGRESS",
               new_status: "PAUSED",
-              metadata: { reason: "Urgent guest request assigned" },
+              details: "Urgent guest request assigned",
             },
           ]
 
@@ -117,27 +179,28 @@ export async function POST(request: Request) {
       .from("tasks")
       .insert({
         task_type,
-        priority_level,
-        status: "PENDING",
+        priority_level: normalizedPriority,
+        status: baseStatus,
         assigned_to_user_id,
         assigned_by_user_id: sessionUserId,
         assigned_at,
-        expected_duration_minutes,
-        photo_required: photo_required || false,
-        room_number,
-        worker_remark: "",
-        supervisor_remark: "",
+  estimated_duration: typeof expected_duration_minutes === "number" ? expected_duration_minutes : null,
+  requires_verification: Boolean(photo_documentation_required || photo_required),
+  photo_requirements: photoRequirementsPayload,
+        room_number: room_number ?? null,
+        worker_remarks: "",
+        supervisor_remarks: "",
         audit_log: [
           {
-            timestamp: new Date().toISOString(),
+            timestamp: assigned_at,
             user_id: sessionUserId,
             action: "CREATED",
             old_status: null,
             new_status: "PENDING",
-            metadata: { task_type, priority_level },
+            details: `Task created with type ${task_type}`,
           },
         ],
-        categorized_photos: { before: [], during: [], after: [] },
+        categorized_photos: categorizedPhotosPayload,
         pause_history: [],
       })
       .select()

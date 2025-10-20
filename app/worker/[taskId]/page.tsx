@@ -143,7 +143,7 @@ function TaskDetail({ params }: TaskDetailProps) {
   console.log("[v0] Task status:", task.status)
   console.log("[v0] Should show Raise Issue button:", task.status === "IN_PROGRESS" || task.status === "PAUSED")
 
-  const handleStart = () => {
+  const handleStart = async () => {
     if (!isOnline()) {
       addToOfflineQueue({
         type: "START",
@@ -159,7 +159,7 @@ function TaskDetail({ params }: TaskDetailProps) {
       return
     }
 
-    const result = startTask(taskId, user!.id)
+    const result = await startTask(taskId, user!.id)
     if (result && "error" in result) {
       toast({
         title: "Cannot Start Task",
@@ -175,7 +175,7 @@ function TaskDetail({ params }: TaskDetailProps) {
     })
   }
 
-  const handlePause = () => {
+  const handlePause = async () => {
     if (!canPauseTask()) {
       toast({
         title: "Cannot Pause",
@@ -200,7 +200,7 @@ function TaskDetail({ params }: TaskDetailProps) {
       return
     }
 
-    const result = pauseTask(taskId, user!.id, "Worker paused task")
+    const result = await pauseTask(taskId, user!.id, "Worker paused task")
     if (result && "error" in result) {
       if (result.pausedTaskId && result.pausedTaskName) {
         setPausedTaskToSwap({ id: result.pausedTaskId, name: result.pausedTaskName })
@@ -222,7 +222,7 @@ function TaskDetail({ params }: TaskDetailProps) {
     })
   }
 
-  const handleResume = () => {
+  const handleResume = async () => {
     if (!isOnline()) {
       addToOfflineQueue({
         type: "RESUME",
@@ -237,7 +237,7 @@ function TaskDetail({ params }: TaskDetailProps) {
       return
     }
 
-    const result = resumeTask(taskId, user!.id)
+    const result = await resumeTask(taskId, user!.id)
     if (result && "error" in result) {
       toast({
         title: "Cannot Resume Task",
@@ -254,7 +254,7 @@ function TaskDetail({ params }: TaskDetailProps) {
     })
   }
 
-  const handleComplete = () => {
+  const handleComplete = async () => {
     if (task.photo_documentation_required && task.photo_categories) {
       const allCategoriesFilled = task.photo_categories.every((cat: any) => {
         const categoryPhotos = categorizedPhotos?.[cat.name.toLowerCase().replace(/\s+/g, "_")] || []
@@ -312,7 +312,7 @@ function TaskDetail({ params }: TaskDetailProps) {
           proof_photos: photos.slice(Math.ceil(photos.length / 2)),
         }
 
-    completeTask(taskId, user!.id, photosToSubmit, remark)
+    await completeTask(taskId, user!.id, photosToSubmit, remark)
     stopPauseMonitoring()
     toast({
       title: "Task Completed",

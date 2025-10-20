@@ -772,7 +772,7 @@ function AdminDashboard() {
     const isCustomTask = data.isCustomTask && !!trimmedCustomName
     const taskName = isCustomTask ? trimmedCustomName! : data.taskName
 
-    createTask({
+  createTask({
       task_type: taskName,
       priority_level: priorityLevel,
       status: "PENDING",

@@ -1,7 +1,18 @@
 // Database types that match the Supabase schema exactly
 // Phase 1.3: TypeScript types with conversion functions
 
-import type { Task, User, ShiftSchedule } from "./types"
+import type {
+  Task,
+  User,
+  ShiftSchedule,
+  Department,
+  DualTimestamp,
+  PauseRecord,
+  AuditLogEntry,
+  PriorityLevel,
+  TaskStatus,
+  CategorizedPhotos,
+} from "./types"
 
 export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[]
 
@@ -96,109 +107,371 @@ export interface DatabaseMaintenanceSchedule {
 // CONVERSION FUNCTIONS: Database → App
 // ============================================================================
 
-export function databaseUserToApp(dbUser: DatabaseUser): User {
-  // Parse shift_timing JSON string to shift object
-  let shift = {
-    start: "09:00",
-    end: "17:00",
-    breakStart: "12:00",
-    breakEnd: "13:00",
+const DEFAULT_SHIFT = {
+  start: "09:00",
+  end: "17:00",
+  breakStart: undefined as string | undefined,
+  breakEnd: undefined as string | undefined,
+  hasBreak: false,
+}
+
+const STATUS_DB_TO_APP: Record<DatabaseTask["status"], TaskStatus> = {
+  pending: "PENDING",
+  assigned: "PENDING",
+  in_progress: "IN_PROGRESS",
+  paused: "PAUSED",
+  completed: "COMPLETED",
+  verified: "COMPLETED",
+  rejected: "REJECTED",
+}
+
+const STATUS_APP_TO_DB: Record<TaskStatus, DatabaseTask["status"]> = {
+  PENDING: "pending",
+  IN_PROGRESS: "in_progress",
+  PAUSED: "paused",
+  COMPLETED: "completed",
+  REJECTED: "rejected",
+}
+
+const PRIORITY_DB_TO_APP: Record<NonNullable<DatabaseTask["priority_level"]>, PriorityLevel> = {
+  low: "DAILY_TASK",
+  medium: "GUEST_REQUEST",
+  high: "TIME_SENSITIVE",
+  urgent: "TIME_SENSITIVE",
+}
+
+const PRIORITY_APP_TO_DB: Record<PriorityLevel, DatabaseTask["priority_level"]> = {
+  GUEST_REQUEST: "medium",
+  TIME_SENSITIVE: "urgent",
+  DAILY_TASK: "low",
+  PREVENTIVE_MAINTENANCE: "high",
+}
+
+const TASK_STATUS_VALUES: TaskStatus[] = ["PENDING", "IN_PROGRESS", "PAUSED", "COMPLETED", "REJECTED"]
+
+function normalizeDepartment(role: DatabaseUser["role"], department: DatabaseUser["department"]): Department {
+  if (department === "housekeeping" || department === "maintenance") {
+    return department
   }
 
-  if (dbUser.shift_timing) {
-    try {
-      const parsed = JSON.parse(dbUser.shift_timing)
-      shift = {
-        start: parsed.start || "09:00",
-        end: parsed.end || "17:00",
-        breakStart: parsed.breakStart || "12:00",
-        breakEnd: parsed.breakEnd || "13:00",
-      }
-    } catch (e) {
-      console.error("[v0] Error parsing shift_timing:", e)
+  if (role === "front_office" || role === "admin") {
+    return "front_desk"
+  }
+
+  return "housekeeping"
+}
+
+function toTaskStatus(value: unknown): TaskStatus | null {
+  if (typeof value !== "string") return null
+  const lowercase = value.toLowerCase() as DatabaseTask["status"]
+  if (lowercase in STATUS_DB_TO_APP) {
+    return STATUS_DB_TO_APP[lowercase]
+  }
+
+  const uppercase = value.toUpperCase()
+  if ((TASK_STATUS_VALUES as string[]).includes(uppercase)) {
+    return uppercase as TaskStatus
+  }
+
+  return null
+}
+
+function toPriorityLevel(value: unknown): PriorityLevel {
+  if (typeof value === "string") {
+    const key = value.toLowerCase() as keyof typeof PRIORITY_DB_TO_APP
+    if (key in PRIORITY_DB_TO_APP) {
+      return PRIORITY_DB_TO_APP[key]
+    }
+
+    const uppercase = value.toUpperCase() as PriorityLevel
+    if ((["GUEST_REQUEST", "TIME_SENSITIVE", "DAILY_TASK", "PREVENTIVE_MAINTENANCE"] as string[]).includes(uppercase)) {
+      return uppercase as PriorityLevel
     }
   }
+
+  return "DAILY_TASK"
+}
+
+function parseShiftTiming(raw: string | null) {
+  if (!raw) {
+    return { ...DEFAULT_SHIFT }
+  }
+
+  const trimmed = raw.trim()
+
+  if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+    try {
+      const parsed = JSON.parse(trimmed)
+      const start = typeof parsed.start === "string" ? parsed.start : DEFAULT_SHIFT.start
+      const end = typeof parsed.end === "string" ? parsed.end : DEFAULT_SHIFT.end
+      const breakStart = typeof parsed.breakStart === "string" ? parsed.breakStart : DEFAULT_SHIFT.breakStart
+      const breakEnd = typeof parsed.breakEnd === "string" ? parsed.breakEnd : DEFAULT_SHIFT.breakEnd
+
+      return {
+        start,
+        end,
+        breakStart,
+        breakEnd,
+        hasBreak: Boolean(breakStart && breakEnd),
+      }
+    } catch (error) {
+      console.warn("[v0] shift_timing JSON parse failed, falling back to range parsing:", error)
+    }
+  }
+
+  const match = trimmed.match(/(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})/)
+  if (match) {
+    return {
+      start: match[1],
+      end: match[2],
+      breakStart: DEFAULT_SHIFT.breakStart,
+      breakEnd: DEFAULT_SHIFT.breakEnd,
+      hasBreak: false,
+    }
+  }
+
+  return { ...DEFAULT_SHIFT }
+}
+
+function toDualTimestamp(value?: string | null, fallback?: string | null): DualTimestamp {
+  const iso = value ?? fallback ?? new Date().toISOString()
+  return { client: iso, server: iso }
+}
+
+function parseDualTimestampJson(data: Json | null, fallback?: string | null): DualTimestamp {
+  if (!data) {
+    return toDualTimestamp(undefined, fallback)
+  }
+
+  try {
+    const parsed = typeof data === "string" ? JSON.parse(data) : (data as Record<string, string | undefined>)
+    const client = typeof parsed?.client === "string" ? parsed.client : undefined
+    const server = typeof parsed?.server === "string" ? parsed.server : undefined
+    return toDualTimestamp(client ?? server, fallback)
+  } catch (error) {
+    console.warn("[v0] assigned_at JSON parse failed, using fallback:", error)
+    return toDualTimestamp(undefined, fallback)
+  }
+}
+
+function parsePauseHistory(data: Json): PauseRecord[] {
+  if (!data) return []
+
+  try {
+    const value = typeof data === "string" ? JSON.parse(data) : data
+    if (Array.isArray(value)) {
+      return value
+        .map((entry) => {
+          const record = entry as Record<string, any>
+          const pausedRaw = record?.paused_at
+          const resumedRaw = record?.resumed_at
+
+          const pausedSource =
+            typeof pausedRaw === "string" ? pausedRaw : pausedRaw?.server ?? pausedRaw?.client ?? undefined
+          const resumedSource =
+            resumedRaw === null
+              ? null
+              : typeof resumedRaw === "string"
+                ? resumedRaw
+                : resumedRaw?.server ?? resumedRaw?.client ?? undefined
+
+          return {
+            paused_at: toDualTimestamp(pausedSource),
+            resumed_at: resumedSource === null ? null : resumedSource ? toDualTimestamp(resumedSource) : null,
+            reason: typeof record?.reason === "string" ? record.reason : "",
+          }
+        })
+        .filter((entry): entry is PauseRecord => Boolean(entry.paused_at))
+    }
+  } catch (error) {
+    console.warn("[v0] pause_history JSON parse failed, defaulting to empty array:", error)
+  }
+
+  return []
+}
+
+function parseAuditLog(data: Json): AuditLogEntry[] {
+  if (!data) return []
+
+  try {
+    const value = typeof data === "string" ? JSON.parse(data) : data
+    if (Array.isArray(value)) {
+      return value
+        .map((entry) => {
+          const record = entry as Record<string, any>
+          const timestampRaw = record?.timestamp
+          const timestampSource =
+            typeof timestampRaw === "string"
+              ? timestampRaw
+              : timestampRaw?.server ?? timestampRaw?.client ?? undefined
+
+          return {
+            timestamp: toDualTimestamp(timestampSource),
+            user_id: typeof record?.user_id === "string" ? record.user_id : "",
+            action: typeof record?.action === "string" ? record.action : "",
+            old_status: toTaskStatus(record?.old_status),
+            new_status: toTaskStatus(record?.new_status),
+            details: typeof record?.details === "string" ? record.details : "",
+          }
+        })
+        .filter((entry): entry is AuditLogEntry => Boolean(entry.action))
+    }
+  } catch (error) {
+    console.warn("[v0] audit_log JSON parse failed, defaulting to empty array:", error)
+  }
+
+  return []
+}
+
+function parseCategorizedPhotos(data: Json): CategorizedPhotos | null {
+  if (!data) return null
+
+  try {
+    const value = typeof data === "string" ? JSON.parse(data) : data
+    if (value && typeof value === "object") {
+      return value as CategorizedPhotos
+    }
+  } catch (error) {
+    console.warn("[v0] categorized_photos JSON parse failed, defaulting to null:", error)
+  }
+
+  return null
+}
+
+function parsePhotoRequirements(data: Json): {
+  simpleRequired: boolean
+  simpleCount: number | null
+  documentationRequired: boolean
+  categories: Task["photo_categories"]
+} {
+  if (!data) {
+    return {
+      simpleRequired: false,
+      simpleCount: null,
+      documentationRequired: false,
+      categories: null,
+    }
+  }
+
+  try {
+    const value = typeof data === "string" ? JSON.parse(data) : data
+
+    if (Array.isArray(value)) {
+      return {
+        simpleRequired: false,
+        simpleCount: null,
+        documentationRequired: value.length > 0,
+        categories: value as Task["photo_categories"],
+      }
+    }
+
+    if (value && typeof value === "object") {
+      const simple = (value as Record<string, any>).simple
+      const simpleRequired = Boolean(simple?.required)
+      const simpleCount = typeof simple?.count === "number" ? simple.count : null
+
+      return {
+        simpleRequired,
+        simpleCount,
+        documentationRequired: false,
+        categories: null,
+      }
+    }
+  } catch (error) {
+    console.warn("[v0] photo_requirements JSON parse failed, defaulting to null:", error)
+  }
+
+  return {
+    simpleRequired: false,
+    simpleCount: null,
+    documentationRequired: false,
+    categories: null,
+  }
+}
+
+export function databaseUserToApp(dbUser: DatabaseUser): User {
+  const shift = parseShiftTiming(dbUser.shift_timing)
 
   return {
     id: dbUser.id,
     name: dbUser.name,
     role: dbUser.role,
-    phone: dbUser.phone || "",
-    department: dbUser.department || "housekeeping",
+    phone: dbUser.phone ?? "",
+    department: normalizeDepartment(dbUser.role, dbUser.department),
     shift_start: shift.start,
     shift_end: shift.end,
+    has_break: shift.hasBreak,
     break_start: shift.breakStart,
     break_end: shift.breakEnd,
+    is_available: true,
   }
 }
 
 export function databaseTaskToApp(dbTask: DatabaseTask): Task {
-  // Parse JSONB fields
-  const categorizedPhotos =
-    typeof dbTask.categorized_photos === "string"
-      ? JSON.parse(dbTask.categorized_photos)
-      : dbTask.categorized_photos || []
+  const assignedAt = parseDualTimestampJson(dbTask.assigned_at, dbTask.created_at)
+  const startedAt = dbTask.started_at ? toDualTimestamp(dbTask.started_at) : null
+  const completedAt = dbTask.completed_at ? toDualTimestamp(dbTask.completed_at) : null
+  const categorizedPhotos = parseCategorizedPhotos(dbTask.categorized_photos)
+  const pauseHistory = parsePauseHistory(dbTask.pause_history)
+  const auditLog = parseAuditLog(dbTask.audit_log)
 
-  const auditLog = typeof dbTask.audit_log === "string" ? JSON.parse(dbTask.audit_log) : dbTask.audit_log || []
-
-  const pauseHistory =
-    typeof dbTask.pause_history === "string" ? JSON.parse(dbTask.pause_history) : dbTask.pause_history || []
-
-  const photoRequirements =
-    typeof dbTask.photo_requirements === "string"
-      ? JSON.parse(dbTask.photo_requirements)
-      : dbTask.photo_requirements || []
-
-  // Parse assigned_at JSONB (dual timestamp)
-  let assignedAt = { client: null, server: null }
-  if (dbTask.assigned_at) {
-    const parsed = typeof dbTask.assigned_at === "string" ? JSON.parse(dbTask.assigned_at) : dbTask.assigned_at
-    assignedAt = {
-      client: parsed.client || null,
-      server: parsed.server || null,
-    }
-  }
+  const photoSettings = parsePhotoRequirements(dbTask.photo_requirements)
+  const photoCategories = photoSettings.categories
 
   return {
     id: dbTask.id,
-    type: dbTask.task_type,
-    roomNumber: dbTask.room_number || "",
-    status: dbTask.status,
-    priority: dbTask.priority_level || "medium",
-    assignedTo: dbTask.assigned_to_user_id || "",
-    assignedBy: dbTask.assigned_by_user_id || "",
-    assignedAt: assignedAt,
-    startedAt: dbTask.started_at ? { client: dbTask.started_at, server: dbTask.started_at } : null,
-    completedAt: dbTask.completed_at ? { client: dbTask.completed_at, server: dbTask.completed_at } : null,
-    verifiedAt: dbTask.verified_at || null,
-    verifiedBy: dbTask.verified_by_user_id || null,
-    description: dbTask.description || "",
-    specialInstructions: dbTask.special_instructions || "",
-    estimatedDuration: dbTask.estimated_duration || 30,
-    actualDuration: dbTask.actual_duration || null,
-    categorizedPhotos: categorizedPhotos,
-    workerRemarks: dbTask.worker_remarks || "",
-    supervisorRemarks: dbTask.supervisor_remarks || "",
-    qualityRating: dbTask.quality_rating || null,
-    requiresVerification: dbTask.requires_verification,
-    timerValidationFlag: dbTask.timer_validation_flag,
-    audit_log: auditLog,
+    task_type: dbTask.task_type,
+    priority_level: dbTask.priority_level ? PRIORITY_DB_TO_APP[dbTask.priority_level] : "DAILY_TASK",
+    status: STATUS_DB_TO_APP[dbTask.status],
+    department: "housekeeping",
+    assigned_to_user_id: dbTask.assigned_to_user_id ?? "",
+    assigned_by_user_id: dbTask.assigned_by_user_id ?? "",
+    assigned_at: assignedAt,
+    started_at: startedAt,
+    completed_at: completedAt,
+    expected_duration_minutes: dbTask.estimated_duration ?? 0,
+    actual_duration_minutes: dbTask.actual_duration,
+    photo_urls: [],
+    categorized_photos: categorizedPhotos,
+    photo_required: photoSettings.simpleRequired,
+    photo_count: photoSettings.simpleCount,
+    photo_documentation_required: photoSettings.documentationRequired,
+    photo_categories: photoCategories,
+    worker_remark: dbTask.worker_remarks ?? "",
+    supervisor_remark: dbTask.supervisor_remarks ?? "",
+    rating: dbTask.quality_rating ?? null,
+    quality_comment: null,
+    rating_proof_photo_url: null,
+    rejection_proof_photo_url: null,
+    room_number: dbTask.room_number ?? "",
     pause_history: pauseHistory,
-    photoRequirements: photoRequirements,
+    audit_log: auditLog,
+    is_custom_task: false,
+    custom_task_name: null,
+    custom_task_category: null,
+    custom_task_priority: null,
+    custom_task_photo_required: null,
+    custom_task_photo_count: null,
+    custom_task_processed: false,
+    rejection_acknowledged: false,
+    rejection_acknowledged_at: null,
   }
 }
 
 export function databaseShiftScheduleToApp(dbSchedule: DatabaseShiftSchedule): ShiftSchedule {
   return {
     id: dbSchedule.id,
-    workerId: dbSchedule.worker_id,
-    date: dbSchedule.schedule_date,
-    shiftStart: dbSchedule.shift_start,
-    shiftEnd: dbSchedule.shift_end,
-    breakStart: dbSchedule.break_start || undefined,
-    breakEnd: dbSchedule.break_end || undefined,
-    isOverride: dbSchedule.is_override,
-    overrideReason: dbSchedule.override_reason || undefined,
+    worker_id: dbSchedule.worker_id,
+    schedule_date: dbSchedule.schedule_date,
+    shift_start: dbSchedule.shift_start,
+    shift_end: dbSchedule.shift_end,
+    has_break: Boolean(dbSchedule.break_start && dbSchedule.break_end),
+    break_start: dbSchedule.break_start ?? undefined,
+    break_end: dbSchedule.break_end ?? undefined,
+    is_override: dbSchedule.is_override,
+    override_reason: dbSchedule.override_reason ?? undefined,
+    notes: undefined,
+    created_at: dbSchedule.created_at,
   }
 }
 
@@ -219,6 +492,8 @@ export function appUserToDatabase(
     breakEnd: user.break_end,
   })
 
+  const department = user.department === "front_desk" ? null : user.department
+
   return {
     id: user.id,
     username,
@@ -226,59 +501,74 @@ export function appUserToDatabase(
     name: user.name,
     role: user.role,
     phone: user.phone || null,
-    department: user.department || null,
+    department,
     shift_timing: shiftTiming,
   }
 }
 
 export function appTaskToDatabase(task: Task): Omit<DatabaseTask, "created_at" | "updated_at"> {
-  // Convert assigned_at to JSONB
-  const assignedAt = task.assignedAt
+  const assignedAt = task.assigned_at
     ? {
-        client: task.assignedAt.client,
-        server: task.assignedAt.server,
+        client: task.assigned_at.client,
+        server: task.assigned_at.server,
       }
     : null
 
+  let photoRequirements: Json = null
+
+  if (task.photo_documentation_required) {
+    photoRequirements = (task.photo_categories ?? []) as Json
+  } else if (task.photo_required) {
+    photoRequirements = {
+      simple: {
+        required: true,
+        count: typeof task.photo_count === "number" ? task.photo_count : null,
+      },
+    }
+  }
+
+  const categorizedPhotos =
+    task.categorized_photos ?? ({ room_photos: [], proof_photos: [] } as CategorizedPhotos)
+
   return {
     id: task.id,
-    task_type: task.type,
-    room_number: task.roomNumber || null,
-    status: task.status,
-    priority_level: task.priority,
-    assigned_to_user_id: task.assignedTo || null,
-    assigned_by_user_id: task.assignedBy || null,
-    started_at: task.startedAt?.server || null,
-    completed_at: task.completedAt?.server || null,
-    verified_at: task.verifiedAt || null,
-    verified_by_user_id: task.verifiedBy || null,
+    task_type: task.task_type,
+    room_number: task.room_number || null,
+    status: STATUS_APP_TO_DB[task.status],
+    priority_level: PRIORITY_APP_TO_DB[task.priority_level] ?? null,
+    assigned_to_user_id: task.assigned_to_user_id || null,
+    assigned_by_user_id: task.assigned_by_user_id || null,
+    started_at: task.started_at?.server ?? null,
+    completed_at: task.completed_at?.server ?? null,
+    verified_at: task.status === "COMPLETED" ? task.completed_at?.server ?? null : null,
+    verified_by_user_id: null,
     assigned_at: assignedAt as Json,
-    description: task.description || null,
-    special_instructions: task.specialInstructions || null,
-    estimated_duration: task.estimatedDuration || null,
-    actual_duration: task.actualDuration || null,
-    categorized_photos: task.categorizedPhotos as Json,
-    worker_remarks: task.workerRemarks || null,
-    supervisor_remarks: task.supervisorRemarks || null,
-    quality_rating: task.qualityRating || null,
-    requires_verification: task.requiresVerification || false,
-    timer_validation_flag: task.timerValidationFlag || false,
-    audit_log: task.audit_log as Json,
-    pause_history: task.pause_history as Json,
-    photo_requirements: task.photoRequirements as Json,
+    description: task.worker_remark || null,
+    special_instructions: task.supervisor_remark || null,
+    estimated_duration: task.expected_duration_minutes ?? null,
+    actual_duration: task.actual_duration_minutes ?? null,
+  categorized_photos: (categorizedPhotos as unknown) as Json,
+    worker_remarks: task.worker_remark || null,
+    supervisor_remarks: task.supervisor_remark || null,
+    quality_rating: task.rating ?? null,
+    requires_verification: task.photo_documentation_required ?? task.photo_required ?? false,
+    timer_validation_flag: false,
+    audit_log: (task.audit_log as unknown) as Json,
+    pause_history: (task.pause_history as unknown) as Json,
+    photo_requirements: photoRequirements,
   }
 }
 
 export function appShiftScheduleToDatabase(schedule: ShiftSchedule): Omit<DatabaseShiftSchedule, "created_at"> {
   return {
     id: schedule.id,
-    worker_id: schedule.workerId,
-    schedule_date: schedule.date,
-    shift_start: schedule.shiftStart,
-    shift_end: schedule.shiftEnd,
-    break_start: schedule.breakStart || null,
-    break_end: schedule.breakEnd || null,
-    is_override: schedule.isOverride || false,
-    override_reason: schedule.overrideReason || null,
+    worker_id: schedule.worker_id,
+    schedule_date: schedule.schedule_date,
+    shift_start: schedule.shift_start,
+    shift_end: schedule.shift_end,
+    break_start: schedule.break_start || null,
+    break_end: schedule.break_end || null,
+    is_override: schedule.is_override || false,
+    override_reason: schedule.override_reason || null,
   }
 }

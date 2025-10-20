@@ -3,6 +3,26 @@ import { NextResponse } from "next/server"
 import { cookies } from "next/headers"
 import { databaseTaskToApp } from "@/lib/database-types"
 
+function toDualTimestamp() {
+  const iso = new Date().toISOString()
+  return { client: iso, server: iso }
+}
+
+function normalizeStatus(status: string) {
+  const lower = status.toLowerCase()
+  switch (lower) {
+    case "pending":
+    case "in_progress":
+    case "paused":
+    case "completed":
+    case "verified":
+    case "rejected":
+      return lower
+    default:
+      return "pending"
+  }
+}
+
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
@@ -16,36 +36,40 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const supabase = await createClient()
     const { reason } = await request.json()
 
-    const paused_at = {
-      client: new Date().toISOString(),
-      server: new Date().toISOString(),
-      validated: true,
+    const pauseTimestamp = toDualTimestamp()
+
+    const { data: currentTask, error: fetchError } = await supabase
+      .from("tasks")
+      .select("status, pause_history, audit_log")
+      .eq("id", id)
+      .single()
+
+    if (fetchError || !currentTask) {
+      console.error("[v0] Task pause fetch error:", fetchError)
+      return NextResponse.json({ error: "Task not found" }, { status: 404 })
     }
 
-    // Get current task to append to pause history and audit log
-    const { data: currentTask } = await supabase.from("tasks").select("pause_history, audit_log").eq("id", id).single()
-
-    const pauseHistory = currentTask?.pause_history || []
+    const pauseHistory = Array.isArray(currentTask.pause_history) ? currentTask.pause_history : []
     pauseHistory.push({
-      paused_at,
+      paused_at: pauseTimestamp,
       resumed_at: null,
       reason: reason || "Worker paused task",
     })
 
-    const auditLog = currentTask?.audit_log || []
+    const auditLog = Array.isArray(currentTask.audit_log) ? currentTask.audit_log : []
     auditLog.push({
-      timestamp: new Date().toISOString(),
+      timestamp: toDualTimestamp(),
       user_id: sessionUserId,
-      action: "PAUSED",
-      old_status: "IN_PROGRESS",
+      action: "TASK_PAUSED",
+      old_status: currentTask.status ?? "IN_PROGRESS",
       new_status: "PAUSED",
-      metadata: { reason },
+      details: reason || "Task paused by worker",
     })
 
     const { data: task, error: taskError } = await supabase
       .from("tasks")
       .update({
-        status: "PAUSED",
+        status: normalizeStatus("paused"),
         pause_history: pauseHistory,
         audit_log: auditLog,
       })

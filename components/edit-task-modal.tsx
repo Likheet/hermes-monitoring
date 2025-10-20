@@ -24,7 +24,7 @@ export function EditTaskModal({ task, open, onOpenChange }: EditTaskModalProps) 
 
   const isOtherTask = task.task_type === "Other (Custom Task)" || task.custom_task_name
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!isOtherTask) {
       toast({
         title: "Cannot Edit",
@@ -36,18 +36,21 @@ export function EditTaskModal({ task, open, onOpenChange }: EditTaskModalProps) 
 
     setIsSubmitting(true)
 
-    updateTask(task.id, {
-      priority_level: priorityLevel,
-      photo_required: photoRequired,
-    })
+    try {
+      await updateTask(task.id, {
+        priority_level: priorityLevel,
+        photo_required: photoRequired,
+      })
 
-    toast({
-      title: "Task Updated",
-      description: "Task details have been updated successfully",
-    })
+      toast({
+        title: "Task Updated",
+        description: "Task details have been updated successfully",
+      })
 
-    setIsSubmitting(false)
-    onOpenChange(false)
+      onOpenChange(false)
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   return (

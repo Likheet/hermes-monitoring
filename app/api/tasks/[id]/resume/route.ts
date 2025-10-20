@@ -3,6 +3,26 @@ import { NextResponse } from "next/server"
 import { cookies } from "next/headers"
 import { databaseTaskToApp } from "@/lib/database-types"
 
+function toDualTimestamp() {
+  const iso = new Date().toISOString()
+  return { client: iso, server: iso }
+}
+
+function normalizeStatus(status: string) {
+  const lower = status.toLowerCase()
+  switch (lower) {
+    case "pending":
+    case "in_progress":
+    case "paused":
+    case "completed":
+    case "verified":
+    case "rejected":
+      return lower
+    default:
+      return "pending"
+  }
+}
+
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
@@ -15,36 +35,42 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
     const supabase = await createClient()
 
-    const resumed_at = {
-      client: new Date().toISOString(),
-      server: new Date().toISOString(),
-      validated: true,
+    const { data: currentTask, error: fetchError } = await supabase
+      .from("tasks")
+      .select("status, pause_history, audit_log")
+      .eq("id", id)
+      .single()
+
+    if (fetchError || !currentTask) {
+      console.error("[v0] Task resume fetch error:", fetchError)
+      return NextResponse.json({ error: "Task not found" }, { status: 404 })
     }
 
-    const { data: currentTask } = await supabase.from("tasks").select("pause_history, audit_log").eq("id", id).single()
-
-    const pauseHistory = currentTask?.pause_history || []
-    // Find the most recent pause without a resumed_at
-    const lastPauseIndex = pauseHistory.findIndex((p: any) => !p.resumed_at)
-    if (lastPauseIndex !== -1) {
-      pauseHistory[lastPauseIndex].resumed_at = resumed_at
+    const pauseHistory = Array.isArray(currentTask.pause_history) ? currentTask.pause_history : []
+    const updatedPauseHistory = pauseHistory.map((entry: any) => ({ ...entry }))
+    for (let index = updatedPauseHistory.length - 1; index >= 0; index--) {
+      const entry = updatedPauseHistory[index]
+      if (!entry?.resumed_at) {
+        entry.resumed_at = toDualTimestamp()
+        break
+      }
     }
 
-    const auditLog = currentTask?.audit_log || []
+    const auditLog = Array.isArray(currentTask.audit_log) ? currentTask.audit_log : []
     auditLog.push({
-      timestamp: new Date().toISOString(),
+      timestamp: toDualTimestamp(),
       user_id: sessionUserId,
-      action: "RESUMED",
-      old_status: "PAUSED",
+      action: "TASK_RESUMED",
+      old_status: currentTask.status ?? "PAUSED",
       new_status: "IN_PROGRESS",
-      metadata: {},
+      details: "Task resumed by worker",
     })
 
     const { data: task, error: taskError } = await supabase
       .from("tasks")
       .update({
-        status: "IN_PROGRESS",
-        pause_history: pauseHistory,
+        status: normalizeStatus("in_progress"),
+        pause_history: updatedPauseHistory,
         audit_log: auditLog,
       })
       .eq("id", id)

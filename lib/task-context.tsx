@@ -9,6 +9,8 @@ import { triggerHapticFeedback } from "./haptics"
 import { ALL_ROOMS, getMaintenanceItemsForRoom } from "./location-data"
 import { useRealtimeTasks } from "./use-realtime-tasks"
 import {
+  loadTasksFromSupabase,
+  loadUsersFromSupabase,
   saveTaskToSupabase,
   saveUserToSupabase,
   saveMaintenanceScheduleToSupabase,
@@ -18,6 +20,15 @@ import {
   deleteShiftScheduleFromSupabase,
 } from "./supabase-task-operations"
 
+const DEFAULT_MAINTENANCE_DURATION: Record<MaintenanceTaskType, number> = {
+  ac_indoor: 30,
+  ac_outdoor: 30,
+  fan: 15,
+  exhaust: 20,
+  lift: 45,
+  all: 60,
+}
+
 interface TaskContextType {
   tasks: Task[]
   users: User[]
@@ -25,18 +36,18 @@ interface TaskContextType {
   schedules: MaintenanceSchedule[]
   maintenanceTasks: MaintenanceTask[]
   shiftSchedules: ShiftSchedule[]
-  updateTask: (taskId: string, updates: Partial<Task>) => void
+  updateTask: (taskId: string, updates: Partial<Task>) => Promise<void>
   addAuditLog: (taskId: string, entry: Omit<AuditLogEntry, "timestamp">) => void
-  startTask: (taskId: string, userId: string) => { success: boolean; error?: string }
+  startTask: (taskId: string, userId: string) => Promise<{ success: boolean; error?: string }>
   pauseTask: (
     taskId: string,
     userId: string,
     reason: string,
-  ) => { success: boolean; error?: string; pausedTaskId?: string; pausedTaskName?: string }
-  resumeTask: (taskId: string, userId: string) => { success: boolean; error?: string }
-  completeTask: (taskId: string, userId: string, categorizedPhotos: CategorizedPhotos, remark: string) => void
+  ) => Promise<{ success: boolean; error?: string; pausedTaskId?: string; pausedTaskName?: string }>
+  resumeTask: (taskId: string, userId: string) => Promise<{ success: boolean; error?: string }>
+  completeTask: (taskId: string, userId: string, categorizedPhotos: CategorizedPhotos, remark: string) => Promise<void>
   getTaskById: (taskId: string) => Task | undefined
-  createTask: (task: Omit<Task, "id" | "audit_log" | "pause_history">) => void
+  createTask: (task: Omit<Task, "id" | "audit_log" | "pause_history">) => Promise<void>
   verifyTask: (
     taskId: string,
     userId: string,
@@ -87,7 +98,7 @@ export function TaskProvider({ children }: { children: ReactNode }) {
     onTaskUpdate: (payload) => {
       console.log("[v0] Realtime task update received:", payload.eventType)
       // Reload tasks when changes occur
-      loadTasksFromAPI()
+      refreshTasks()
     },
   })
 
@@ -95,42 +106,38 @@ export function TaskProvider({ children }: { children: ReactNode }) {
     console.log("[v0] Realtime connection status:", isConnected ? "CONNECTED" : "DISCONNECTED")
   }, [isConnected])
 
-  async function loadTasksFromAPI() {
+  async function refreshTasks() {
     try {
-      const response = await fetch("/api/tasks")
-      if (response.ok) {
-        const data = await response.json()
-        setTasks(data.tasks || [])
-      }
+      const data = await loadTasksFromSupabase()
+      setTasks(data)
     } catch (error) {
-      console.error("[v0] Error loading tasks from API:", error)
+      console.error("[v0] Error loading tasks from Supabase:", error)
     }
   }
 
-  async function loadUsersFromAPI() {
+  async function refreshUsers() {
     try {
-      const response = await fetch("/api/users")
-      if (response.ok) {
-        const data = await response.json()
-        setUsers(data.users || mockUsers)
+      const data = await loadUsersFromSupabase()
+      if (data.length > 0) {
+        setUsers(data)
       } else {
         setUsers(mockUsers)
       }
     } catch (error) {
-      console.error("[v0] Error loading users from API:", error)
+      console.error("[v0] Error loading users from Supabase:", error)
       setUsers(mockUsers)
     }
   }
 
   useEffect(() => {
     async function loadData() {
-      console.log("[v0] Loading data from API routes...")
+      console.log("[v0] Loading data from Supabase...")
       setIsLoading(true)
 
       try {
-        await Promise.all([loadTasksFromAPI(), loadUsersFromAPI()])
+        await Promise.all([refreshTasks(), refreshUsers()])
 
-        console.log("[v0] ✅ Data loaded from API routes")
+        console.log("[v0] ✅ Data loaded from Supabase")
       } catch (error) {
         console.error("[v0] Error loading data:", error)
         setUsers(mockUsers)
@@ -152,7 +159,24 @@ export function TaskProvider({ children }: { children: ReactNode }) {
 
       if (response.ok) {
         const { task } = await response.json()
-        setTasks((prev) => prev.map((t) => (t.id === taskId ? task : t)))
+        setTasks((prev) =>
+          prev.map((t) => {
+            if (t.id !== taskId) return t
+            const merged = {
+              ...t,
+              ...task,
+              department: t.department ?? task.department,
+            }
+
+            Object.entries(updates).forEach(([key, value]) => {
+              if (typeof value !== "undefined") {
+                ;(merged as Record<string, unknown>)[key] = value as unknown
+              }
+            })
+
+            return merged
+          }),
+        )
         console.log("[v0] Task updated successfully via API:", taskId)
       } else {
         console.error("[v0] Failed to update task via API:", await response.text())
@@ -205,7 +229,7 @@ export function TaskProvider({ children }: { children: ReactNode }) {
       })
 
       if (response.ok) {
-        await loadTasksFromAPI()
+  await refreshTasks()
         return { success: true }
       } else {
         const error = await response.json()
@@ -240,7 +264,7 @@ export function TaskProvider({ children }: { children: ReactNode }) {
       })
 
       if (response.ok) {
-        await loadTasksFromAPI()
+  await refreshTasks()
         return { success: true }
       } else {
         const error = await response.json()
@@ -275,7 +299,7 @@ export function TaskProvider({ children }: { children: ReactNode }) {
       })
 
       if (response.ok) {
-        await loadTasksFromAPI()
+  await refreshTasks()
         return { success: true }
       } else {
         const error = await response.json()
@@ -296,7 +320,7 @@ export function TaskProvider({ children }: { children: ReactNode }) {
       })
 
       if (response.ok) {
-        await loadTasksFromAPI()
+        await refreshTasks()
         console.log("[v0] Task completed successfully via API:", taskId)
       } else {
         console.error("[v0] Failed to complete task via API:", await response.text())
@@ -470,11 +494,25 @@ export function TaskProvider({ children }: { children: ReactNode }) {
     const oldWorkerId = task.assigned_to_user_id
     const newWorker = users.find((u) => u.id === newWorkerId)
 
+    const reassignedAt = createDualTimestamp()
+
     updateTask(taskId, {
       assigned_to_user_id: newWorkerId,
-      assigned_at: createDualTimestamp(),
-      department: newWorker?.department || task.department,
+      assigned_at: reassignedAt,
     })
+
+    setTasks((prev) =>
+      prev.map((t) =>
+        t.id === taskId
+          ? {
+              ...t,
+              assigned_to_user_id: newWorkerId,
+              assigned_at: reassignedAt,
+              department: newWorker?.department || t.department,
+            }
+          : t,
+      ),
+    )
 
     addAuditLog(taskId, {
       user_id: userId,
@@ -730,13 +768,18 @@ export function TaskProvider({ children }: { children: ReactNode }) {
           room_number: room.number,
           task_type: item.type,
           location: item.location,
-          description: `${item.name} maintenance for room ${room.number}`,
+          description: `${item.description} - room ${room.number}`,
           status: "pending",
-          photos: { room_photos: [], proof_photos: [] },
+          photos: [],
+          categorized_photos: {
+            before_photos: [],
+            during_photos: [],
+            after_photos: [],
+          },
           period_month: currentMonth,
           period_year: currentYear,
           created_at: new Date().toISOString(),
-          expected_duration_minutes: item.expectedDuration,
+          expected_duration_minutes: DEFAULT_MAINTENANCE_DURATION[item.type] ?? DEFAULT_MAINTENANCE_DURATION.all,
         }
         newTasks.push(newTask)
         saveMaintenanceTaskToSupabase(newTask)

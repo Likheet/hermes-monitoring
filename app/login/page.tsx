@@ -18,6 +18,15 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false)
   const { login } = useAuth()
   const router = useRouter()
+  const enableDevLogin = process.env.NEXT_PUBLIC_DEVTEST_LOGIN === "true"
+
+  const devAccounts = [
+    { label: "Admin", username: "admin", password: "admin123", redirect: "/admin" },
+    { label: "Front Office", username: "frontdesk", password: "front123", redirect: "/front-office" },
+    { label: "HK Supervisor", username: "hk-super", password: "super123", redirect: "/supervisor" },
+    { label: "HK Worker", username: "hk-worker", password: "worker123", redirect: "/worker" },
+    { label: "Maintenance Worker", username: "maint-worker", password: "worker123", redirect: "/maintenance" },
+  ]
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -35,6 +44,26 @@ export default function LoginPage() {
     } catch (err) {
       setError("An error occurred during login. Please try again.")
       console.error("[v0] Login error:", err)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handleQuickLogin = async (username: string, password: string, redirect?: string) => {
+    setError("")
+    setIsLoading(true)
+
+    try {
+      const success = await login(username, password)
+
+      if (success) {
+        router.push(redirect || "/")
+      } else {
+        setError(`Quick login failed for ${username}`)
+      }
+    } catch (err) {
+      setError("Quick login error. Please try again.")
+      console.error("[v0] Quick login error:", err)
     } finally {
       setIsLoading(false)
     }
@@ -85,6 +114,26 @@ export default function LoginPage() {
             <Button type="submit" disabled={isLoading || !username || !password} className="w-full">
               {isLoading ? "Signing in..." : "Sign In"}
             </Button>
+
+            {enableDevLogin && (
+              <div className="space-y-3 rounded-md border border-dashed border-muted-foreground/40 p-3 text-sm">
+                <p className="font-semibold text-muted-foreground">Dev Test Quick Login</p>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  {devAccounts.map((account) => (
+                    <Button
+                      key={account.username}
+                      type="button"
+                      variant="secondary"
+                      disabled={isLoading}
+                      onClick={() => handleQuickLogin(account.username, account.password, account.redirect)}
+                    >
+                      {account.label}
+                    </Button>
+                  ))}
+                </div>
+                <p className="text-xs text-muted-foreground">Disable by unsetting NEXT_PUBLIC_DEVTEST_LOGIN.</p>
+              </div>
+            )}
 
             <div className="mt-4 rounded-md bg-muted p-3 text-sm text-muted-foreground">
               <p className="font-semibold mb-2">Test Accounts:</p>

@@ -47,12 +47,15 @@ function CreateTaskForm() {
         const taskDef: TaskDefinition = {
           id: task.task_type,
           name: task.task_type,
-          category: task.custom_task_category || "DAILY_TASK",
+          category: task.custom_task_category || "ROOM_CLEANING",
           priority: task.custom_task_priority || "medium",
-          department: task.department,
+          department: task.department === "front_desk" ? "housekeeping" : task.department,
           duration: task.expected_duration_minutes,
           photoRequired: task.photo_required,
           photoCount: task.custom_task_photo_count || 1,
+          photoDocumentationRequired: !!task.photo_documentation_required,
+          photoCategories: task.photo_categories || undefined,
+          keywords: [],
           requiresRoom: !!task.room_number,
           requiresACLocation: false,
         }
@@ -88,7 +91,7 @@ function CreateTaskForm() {
     const isCustomTask = data.isCustomTask && !!trimmedCustomName
     const taskName = isCustomTask ? trimmedCustomName! : data.taskName
 
-    createTask({
+    await createTask({
       task_type: taskName,
       priority_level: priorityLevel,
       status: "PENDING",
