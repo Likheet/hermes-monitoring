@@ -1,6 +1,6 @@
 "use client"
 
-import { createContext, useContext, useState, useEffect, type ReactNode } from "react"
+import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from "react"
 import type { Task, AuditLogEntry, User, TaskIssue, CategorizedPhotos } from "./types"
 import type { MaintenanceSchedule, MaintenanceTask, MaintenanceTaskType, ShiftSchedule } from "./maintenance-types"
 import { createDualTimestamp, mockUsers } from "./mock-data"
@@ -93,29 +93,16 @@ export function TaskProvider({ children }: { children: ReactNode }) {
   const [shiftSchedules, setShiftSchedules] = useState<ShiftSchedule[]>([])
   const [isLoading, setIsLoading] = useState(true)
 
-  const { isConnected } = useRealtimeTasks({
-    enabled: true,
-    onTaskUpdate: (payload) => {
-      console.log("[v0] Realtime task update received:", payload.eventType)
-      // Reload tasks when changes occur
-      refreshTasks()
-    },
-  })
-
-  useEffect(() => {
-    console.log("[v0] Realtime connection status:", isConnected ? "CONNECTED" : "DISCONNECTED")
-  }, [isConnected])
-
-  async function refreshTasks() {
+  const refreshTasks = useCallback(async () => {
     try {
       const data = await loadTasksFromSupabase()
       setTasks(data)
     } catch (error) {
       console.error("[v0] Error loading tasks from Supabase:", error)
     }
-  }
+  }, [])
 
-  async function refreshUsers() {
+  const refreshUsers = useCallback(async () => {
     try {
       const data = await loadUsersFromSupabase()
       if (data.length > 0) {
@@ -127,7 +114,24 @@ export function TaskProvider({ children }: { children: ReactNode }) {
       console.error("[v0] Error loading users from Supabase:", error)
       setUsers(mockUsers)
     }
-  }
+  }, [])
+
+  const handleRealtimeTaskUpdate = useCallback(
+    (payload: any) => {
+      console.log("[v0] Realtime task update received:", payload.eventType)
+      void refreshTasks()
+    },
+    [refreshTasks],
+  )
+
+  const { isConnected } = useRealtimeTasks({
+    enabled: true,
+    onTaskUpdate: handleRealtimeTaskUpdate,
+  })
+
+  useEffect(() => {
+    console.log("[v0] Realtime connection status:", isConnected ? "CONNECTED" : "DISCONNECTED")
+  }, [isConnected])
 
   useEffect(() => {
     async function loadData() {
@@ -147,7 +151,7 @@ export function TaskProvider({ children }: { children: ReactNode }) {
     }
 
     loadData()
-  }, [])
+  }, [refreshTasks, refreshUsers])
 
   const updateTask = async (taskId: string, updates: Partial<Task>) => {
     try {
