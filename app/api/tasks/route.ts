@@ -124,7 +124,9 @@ export async function POST(request: Request) {
     }
 
     const photoRequirementsPayload = photo_documentation_required
-      ? photo_categories ?? []
+      ? Array.isArray(photo_categories)
+        ? photo_categories
+        : []
       : photo_required
         ? {
             simple: {
@@ -132,7 +134,7 @@ export async function POST(request: Request) {
               count: typeof body.photo_count === "number" ? body.photo_count : null,
             },
           }
-        : null
+        : []
 
     // Handle auto-pause for urgent guest requests
     if (priority_level === "GUEST_REQUEST" || normalizedPriority === "medium") {
@@ -187,7 +189,7 @@ export async function POST(request: Request) {
   estimated_duration: typeof expected_duration_minutes === "number" ? expected_duration_minutes : null,
   requires_verification: Boolean(photo_documentation_required || photo_required),
   photo_requirements: photoRequirementsPayload,
-        room_number: room_number ?? null,
+  room_number: room_number ?? null,
         worker_remarks: "",
         supervisor_remarks: "",
         audit_log: [

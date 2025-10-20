@@ -519,7 +519,7 @@ export function appTaskToDatabase(task: Task): Omit<DatabaseTask, "created_at" |
       }
     : null
 
-  let photoRequirements: Json = null
+  let photoRequirements: Json = []
 
   if (task.photo_documentation_required) {
     photoRequirements = (task.photo_categories ?? []) as Json

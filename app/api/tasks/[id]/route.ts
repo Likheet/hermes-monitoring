@@ -102,9 +102,21 @@ function buildPhotoRequirementsUpdate(body: Record<string, any>) {
   }
 
   return {
-    photoRequirements: null,
+    photoRequirements: [],
     requiresVerification: false,
   }
+}
+
+function normalizePhotoRequirementsInput(value: any) {
+  if (Array.isArray(value)) {
+    return value
+  }
+
+  if (value && typeof value === "object") {
+    return value
+  }
+
+  return []
 }
 
 function mapTaskUpdates(body: Record<string, any>) {
@@ -221,7 +233,15 @@ function mapTaskUpdates(body: Record<string, any>) {
   }
 
   if (Object.prototype.hasOwnProperty.call(body, "photo_requirements")) {
-    updates.photo_requirements = body.photo_requirements ?? null
+    const normalizedPhotoRequirements = normalizePhotoRequirementsInput(body.photo_requirements)
+    updates.photo_requirements = normalizedPhotoRequirements
+
+    const shouldClearRequirements =
+      body.photo_requirements === null || (Array.isArray(normalizedPhotoRequirements) && normalizedPhotoRequirements.length === 0)
+
+    if (shouldClearRequirements && !Object.prototype.hasOwnProperty.call(body, "requires_verification")) {
+      updates.requires_verification = false
+    }
   } else {
     const photoUpdate = buildPhotoRequirementsUpdate(body)
     if (photoUpdate) {
