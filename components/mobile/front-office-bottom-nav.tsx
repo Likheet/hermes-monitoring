@@ -1,6 +1,6 @@
 "use client"
 
-import { Home, Clock, ClipboardList } from "lucide-react"
+import { Home, Clock, ClipboardList, ShieldCheck } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { triggerHaptic } from "@/lib/haptics"
 
@@ -14,6 +14,7 @@ export function FrontOfficeBottomNav({ activeTab, onTabChange }: FrontOfficeBott
     { id: "home", icon: Home, label: "Home" },
     { id: "shifts", icon: Clock, label: "Shifts" },
     { id: "assignments", icon: ClipboardList, label: "Assignments" },
+    { id: "supervisor", icon: ShieldCheck, label: "Supervisor" },
   ]
 
   const handleTabClick = (tabId: string) => {

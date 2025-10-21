@@ -792,7 +792,20 @@ export function TaskProvider({
         })
 
         if (response.ok) {
-          await refreshTasks()
+          const payload = (await response.json()) as { task?: Task }
+          if (payload?.task) {
+            setTasks((prev) => {
+              const next = prev.map((t) => (t.id === payload.task!.id ? payload.task! : t))
+              const limited = next.length > MAX_CACHED_TASKS ? next.slice(0, MAX_CACHED_TASKS) : next
+              persistToStorage(STORAGE_KEYS.tasks, limited)
+              lastTasksFetchRef.current = Date.now()
+              const versions = new Map(lastRealtimeVersionRef.current)
+              versions.set(payload.task!.id, payload.task!.server_updated_at ?? null)
+              lastRealtimeVersionRef.current = versions
+              return limited
+            })
+          }
+          await refreshTasks({ useGlobalLoader: false, forceRefresh: true })
           return { success: true }
         } else {
           const error = await response.json()
@@ -1459,6 +1472,9 @@ export function TaskProvider({
     }
 
     const updatedTask: MaintenanceTask = { ...existing, ...updates }
+    if (typeof updatedTask.timer_duration === "number" && updatedTask.timer_duration < 0) {
+      updatedTask.timer_duration = 0
+    }
 
     setMaintenanceTasks((prev) => {
       const updated = prev.map((t) => (t.id === taskId ? updatedTask : t))

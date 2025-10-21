@@ -13,11 +13,20 @@ const SESSION_COOKIE_OPTIONS = {
   path: "/",
 }
 
+function normalizeBase64Url(value: string) {
+  let normalized = value.replace(/-/g, "+").replace(/_/g, "/")
+  const padding = normalized.length % 4
+  if (padding === 2) normalized += "=="
+  else if (padding === 3) normalized += "="
+  else if (padding !== 0) normalized += "==="
+  return normalized
+}
+
 function decodeSessionPayload(value: string | undefined) {
   if (!value) return null
 
   try {
-    const decoded = Buffer.from(value, "base64url").toString("utf-8")
+    const decoded = Buffer.from(normalizeBase64Url(value), "base64").toString("utf-8")
     return JSON.parse(decoded)
   } catch (error) {
     console.warn("Failed to decode session payload cookie, falling back to database lookup", error)
@@ -26,7 +35,8 @@ function decodeSessionPayload(value: string | undefined) {
 }
 
 function encodeSessionPayload(payload: unknown) {
-  return Buffer.from(JSON.stringify(payload), "utf-8").toString("base64url")
+  const base64 = Buffer.from(JSON.stringify(payload), "utf-8").toString("base64")
+  return base64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "")
 }
 
 export async function GET() {

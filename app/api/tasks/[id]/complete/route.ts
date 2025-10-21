@@ -86,7 +86,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       const startedTime = new Date(startedAtSource).getTime()
       const completedTime = new Date(completionTimestamp).getTime()
       const totalTime = Math.max(completedTime - startedTime, 0)
-      actualDuration = Math.round((totalTime - totalPauseTime) / 60000)
+      const activeTime = Math.max(totalTime - totalPauseTime, 0)
+      actualDuration = Math.round(activeTime / 60000)
     }
 
     const auditLog = Array.isArray(currentTask.audit_log) ? currentTask.audit_log : []

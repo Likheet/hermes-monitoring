@@ -27,14 +27,7 @@ import { useToast } from "@/hooks/use-toast"
 import { formatShiftRange } from "@/lib/date-utils"
 import { ALL_ROOMS } from "@/lib/location-data"
 import { initializePauseMonitoring } from "@/lib/pause-monitoring"
-
-interface Note {
-  id: string
-  title: string
-  content: string
-  created_at: Date
-  updated_at: Date
-}
+import { useWorkerNotes, type WorkerNote } from "@/hooks/use-worker-notes"
 
 // Define REJECTION_QUOTA and related constants
 const REJECTION_QUOTA = 5 // Updated quota from 3 to 5 per month
@@ -53,10 +46,18 @@ function WorkerDashboard() {
 
   const [tasksFilter, setTasksFilter] = useState<"all" | "active" | "completed" | "rejected">("all")
 
-  const [notes, setNotes] = useState<Note[]>([])
-  const [editingNote, setEditingNote] = useState<Note | null>(null)
+  const {
+    notes,
+    loading: notesLoading,
+    error: notesError,
+    createNote,
+    updateNote,
+    deleteNote,
+  } = useWorkerNotes(user?.id)
+  const [editingNote, setEditingNote] = useState<WorkerNote | null>(null)
   const [noteTitle, setNoteTitle] = useState("")
   const [noteContent, setNoteContent] = useState("")
+  const [noteSubmitting, setNoteSubmitting] = useState(false)
 
   const [selectedRoom, setSelectedRoom] = useState<string | null>(null)
   const [selectedTasks, setSelectedTasks] = useState<MaintenanceTask[]>([])
@@ -68,16 +69,15 @@ function WorkerDashboard() {
   }, [user])
 
   useEffect(() => {
-    if (user?.id) {
-      const savedNotes = localStorage.getItem(`notes_${user.id}`)
-      if (savedNotes) {
-        const parsed = JSON.JSON.parse(savedNotes)
-        setNotes(
-          parsed.map((n: any) => ({ ...n, created_at: new Date(n.created_at), updated_at: new Date(n.updated_at) })),
-        )
-      }
+    if (notesError) {
+      console.error("[notes] Failed to load worker notes:", notesError)
+      toast({
+        title: "Notes unavailable",
+        description: "We could not load your notes from the server. Please try again.",
+        variant: "destructive",
+      })
     }
-  }, [user?.id])
+  }, [notesError, toast])
 
   useEffect(() => {
     if (!user?.id) return
@@ -317,23 +317,7 @@ function WorkerDashboard() {
     }
   }
 
-  const saveNotes = (updatedNotes: Note[]) => {
-    try {
-      const payload = JSON.stringify(
-        updatedNotes.map((note) => ({
-          ...note,
-          created_at: note.created_at.toISOString(),
-          updated_at: note.updated_at.toISOString(),
-        })),
-      )
-      localStorage.setItem(`notes_${user?.id}`, payload)
-    } catch (error) {
-      console.error("[notes] Failed to persist notes:", error)
-    }
-    setNotes(updatedNotes)
-  }
-
-  const handleSaveNote = () => {
+  const handleSaveNote = async () => {
     if (!noteTitle.trim() || !noteContent.trim()) {
       toast({
         title: "Error",
@@ -343,39 +327,55 @@ function WorkerDashboard() {
       return
     }
 
-    if (editingNote) {
-      const updatedNotes = notes.map((n) =>
-        n.id === editingNote.id ? { ...n, title: noteTitle, content: noteContent, updated_at: new Date() } : n,
-      )
-      saveNotes(updatedNotes)
-      toast({ title: "Note updated successfully" })
-    } else {
-      const newNote: Note = {
-        id: `note-${Date.now()}`,
-        title: noteTitle,
-        content: noteContent,
-        created_at: new Date(),
-        updated_at: new Date(),
+    try {
+      setNoteSubmitting(true)
+      if (editingNote) {
+        await updateNote(editingNote.id, { title: noteTitle, content: noteContent })
+        toast({ title: "Note updated successfully" })
+      } else {
+        await createNote({ title: noteTitle, content: noteContent })
+        toast({ title: "Note created successfully" })
       }
-      saveNotes([newNote, ...notes])
-      toast({ title: "Note created successfully" })
-    }
 
-    setNoteTitle("")
-    setNoteContent("")
-    setEditingNote(null)
+      setNoteTitle("")
+      setNoteContent("")
+      setEditingNote(null)
+    } catch (error) {
+      console.error("[notes] Failed to save note:", error)
+      toast({
+        title: "Unable to save note",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      })
+    } finally {
+      setNoteSubmitting(false)
+    }
   }
 
-  const handleEditNote = (note: Note) => {
+  const handleEditNote = (note: WorkerNote) => {
     setEditingNote(note)
     setNoteTitle(note.title)
     setNoteContent(note.content)
   }
 
-  const handleDeleteNote = (noteId: string) => {
-    const updatedNotes = notes.filter((n) => n.id !== noteId)
-    saveNotes(updatedNotes)
-    toast({ title: "Note deleted" })
+  const handleDeleteNote = async (noteId: string) => {
+    try {
+      setNoteSubmitting(true)
+      await deleteNote(noteId)
+      if (editingNote?.id === noteId) {
+        handleCancelNote()
+      }
+      toast({ title: "Note deleted" })
+    } catch (error) {
+      console.error("[notes] Failed to delete note:", error)
+      toast({
+        title: "Unable to delete note",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      })
+    } finally {
+      setNoteSubmitting(false)
+    }
   }
 
   const handleCancelNote = () => {
@@ -400,7 +400,7 @@ function WorkerDashboard() {
           before_photos: data.categorizedPhotos.room_photos,
           after_photos: data.categorizedPhotos.proof_photos,
         },
-        timer_duration: data.timerDuration,
+        timer_duration: Math.max(data.timerDuration, 0),
         completed_at: new Date().toISOString(),
         notes: data.notes,
       })
@@ -479,7 +479,7 @@ function WorkerDashboard() {
   const onTimeRate = completedTasks.length > 0 ? Math.round((onTimeTasks.length / completedTasks.length) * 100) : 0
 
   const totalMaintenanceMinutes = completedMaintenanceTasks.reduce(
-    (sum, task) => sum + (task.timer_duration || 0) / 60,
+    (sum, task) => sum + Math.max(task.timer_duration || 0, 0) / 60,
     0,
   )
   const totalRegularMinutes = completedTasks.reduce((sum, t) => sum + (t.actual_duration_minutes || 0), 0)
@@ -610,12 +610,12 @@ function WorkerDashboard() {
                   className="resize-none"
                 />
                 <div className="flex gap-2">
-                  <Button onClick={handleSaveNote} className="flex-1">
+                  <Button onClick={handleSaveNote} className="flex-1" disabled={noteSubmitting}>
                     <Save className="h-4 w-4 mr-2" />
-                    {editingNote ? "Update Note" : "Save Note"}
+                    {noteSubmitting ? "Saving..." : editingNote ? "Update Note" : "Save Note"}
                   </Button>
                   {editingNote && (
-                    <Button variant="outline" size="sm" onClick={handleCancelNote}>
+                    <Button variant="outline" size="sm" onClick={handleCancelNote} disabled={noteSubmitting}>
                       Cancel
                     </Button>
                   )}
@@ -624,7 +624,11 @@ function WorkerDashboard() {
             </Card>
 
             <div className="space-y-4">
-              {notes.length === 0 ? (
+              {notesLoading ? (
+                <div className="text-center py-12">
+                  <p className="text-muted-foreground">Loading notes...</p>
+                </div>
+              ) : notes.length === 0 ? (
                 <div className="text-center py-12">
                   <p className="text-muted-foreground">No notes yet. Create your first note above!</p>
                 </div>

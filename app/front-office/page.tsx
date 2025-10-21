@@ -29,6 +29,7 @@ import {
   Edit,
   Edit2,
   Filter,
+  ShieldCheck,
 } from "lucide-react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
@@ -245,6 +246,19 @@ function FrontOfficeDashboard() {
     return result.formatted
   }
 
+  const userDepartmentLookup = new Map(users.map((u) => [u.id, u.department]))
+  const departmentWorkers = users.filter((u) => u.role === "worker" && (!user?.department || u.department === user.department))
+  const departmentTasks = tasks.filter((task) => {
+    const taskDepartment = task.department ?? (task.assigned_to_user_id ? userDepartmentLookup.get(task.assigned_to_user_id) ?? null : null)
+    if (!user?.department) return true
+    return taskDepartment === user.department
+  })
+  const departmentIssues = openIssues.filter((issue) => departmentTasks.some((task) => task.id === issue.task_id))
+  const supervisorPendingTasks = departmentTasks.filter((task) => task.status === "PENDING")
+  const supervisorInProgressTasks = departmentTasks.filter((task) => task.status === "IN_PROGRESS" || task.status === "PAUSED")
+  const supervisorCompletedTasks = departmentTasks.filter((task) => task.status === "COMPLETED")
+  const supervisorRejectedTasks = departmentTasks.filter((task) => task.status === "REJECTED")
+
   const renderContent = () => {
     switch (activeTab) {
       case "shifts":
@@ -430,6 +444,124 @@ function FrontOfficeDashboard() {
                 <WeeklyScheduleView workers={workers} />
               </TabsContent>
             </Tabs>
+          </main>
+        )
+
+      case "supervisor":
+        return (
+          <main className="container mx-auto max-w-7xl px-4 py-6 space-y-8">
+            <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              {[
+                { label: "Pending", count: supervisorPendingTasks.length },
+                { label: "In Progress", count: supervisorInProgressTasks.length },
+                { label: "Completed", count: supervisorCompletedTasks.length },
+                { label: "Rejected", count: supervisorRejectedTasks.length },
+              ].map((stat) => (
+                <Card key={stat.label}>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm text-muted-foreground">{stat.label}</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-2xl font-semibold">{stat.count}</p>
+                  </CardContent>
+                </Card>
+              ))}
+            </section>
+
+            <section className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-semibold">Team Status</h2>
+                <Badge variant="outline">{departmentWorkers.length} workers</Badge>
+              </div>
+              {departmentWorkers.length === 0 ? (
+                <div className="flex min-h-[160px] items-center justify-center rounded-lg border border-dashed">
+                  <p className="text-muted-foreground">No workers found for this department.</p>
+                </div>
+              ) : (
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  {departmentWorkers.map((worker) => (
+                    <WorkerStatusCard
+                      key={worker.id}
+                      worker={worker}
+                      currentTask={getWorkerCurrentTask(worker.id) ?? undefined}
+                    />
+                  ))}
+                </div>
+              )}
+            </section>
+
+            <section className="space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <h2 className="text-lg font-semibold flex items-center gap-2">
+                  <AlertTriangle className="h-5 w-5 text-orange-500" /> Active Issues
+                </h2>
+                <Badge variant="secondary">{departmentIssues.length} open</Badge>
+              </div>
+              {departmentIssues.length === 0 ? (
+                <div className="flex min-h-[160px] items-center justify-center rounded-lg border border-dashed">
+                  <p className="text-muted-foreground">No open issues reported.</p>
+                </div>
+              ) : (
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  {departmentIssues.map((issue) => {
+                    const task = departmentTasks.find((t) => t.id === issue.task_id)
+                    if (!task) return null
+                    return <IssueCard key={issue.id} issue={issue} task={task} onResolve={() => {}} />
+                  })}
+                </div>
+              )}
+            </section>
+
+            <section className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-semibold">Active Tasks</h2>
+                <Badge variant="secondary">{supervisorInProgressTasks.length} active</Badge>
+              </div>
+              {supervisorInProgressTasks.length === 0 ? (
+                <div className="flex min-h-[160px] items-center justify-center rounded-lg border border-dashed">
+                  <p className="text-muted-foreground">No tasks currently in progress.</p>
+                </div>
+              ) : (
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  {supervisorInProgressTasks.map((task) => (
+                    <Card key={task.id}>
+                      <CardHeader className="pb-2">
+                        <CardTitle className="text-base">{task.task_type}</CardTitle>
+                        <Badge variant="outline" className="capitalize">{task.status.replace(/_/g, " ")}</Badge>
+                      </CardHeader>
+                      <CardContent className="space-y-2 text-sm text-muted-foreground">
+                        <div className="flex items-center gap-2">
+                          <User className="h-4 w-4" />
+                          <span>{getWorkerName(task.assigned_to_user_id)}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <MapPin className="h-4 w-4" />
+                          <span>{task.room_number || "N/A"}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <CalendarClock className="h-4 w-4" />
+                          <span>Updated {formatFullTimestamp(task.assigned_at.client)}</span>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </section>
+
+            {supervisorRejectedTasks.length > 0 && (
+              <section className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-lg font-semibold">Rejected Tasks</h2>
+                  <Badge variant="destructive">{supervisorRejectedTasks.length} awaiting action</Badge>
+                </div>
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  {supervisorRejectedTasks.map((task) => (
+                    <RejectedTaskCard key={task.id} task={task} />
+                  ))}
+                </div>
+              </section>
+            )}
           </main>
         )
 
@@ -701,7 +833,13 @@ function FrontOfficeDashboard() {
           <div className="flex items-center justify-between gap-4">
             <div className="flex flex-col gap-1">
               <h1 className="text-2xl font-bold">
-                {activeTab === "home" ? "Front Office" : activeTab === "shifts" ? "Shift Management" : "Assignments"}
+                {activeTab === "home"
+                  ? "Front Office"
+                  : activeTab === "shifts"
+                    ? "Shift Management"
+                    : activeTab === "assignments"
+                      ? "Assignments"
+                      : "Supervisor Tools"}
               </h1>
               <p className="text-sm text-muted-foreground">{user?.name}</p>
             </div>

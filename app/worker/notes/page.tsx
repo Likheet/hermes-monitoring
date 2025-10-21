@@ -11,41 +11,37 @@ import { Input } from "@/components/ui/input"
 import { ArrowLeft, Trash2, Save } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { formatDistanceToNow } from "@/lib/date-utils"
-
-interface Note {
-  id: string
-  title: string
-  content: string
-  created_at: Date
-  updated_at: Date
-}
+import { useWorkerNotes, type WorkerNote } from "@/hooks/use-worker-notes"
 
 function NotesPage() {
   const router = useRouter()
   const { user } = useAuth()
   const { toast } = useToast()
-  const [notes, setNotes] = useState<Note[]>([])
-  const [editingNote, setEditingNote] = useState<Note | null>(null)
+  const {
+    notes,
+    loading: notesLoading,
+    error: notesError,
+    createNote,
+    updateNote,
+    deleteNote,
+  } = useWorkerNotes(user?.id)
+  const [editingNote, setEditingNote] = useState<WorkerNote | null>(null)
   const [title, setTitle] = useState("")
   const [content, setContent] = useState("")
+  const [noteSubmitting, setNoteSubmitting] = useState(false)
 
   useEffect(() => {
-    // Load notes from localStorage
-    const savedNotes = localStorage.getItem(`notes_${user?.id}`)
-    if (savedNotes) {
-      const parsed = JSON.parse(savedNotes)
-      setNotes(
-        parsed.map((n: any) => ({ ...n, created_at: new Date(n.created_at), updated_at: new Date(n.updated_at) })),
-      )
+    if (notesError) {
+      console.error("[notes] Failed to load worker notes:", notesError)
+      toast({
+        title: "Notes unavailable",
+        description: "We could not load your notes from the server. Please try again.",
+        variant: "destructive",
+      })
     }
-  }, [user?.id])
+  }, [notesError, toast])
 
-  const saveNotes = (updatedNotes: Note[]) => {
-    localStorage.setItem(`notes_${user?.id}`, JSON.stringify(updatedNotes))
-    setNotes(updatedNotes)
-  }
-
-  const handleSaveNote = () => {
+  const handleSaveNote = async () => {
     if (!title.trim() || !content.trim()) {
       toast({
         title: "Error",
@@ -55,41 +51,55 @@ function NotesPage() {
       return
     }
 
-    if (editingNote) {
-      // Update existing note
-      const updatedNotes = notes.map((n) =>
-        n.id === editingNote.id ? { ...n, title, content, updated_at: new Date() } : n,
-      )
-      saveNotes(updatedNotes)
-      toast({ title: "Note updated successfully" })
-    } else {
-      // Create new note
-      const newNote: Note = {
-        id: `note-${Date.now()}`,
-        title,
-        content,
-        created_at: new Date(),
-        updated_at: new Date(),
+    try {
+      setNoteSubmitting(true)
+      if (editingNote) {
+        await updateNote(editingNote.id, { title, content })
+        toast({ title: "Note updated successfully" })
+      } else {
+        await createNote({ title, content })
+        toast({ title: "Note created successfully" })
       }
-      saveNotes([newNote, ...notes])
-      toast({ title: "Note created successfully" })
-    }
 
-    setTitle("")
-    setContent("")
-    setEditingNote(null)
+      setTitle("")
+      setContent("")
+      setEditingNote(null)
+    } catch (error) {
+      console.error("[notes] Failed to save note:", error)
+      toast({
+        title: "Unable to save note",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      })
+    } finally {
+      setNoteSubmitting(false)
+    }
   }
 
-  const handleEditNote = (note: Note) => {
+  const handleEditNote = (note: WorkerNote) => {
     setEditingNote(note)
     setTitle(note.title)
     setContent(note.content)
   }
 
-  const handleDeleteNote = (noteId: string) => {
-    const updatedNotes = notes.filter((n) => n.id !== noteId)
-    saveNotes(updatedNotes)
-    toast({ title: "Note deleted" })
+  const handleDeleteNote = async (noteId: string) => {
+    try {
+      setNoteSubmitting(true)
+      await deleteNote(noteId)
+      if (editingNote?.id === noteId) {
+        handleCancel()
+      }
+      toast({ title: "Note deleted" })
+    } catch (error) {
+      console.error("[notes] Failed to delete note:", error)
+      toast({
+        title: "Unable to delete note",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      })
+    } finally {
+      setNoteSubmitting(false)
+    }
   }
 
   const handleCancel = () => {
@@ -133,12 +143,12 @@ function NotesPage() {
               className="resize-none"
             />
             <div className="flex gap-2">
-              <Button onClick={handleSaveNote} className="flex-1">
+              <Button onClick={handleSaveNote} className="flex-1" disabled={noteSubmitting}>
                 <Save className="h-4 w-4 mr-2" />
-                {editingNote ? "Update Note" : "Save Note"}
+                {noteSubmitting ? "Saving..." : editingNote ? "Update Note" : "Save Note"}
               </Button>
               {editingNote && (
-                <Button variant="outline" onClick={handleCancel}>
+                <Button variant="outline" onClick={handleCancel} disabled={noteSubmitting}>
                   Cancel
                 </Button>
               )}
@@ -148,7 +158,11 @@ function NotesPage() {
 
         {/* Notes List */}
         <div className="space-y-4">
-          {notes.length === 0 ? (
+          {notesLoading ? (
+            <div className="text-center py-12">
+              <p className="text-muted-foreground">Loading notes...</p>
+            </div>
+          ) : notes.length === 0 ? (
             <div className="text-center py-12">
               <p className="text-muted-foreground">No notes yet. Create your first note above!</p>
             </div>
@@ -160,7 +174,7 @@ function NotesPage() {
                     <div className="flex-1 min-w-0">
                       <CardTitle className="text-lg mb-1">{note.title}</CardTitle>
                       <p className="text-xs text-muted-foreground">
-                        Updated {formatDistanceToNow(note.updated_at, { addSuffix: true })}
+                        Updated {formatDistanceToNow(note.updated_at)}
                       </p>
                     </div>
                     <div className="flex gap-2">

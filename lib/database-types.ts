@@ -72,6 +72,7 @@ export interface DatabaseShiftSchedule {
   break_end: string | null
   is_override: boolean
   override_reason: string | null
+  notes: string | null
   created_at: string
 }
 
@@ -89,6 +90,7 @@ export interface DatabaseMaintenanceTask {
   completed_at: string | null
   photos: Json
   timer_duration: number | null
+  notes: string | null
   created_at: string
 }
 
@@ -478,7 +480,7 @@ export function databaseShiftScheduleToApp(dbSchedule: DatabaseShiftSchedule): S
     break_end: dbSchedule.break_end ?? undefined,
     is_override: dbSchedule.is_override,
     override_reason: dbSchedule.override_reason ?? undefined,
-    notes: undefined,
+    notes: dbSchedule.notes ?? undefined,
     created_at: dbSchedule.created_at,
   }
 }

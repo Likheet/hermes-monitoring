@@ -149,9 +149,7 @@ export async function loadTasksFromSupabase(
     const supabase = supabaseOverride ?? createClient()
     const { data, error } = await supabase
       .from("tasks")
-      .select<
-        DatabaseTaskSummary
-      >(
+      .select(
         [
           "id",
           "task_type",
@@ -180,7 +178,9 @@ export async function loadTasksFromSupabase(
       throw new Error(`Failed to load tasks: ${error.message}`)
     }
 
-    const mapped = (data ?? []).map((row) =>
+    const rows = (data ?? []) as DatabaseTaskSummary[]
+
+    const mapped = rows.map((row) =>
       databaseTaskToApp({
         id: row.id,
         task_type: row.task_type,
@@ -330,6 +330,7 @@ export async function loadShiftSchedulesFromSupabase(
           "break_end",
           "is_override",
           "override_reason",
+          "notes",
           "created_at",
         ].join(","),
       )
@@ -351,6 +352,7 @@ export async function loadShiftSchedulesFromSupabase(
       break_end: dbSchedule.break_end ?? undefined,
       is_override: dbSchedule.is_override ?? false,
       override_reason: dbSchedule.override_reason ?? undefined,
+      notes: dbSchedule.notes ?? undefined,
       created_at: dbSchedule.created_at,
     }))
 
@@ -376,7 +378,11 @@ export async function saveShiftScheduleToSupabase(schedule: ShiftSchedule): Prom
       break_start: schedule.break_start || null,
       break_end: schedule.break_end || null,
       is_override: schedule.is_override || false,
-  override_reason: schedule.override_reason || null,
+      override_reason: schedule.override_reason || null,
+      notes:
+        typeof schedule.notes === "string" && schedule.notes.trim().length > 0
+          ? schedule.notes.trim()
+          : null,
     }
 
     const { error } = await supabase.from("shift_schedules").upsert(dbSchedule)
@@ -771,13 +777,16 @@ function maintenanceTaskToDatabase(task: MaintenanceTask): any {
   const assignedTo = isValidUuid(task.assigned_to) ? task.assigned_to : null
   const startedAt = task.started_at ? new Date(task.started_at).toISOString() : null
   const completedAt = task.completed_at ? new Date(task.completed_at).toISOString() : null
-  const timerDuration = typeof task.timer_duration === "number" ? Math.round(task.timer_duration) : null
+  const timerDuration =
+    typeof task.timer_duration === "number" ? Math.max(Math.round(task.timer_duration), 0) : null
   const photosPayload =
     task.categorized_photos && Object.keys(task.categorized_photos).length > 0
       ? task.categorized_photos
       : Array.isArray(task.photos)
         ? task.photos
         : []
+  const sanitizedNotes =
+    typeof task.notes === "string" && task.notes.trim().length > 0 ? task.notes.trim() : null
 
   return {
     id: task.id,
@@ -791,6 +800,7 @@ function maintenanceTaskToDatabase(task: MaintenanceTask): any {
     completed_at: completedAt,
     timer_duration: timerDuration,
     photos: photosPayload,
+    notes: sanitizedNotes,
     period_month: task.period_month ?? null,
     period_year: task.period_year ?? null,
     created_at: task.created_at ? new Date(task.created_at).toISOString() : new Date().toISOString(),
@@ -808,18 +818,20 @@ function databaseToMaintenanceTask(dbTask: any): MaintenanceTask {
       ? dbTask.completed_at
       : dbTask.completed_at?.client ?? dbTask.completed_at?.server ?? undefined
 
-  const timerDuration =
+  const rawTimerDuration =
     typeof dbTask.timer_duration === "number"
       ? dbTask.timer_duration
       : typeof dbTask.timer_duration?.client === "number"
         ? dbTask.timer_duration.client
         : undefined
+  const timerDuration = typeof rawTimerDuration === "number" ? Math.max(rawTimerDuration, 0) : undefined
 
   const photos = Array.isArray(dbTask.photos) ? dbTask.photos : undefined
   const categorizedPhotos =
     dbTask.photos && !Array.isArray(dbTask.photos) && typeof dbTask.photos === "object"
       ? dbTask.photos
       : undefined
+  const notes = typeof dbTask.notes === "string" ? dbTask.notes : undefined
 
   return {
     id: dbTask.id,
@@ -838,5 +850,6 @@ function databaseToMaintenanceTask(dbTask: any): MaintenanceTask {
     period_month: dbTask.period_month,
     period_year: dbTask.period_year,
     created_at: dbTask.created_at,
+    notes,
   }
 }

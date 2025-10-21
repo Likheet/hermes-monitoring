@@ -88,6 +88,7 @@ Indexes: `idx_tasks_assigned_to`, `idx_tasks_status`, `idx_tasks_room_number`, `
 | break_end | time | yes | | |
 | is_override | boolean | no | false | Marks manual overrides. |
 | override_reason | text | yes | | |
+| notes | text | yes | | Optional supervisor or handover notes. |
 | created_at | timestamptz | no | now() | |
 
 Constraint: UNIQUE(worker_id, schedule_date). Indexes: `idx_shift_schedules_worker_date`, `idx_shift_schedules_date`.
@@ -184,6 +185,7 @@ Constraint: UNIQUE(pattern_id, day_number).
 | completed_at | timestamptz | yes | | |
 | photos | jsonb | no | '[]'::jsonb | Collected media. |
 | timer_duration | integer | yes | | Minutes. |
+| notes | text | yes | | Free-form technician or supervisor notes. |
 | created_at | timestamptz | no | now() | |
 
 Indexes: `idx_maintenance_tasks_schedule`, `idx_maintenance_tasks_status`, `idx_maintenance_tasks_period`, `idx_maintenance_tasks_room` (via 010_maintenance_schedules_schema.sql).
@@ -278,6 +280,18 @@ Additional legacy columns `level`, `timestamp_server`, etc. appear in earlier mi
 | created_at | timestamptz | no | now() | |
 
 Indexes: `idx_notifications_user_read`, `idx_notifications_created_at`.
+
+### worker_notes
+| Column | Type | Nullable | Default | Notes |
+| --- | --- | --- | --- | --- |
+| id | uuid | no | gen_random_uuid() | |
+| user_id | uuid | no | | FK users(id) ON DELETE CASCADE. |
+| title | text | no | | Short label shown in worker UI. |
+| content | text | no | | Main note body. |
+| created_at | timestamptz | no | now() | |
+| updated_at | timestamptz | no | now() | Tracks latest modification. |
+
+Index: `idx_worker_notes_user_updated_at` to serve per-worker fetches ordered by `updated_at`.
 
 ### user_preferences
 | Column | Type | Nullable | Default | Notes |

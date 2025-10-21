@@ -7,7 +7,8 @@ const SESSION_COOKIE_NAME = "session"
 const SESSION_PAYLOAD_COOKIE = "session_payload"
 
 function encodeSessionPayload(payload: unknown) {
-  return Buffer.from(JSON.stringify(payload), "utf-8").toString("base64url")
+  const base64 = Buffer.from(JSON.stringify(payload), "utf-8").toString("base64")
+  return base64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "")
 }
 
 export async function POST(request: Request) {

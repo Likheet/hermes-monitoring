@@ -47,7 +47,8 @@ export function RoomTaskModal({ roomNumber, tasks, onClose, onTaskComplete }: Ro
         const updated = { ...prev }
         Object.keys(updated).forEach((taskId) => {
           if (updated[taskId].isRunning && updated[taskId].startedAt) {
-            updated[taskId].elapsed = Math.floor((Date.now() - updated[taskId].startedAt!) / 1000)
+            const elapsed = Math.floor((Date.now() - updated[taskId].startedAt!) / 1000)
+            updated[taskId].elapsed = elapsed > 0 ? elapsed : 0
           }
         })
         return updated
@@ -153,7 +154,7 @@ export function RoomTaskModal({ roomNumber, tasks, onClose, onTaskComplete }: Ro
       const data: TaskCompletionData = {
         acLocation: acLocations[task.id],
         categorizedPhotos: taskPhotos,
-        timerDuration: timers[task.id]?.elapsed || 0,
+        timerDuration: Math.max(timers[task.id]?.elapsed || 0, 0),
         notes: notes[task.id],
       }
 
@@ -166,9 +167,10 @@ export function RoomTaskModal({ roomNumber, tasks, onClose, onTaskComplete }: Ro
   }
 
   const formatTime = (seconds: number): string => {
-    const hours = Math.floor(seconds / 3600)
-    const minutes = Math.floor((seconds % 3600) / 60)
-    const secs = seconds % 60
+    const safeSeconds = Math.max(0, seconds)
+    const hours = Math.floor(safeSeconds / 3600)
+    const minutes = Math.floor((safeSeconds % 3600) / 60)
+    const secs = safeSeconds % 60
     return `${hours.toString().padStart(2, "0")}:${minutes.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`
   }
 

@@ -124,11 +124,11 @@ function MaintenanceTaskPage({ params }: MaintenanceTaskPageProps) {
       const startTime = new Date(task.started_at).getTime()
       const now = Date.now()
       const elapsed = Math.floor((now - startTime) / 1000)
-      setElapsedTime(elapsed)
+      setElapsedTime(elapsed > 0 ? elapsed : 0)
       setIsRunning(true)
       console.log("[v0] Restored in-progress task, elapsed:", elapsed)
     } else if (task.status === "paused" && task.timer_duration) {
-      setElapsedTime(task.timer_duration)
+      setElapsedTime(Math.max(task.timer_duration, 0))
       setIsRunning(false)
       console.log("[v0] Restored paused task, duration:", task.timer_duration)
     }
@@ -141,7 +141,7 @@ function MaintenanceTaskPage({ params }: MaintenanceTaskPageProps) {
       const startTime = new Date(task.started_at!).getTime()
       const now = Date.now()
       const elapsed = Math.floor((now - startTime) / 1000)
-      setElapsedTime(elapsed)
+      setElapsedTime(elapsed > 0 ? elapsed : 0)
     }, 1000)
 
     return () => clearInterval(interval)
@@ -176,8 +176,8 @@ function MaintenanceTaskPage({ params }: MaintenanceTaskPageProps) {
       .filter((t) => t.assigned_to === user.id && t.id !== currentTaskId && t.status === "in_progress")
       .forEach((activeTask) => {
         const elapsedSeconds = activeTask.started_at
-          ? Math.floor((now.getTime() - new Date(activeTask.started_at).getTime()) / 1000)
-          : activeTask.timer_duration || 0
+          ? Math.max(Math.floor((now.getTime() - new Date(activeTask.started_at).getTime()) / 1000), 0)
+          : Math.max(activeTask.timer_duration || 0, 0)
 
         updateMaintenanceTask(activeTask.id, {
           status: "paused",
@@ -241,7 +241,7 @@ function MaintenanceTaskPage({ params }: MaintenanceTaskPageProps) {
     updateMaintenanceTask(task.id, {
       status: "paused",
       paused_at: now,
-      timer_duration: elapsedTime,
+      timer_duration: Math.max(elapsedTime, 0),
     })
     setIsRunning(false)
     startPauseMonitoring(task.id, user!.id)
@@ -310,7 +310,7 @@ function MaintenanceTaskPage({ params }: MaintenanceTaskPageProps) {
         before_photos: categorizedPhotos.before_photos,
         after_photos: categorizedPhotos.after_photos,
       },
-      timer_duration: elapsedTime,
+      timer_duration: Math.max(elapsedTime, 0),
       completed_at: new Date().toISOString(),
       notes: remark,
     })
