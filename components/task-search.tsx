@@ -3,18 +3,26 @@
 import type React from "react"
 
 import { useState, useMemo, useEffect, useRef } from "react"
-import { Search, Clock, Camera } from "lucide-react"
+import { Search, Clock, Camera, Repeat } from "lucide-react"
 import {
   TASK_DEFINITIONS,
   CATEGORY_LABELS,
   CATEGORY_COLORS,
   type TaskDefinition,
   type TaskCategory,
+  type RecurringFrequency,
 } from "@/lib/task-definitions"
 import { getAllTaskDefinitions } from "@/lib/custom-task-definitions"
 
 interface TaskSearchProps {
   onSelectTask: (task: TaskDefinition) => void
+}
+
+const RECURRING_FREQUENCY_LABELS: Record<RecurringFrequency, string> = {
+  daily: "Daily",
+  weekly: "Weekly",
+  biweekly: "Biweekly",
+  monthly: "Monthly",
 }
 
 export function TaskSearch({ onSelectTask }: TaskSearchProps) {
@@ -159,6 +167,15 @@ export function TaskSearch({ onSelectTask }: TaskSearchProps) {
                         <span className="flex items-center gap-1">
                           <Camera className="w-3.5 h-3.5" />
                           {task.photoCount} photo{task.photoCount > 1 ? "s" : ""}
+                        </span>
+                      )}
+                      {task.isRecurring && (
+                        <span className="flex items-center gap-1">
+                          <Repeat className="w-3.5 h-3.5" />
+                          {task.recurringFrequency
+                            ? RECURRING_FREQUENCY_LABELS[task.recurringFrequency]
+                            : "Recurring"}
+                          {task.requiresSpecificTime && task.recurringTime ? ` @ ${task.recurringTime}` : ""}
                         </span>
                       )}
                       {task.deadline && <span className="text-destructive font-medium">Deadline: {task.deadline}</span>}

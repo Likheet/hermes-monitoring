@@ -26,7 +26,7 @@ function CreateTaskForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { user } = useAuth()
-  const { createTask, tasks, users, usersLoaded, usersLoadError } = useTasks()
+  const { createTask, tasks, users, usersLoaded, usersLoadError, shiftSchedules } = useTasks()
   const { toast } = useToast()
 
   const [selectedTaskDef, setSelectedTaskDef] = useState<TaskDefinition | null>(null)
@@ -58,6 +58,10 @@ function CreateTaskForm() {
           keywords: [],
           requiresRoom: !!task.room_number,
           requiresACLocation: false,
+          isRecurring: Boolean(task.custom_task_is_recurring),
+          recurringFrequency: task.custom_task_recurring_frequency ?? undefined,
+          requiresSpecificTime: Boolean(task.custom_task_requires_specific_time),
+          recurringTime: task.custom_task_recurring_time ?? undefined,
         }
         setSelectedTaskDef(taskDef)
       }
@@ -122,6 +126,14 @@ function CreateTaskForm() {
       custom_task_priority: isCustomTask ? data.priority : null,
       custom_task_photo_required: isCustomTask ? data.photoRequired : null,
       custom_task_photo_count: isCustomTask ? data.photoCount : null,
+      custom_task_is_recurring: isCustomTask ? data.isRecurring : null,
+      custom_task_recurring_frequency: isCustomTask ? data.recurringFrequency ?? null : null,
+      custom_task_requires_specific_time: isCustomTask ? data.requiresSpecificTime ?? null : null,
+      custom_task_recurring_time: isCustomTask ? data.recurringTime ?? null : null,
+      is_recurring: data.isRecurring,
+      recurring_frequency: data.recurringFrequency ?? null,
+      requires_specific_time: data.requiresSpecificTime ?? false,
+      recurring_time: data.recurringTime ?? null,
     })
 
     if (isCustomTask && trimmedCustomName) {
@@ -208,6 +220,7 @@ function CreateTaskForm() {
             currentUser={user ?? null}
             workersLoaded={usersLoaded}
             workersLoadError={usersLoadError}
+            shiftSchedules={shiftSchedules}
             initialData={
               rejectedTask
                 ? {

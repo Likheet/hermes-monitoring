@@ -1,7 +1,6 @@
 "use client"
 
 import { ProtectedRoute } from "@/components/protected-route"
-import { ConnectionStatus } from "@/components/connection-status"
 import { WorkerStatusCard } from "@/components/worker-status-card"
 import { WorkerProfileDialog } from "@/components/worker-profile-dialog"
 import { Button } from "@/components/ui/button"
@@ -876,7 +875,7 @@ function AdminDashboard() {
     const isCustomTask = data.isCustomTask && !!trimmedCustomName
     const taskName = isCustomTask ? trimmedCustomName! : data.taskName
 
-  createTask({
+    createTask({
       task_type: taskName,
       priority_level: priorityLevel,
       status: "PENDING",
@@ -907,6 +906,14 @@ function AdminDashboard() {
       custom_task_priority: isCustomTask ? data.priority : null,
       custom_task_photo_required: isCustomTask ? data.photoRequired : null,
       custom_task_photo_count: isCustomTask ? data.photoCount : null,
+      custom_task_is_recurring: isCustomTask ? data.isRecurring : null,
+      custom_task_recurring_frequency: isCustomTask ? data.recurringFrequency ?? null : null,
+      custom_task_requires_specific_time: isCustomTask ? data.requiresSpecificTime ?? null : null,
+      custom_task_recurring_time: isCustomTask ? data.recurringTime ?? null : null,
+      is_recurring: data.isRecurring,
+      recurring_frequency: data.recurringFrequency ?? null,
+      requires_specific_time: data.requiresSpecificTime ?? false,
+      recurring_time: data.recurringTime ?? null,
     })
 
     toast({
@@ -929,7 +936,6 @@ function AdminDashboard() {
               <p className="text-sm text-muted-foreground mt-0.5">{user?.name}</p>
             </div>
             <div className="flex items-center gap-2 shrink-0">
-              <ConnectionStatus isConnected={isConnected} />
               <Button variant="ghost" size="sm" onClick={handleLogout} className="min-h-[44px]">
                 <LogOut className="h-4 w-4 sm:mr-2" />
                 <span className="hidden sm:inline">Logout</span>
@@ -1563,6 +1569,7 @@ function AdminDashboard() {
                 currentUser={user ?? null}
                 workersLoaded={usersLoaded}
                 workersLoadError={usersLoadError}
+                shiftSchedules={shiftSchedules}
               />
             )}
 

@@ -1,13 +1,14 @@
 "use client"
 
 import { useState, useMemo, useRef, useEffect } from "react"
-import { X, MapPin, Clock, Camera, AlertCircle, AlertTriangle, User } from "lucide-react"
-import type { TaskDefinition, TaskCategory, Priority } from "@/lib/task-definitions"
+import { X, MapPin, Clock, Camera, AlertCircle, AlertTriangle, User, Repeat } from "lucide-react"
+import type { TaskDefinition, TaskCategory, Priority, RecurringFrequency } from "@/lib/task-definitions"
 import { ALL_LOCATIONS, getACLocationsForRoom } from "@/lib/location-data"
 import { CATEGORY_COLORS, CATEGORY_LABELS } from "@/lib/task-definitions"
 import type { User as WorkerType } from "@/lib/types"
 import {
   getWorkersWithShiftStatusFromUsers,
+  getWorkersWithShiftStatusFromUsersAndSchedules,
   isWorkerOnShiftFromUser,
   type WorkerAvailability,
 } from "@/lib/shift-utils"
@@ -36,6 +37,16 @@ import { cn } from "@/lib/utils"
 
 const DEPARTMENT_ORDER: Department[] = ["housekeeping", "maintenance", "front_desk"]
 
+// Departments that should not be available for task assignment
+const EXCLUDED_TASK_ASSIGNMENT_DEPARTMENTS: Department[] = ["admin", "housekeeping-dept", "maintenance-dept"]
+
+const RECURRING_FREQUENCY_LABELS: Record<RecurringFrequency, string> = {
+  daily: "Daily",
+  weekly: "Weekly",
+  biweekly: "Biweekly",
+  monthly: "Monthly",
+}
+
 interface TaskAssignmentFormProps {
   task: TaskDefinition
   onCancel: () => void
@@ -44,6 +55,17 @@ interface TaskAssignmentFormProps {
   currentUser?: WorkerType | null
   workersLoaded?: boolean
   workersLoadError?: boolean
+  shiftSchedules?: Array<{
+    worker_id: string
+    schedule_date: string
+    shift_start: string
+    shift_end: string
+    has_break: boolean
+    break_start?: string
+    break_end?: string
+    is_override: boolean
+    override_reason?: string
+  }>
   initialData?: {
     assignedTo?: string
     location?: string
@@ -69,9 +91,13 @@ export interface TaskAssignmentData {
   photoCategories: Array<{ name: string; count: number; description?: string }>
   //
   isCustomTask: boolean
+  isRecurring: boolean
+  recurringFrequency?: RecurringFrequency | null
+  requiresSpecificTime?: boolean
+  recurringTime?: string | null
 }
 
-export function TaskAssignmentForm({ task, onCancel, onSubmit, workers, initialData, currentUser }: TaskAssignmentFormProps) {
+export function TaskAssignmentForm({ task, onCancel, onSubmit, workers, initialData, currentUser, shiftSchedules }: TaskAssignmentFormProps) {
   // Form state
   const [priority, setPriority] = useState<Priority>(task.priority)
   const [duration, setDuration] = useState(task.duration)
@@ -99,19 +125,37 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers, initialD
   //
   const [crossDeptCandidate, setCrossDeptCandidate] = useState<WorkerWithAvailability | null>(null)
 
+  const definitionIsRecurring = Boolean(task.isRecurring)
+  const definitionRecurringFrequency = task.recurringFrequency ?? null
+  const recurringFrequencyLabel = task.recurringFrequency
+    ? RECURRING_FREQUENCY_LABELS[task.recurringFrequency]
+    : null
+  const definitionRequiresSpecificTime = Boolean(task.requiresSpecificTime)
+  const definitionRecurringTime =
+    definitionRequiresSpecificTime && task.recurringTime ? task.recurringTime : null
+
   const locationRef = useRef<HTMLDivElement>(null)
 
   const departmentLabels: Record<Department, string> = {
     housekeeping: "Housekeeping",
     maintenance: "Maintenance",
     front_desk: "Front Desk",
+    admin: "Admin",
+    "housekeeping-dept": "Housekeeping Department",
+    "maintenance-dept": "Maintenance Department",
   }
 
   const isOtherTask = task.id === "other-custom-task"
 
   type WorkerWithAvailability = ReturnType<typeof getWorkersWithShiftStatusFromUsers>[number]
 
-  const workersWithShifts = useMemo(() => getWorkersWithShiftStatusFromUsers(workers), [workers])
+  const workersWithShifts = useMemo(() => {
+    const allWorkers = shiftSchedules
+      ? getWorkersWithShiftStatusFromUsersAndSchedules(workers, shiftSchedules)
+      : getWorkersWithShiftStatusFromUsers(workers)
+    // Filter out workers from excluded departments
+    return allWorkers.filter((worker) => !EXCLUDED_TASK_ASSIGNMENT_DEPARTMENTS.includes(worker.department as Department))
+  }, [workers, shiftSchedules])
 
   const staffIncludingCurrent = useMemo<WorkerWithAvailability[]>(() => {
     if (!currentUser) return workersWithShifts
@@ -149,7 +193,7 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers, initialD
         acc[dept] = sortedStaff.filter((worker) => worker.department === dept)
         return acc
       },
-      { housekeeping: [], maintenance: [], front_desk: [] } as Record<Department, WorkerWithAvailability[]>,
+      { housekeeping: [], maintenance: [], front_desk: [], admin: [], "housekeeping-dept": [], "maintenance-dept": [] } as Record<Department, WorkerWithAvailability[]>,
     )
   }, [sortedStaff])
 
@@ -327,6 +371,11 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers, initialD
       photoCategories: isOtherTask ? photoCategories : task.photoCategories || [],
       //
       isCustomTask: isOtherTask,
+      isRecurring: !isOtherTask && definitionIsRecurring,
+      recurringFrequency: !isOtherTask && definitionIsRecurring ? definitionRecurringFrequency : null,
+      requiresSpecificTime: !isOtherTask && definitionIsRecurring ? definitionRequiresSpecificTime : false,
+      recurringTime:
+        !isOtherTask && definitionIsRecurring && definitionRequiresSpecificTime ? definitionRecurringTime : null,
     }
 
     console.log("[v0] Task assignment data:", {
@@ -337,6 +386,10 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers, initialD
       photoCategoriesCount: data.photoCategories.length,
       //
       isCustomTask: data.isCustomTask,
+      isRecurring: data.isRecurring,
+      recurringFrequency: data.recurringFrequency,
+      requiresSpecificTime: data.requiresSpecificTime,
+      recurringTime: data.recurringTime,
     })
 
     onSubmit(data)
@@ -360,6 +413,13 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers, initialD
             >
               {CATEGORY_LABELS[isOtherTask ? customCategory : task.category]}
             </span>
+            {!isOtherTask && definitionIsRecurring && (
+              <Badge variant="outline" className="flex items-center gap-1 border-dashed border-muted-foreground/50">
+                <Repeat className="h-3.5 w-3.5" />
+                {recurringFrequencyLabel || "Recurring"}
+                {definitionRequiresSpecificTime && definitionRecurringTime ? ` @ ${definitionRecurringTime}` : ""}
+              </Badge>
+            )}
           </div>
           <p className="text-xs sm:text-sm text-muted-foreground">
             Department: <span className="font-medium capitalize">{selectedDepartment}</span>
@@ -699,6 +759,15 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers, initialD
             <div className="flex items-center gap-2 text-muted-foreground">
               <span className="font-medium capitalize">{selectedDepartment}</span> Department
             </div>
+            {!isOtherTask && definitionIsRecurring && (
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <Repeat className="w-4 h-4" />
+                <span>
+                  {recurringFrequencyLabel || "Recurring"}
+                  {definitionRequiresSpecificTime && definitionRecurringTime ? ` @ ${definitionRecurringTime}` : ""}
+                </span>
+              </div>
+            )}
           </div>
         </div>
 

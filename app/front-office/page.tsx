@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 
 export const dynamic = "force-dynamic"
 
@@ -35,7 +35,6 @@ import {
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { useRealtimeTasks } from "@/lib/use-realtime-tasks"
-import { ConnectionStatus } from "@/components/connection-status"
 import { RejectedTaskCard } from "@/components/rejected-task-card"
 import { IssueCard } from "@/components/issue-card"
 import { FrontOfficeBottomNav } from "@/components/mobile/front-office-bottom-nav"
@@ -83,7 +82,7 @@ function FrontOfficeDashboard() {
   const [shiftSortOption, setShiftSortOption] = useState<ShiftSortOption>("status")
 
   const workers = users.filter((u) => u.role === "worker" || u.role === "front_office")
-  const today = new Date()
+  const [today] = useState(() => new Date())
 
   const [editingShifts, setEditingShifts] = useState<
     Record<
@@ -103,8 +102,8 @@ function FrontOfficeDashboard() {
         return [
           w.id,
           {
-            start: todayShift.shift_start,
-            end: todayShift.shift_end,
+            start: todayShift.shift_start || "09:00",
+            end: todayShift.shift_end || "18:00",
             hasBreak: todayShift.has_break || false,
             breakStart: todayShift.break_start || "12:00",
             breakEnd: todayShift.break_end || "13:00",
@@ -114,6 +113,68 @@ function FrontOfficeDashboard() {
     ),
   )
 
+  const buildShiftTemplate = (worker: User) => {
+    const todayShift = getWorkerShiftForDate(worker, today, shiftSchedules)
+    return {
+      start: todayShift.shift_start || "09:00",
+      end: todayShift.shift_end || "18:00",
+      hasBreak: todayShift.has_break || false,
+      breakStart: todayShift.break_start || "12:00",
+      breakEnd: todayShift.break_end || "13:00",
+    }
+  }
+
+  const hasChanges = (workerId: string) => {
+    const worker = workers.find((w) => w.id === workerId)
+    if (!worker) return false
+    const edited = editingShifts[worker.id]
+    if (!edited) return false
+    const template = buildShiftTemplate(worker)
+    return (
+      edited.start !== template.start ||
+      edited.end !== template.end ||
+      edited.hasBreak !== template.hasBreak ||
+      edited.breakStart !== template.breakStart ||
+      edited.breakEnd !== template.breakEnd
+    )
+  }
+
+  useEffect(() => {
+    setEditingShifts((prev) => {
+      let mutated = false
+      const next = { ...prev }
+      const workerIds = new Set(workers.map((w) => w.id))
+
+      workers.forEach((worker) => {
+        const template = buildShiftTemplate(worker)
+        const current = next[worker.id]
+        if (!current || !hasChanges(worker.id)) {
+          const shouldUpdate =
+            !current ||
+            current.start !== template.start ||
+            current.end !== template.end ||
+            current.hasBreak !== template.hasBreak ||
+            current.breakStart !== template.breakStart ||
+            current.breakEnd !== template.breakEnd
+
+          if (shouldUpdate) {
+            next[worker.id] = template
+            mutated = true
+          }
+        }
+      })
+
+      Object.keys(next).forEach((id) => {
+        if (!workerIds.has(id)) {
+          delete next[id]
+          mutated = true
+        }
+      })
+
+      return mutated ? next : prev
+    })
+  }, [workers, shiftSchedules, today])
+
   const [offDutyStatus, setOffDutyStatus] = useState<Record<string, boolean>>(
     Object.fromEntries(
       workers.map((w) => {
@@ -122,6 +183,31 @@ function FrontOfficeDashboard() {
       }),
     ),
   )
+
+  useEffect(() => {
+    setOffDutyStatus((prev) => {
+      let mutated = false
+      const next = { ...prev }
+      const workerIds = new Set(workers.map((w) => w.id))
+
+      workers.forEach((worker) => {
+        const override = getWorkerShiftForDate(worker, today, shiftSchedules).is_override || false
+        if (next[worker.id] !== override) {
+          next[worker.id] = override
+          mutated = true
+        }
+      })
+
+      Object.keys(next).forEach((id) => {
+        if (!workerIds.has(id)) {
+          delete next[id]
+          mutated = true
+        }
+      })
+
+      return mutated ? next : prev
+    })
+  }, [workers, shiftSchedules, today])
 
   const sortedShiftWorkers = useMemo(() => {
     const getStatusRank = (worker: User) => {
@@ -222,6 +308,24 @@ function FrontOfficeDashboard() {
   const handleSaveShift = (workerId: string) => {
     const shift = editingShifts[workerId]
 
+    if (!shift) {
+      const worker = workers.find((w) => w.id === workerId)
+      if (!worker) return
+
+      const todayShift = getWorkerShiftForDate(worker, today, shiftSchedules)
+      setEditingShifts((prev) => ({
+        ...prev,
+        [workerId]: {
+          start: todayShift.shift_start || "09:00",
+          end: todayShift.shift_end || "18:00",
+          hasBreak: todayShift.has_break || false,
+          breakStart: todayShift.break_start || "12:00",
+          breakEnd: todayShift.break_end || "13:00",
+        },
+      }))
+      return
+    }
+
     if (shift.hasBreak) {
       const validation = validateBreakTimes(shift.start, shift.end, shift.breakStart, shift.breakEnd)
       if (!validation.valid) {
@@ -235,6 +339,22 @@ function FrontOfficeDashboard() {
     }
 
     updateWorkerShift(workerId, shift.start, shift.end, user!.id, shift.hasBreak, shift.breakStart, shift.breakEnd)
+
+    const todayDate = today.toISOString().split("T")[0]
+    const isOffDuty = offDutyStatus[workerId] ?? false
+
+    saveShiftSchedule({
+      worker_id: workerId,
+      schedule_date: todayDate,
+      shift_start: shift.start,
+      shift_end: shift.end,
+      has_break: shift.hasBreak,
+      break_start: shift.hasBreak ? shift.breakStart : undefined,
+      break_end: shift.hasBreak ? shift.breakEnd : undefined,
+      is_override: isOffDuty,
+      override_reason: isOffDuty ? "leave" : "",
+      notes: "",
+    })
     toast({
       title: "Shift Updated",
       description: "Worker shift timing has been updated successfully",
@@ -267,20 +387,6 @@ function FrontOfficeDashboard() {
       title: isOffDuty ? "Marked Off Duty" : "Marked On Duty",
       description: `${worker.name} has been ${isOffDuty ? "marked as off duty" : "marked as on duty"} for today`,
     })
-  }
-
-  const hasChanges = (workerId: string) => {
-    const worker = workers.find((w) => w.id === workerId)
-    if (!worker) return false
-    const edited = editingShifts[worker.id]
-    const todayShift = getWorkerShiftForDate(worker, today, shiftSchedules)
-    return (
-      edited.start !== todayShift.shift_start ||
-      edited.end !== todayShift.shift_end ||
-      edited.hasBreak !== (todayShift.has_break || false) ||
-      edited.breakStart !== (todayShift.break_start || "12:00") ||
-      edited.breakEnd !== (todayShift.break_end || "13:00")
-    )
   }
 
   const getWorkingHoursDisplay = (
@@ -986,7 +1092,6 @@ function FrontOfficeDashboard() {
             Create Task
           </Link>
         </Button>
-        <ConnectionStatus isConnected={isConnected} />
         <Button
           variant="outline"
           size="sm"

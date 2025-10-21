@@ -21,9 +21,9 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { ArrowLeft, Plus, Trash2, Search, AlertCircle, CheckCircle, Clock, MapPin, Camera, Edit } from "lucide-react"
+import { ArrowLeft, Plus, Trash2, Search, AlertCircle, CheckCircle, Clock, MapPin, Camera, Edit, Repeat } from "lucide-react"
 import { CATEGORY_LABELS, CATEGORY_COLORS } from "@/lib/task-definitions"
-import type { TaskCategory, Department, Priority, PhotoCategory } from "@/lib/task-definitions"
+import type { TaskCategory, Department, Priority, PhotoCategory, RecurringFrequency } from "@/lib/task-definitions"
 import type { Task } from "@/lib/types"
 import {
   getCustomTaskDefinitions,
@@ -35,6 +35,13 @@ import {
 import { useToast } from "@/hooks/use-toast"
 import { EditTaskDefinitionModal } from "@/components/edit-task-definition-modal"
 import { PhotoCategoryConfig } from "@/components/photo-category-config"
+
+const RECURRING_FREQUENCY_LABELS: Record<RecurringFrequency, string> = {
+  daily: "Daily",
+  weekly: "Weekly",
+  biweekly: "Biweekly",
+  monthly: "Monthly",
+}
 
 function TaskManagementPage() {
   const router = useRouter()
@@ -63,6 +70,10 @@ function TaskManagementPage() {
     requiresRoom: false,
     requiresACLocation: false,
     sourceTaskId: undefined as string | undefined,
+    isRecurring: false,
+    recurringFrequency: "" as RecurringFrequency | "",
+    requiresSpecificTime: false,
+    recurringTime: "",
   })
 
   const [newTaskForm, setNewTaskForm] = useState(createDefaultNewTaskForm)
@@ -120,6 +131,24 @@ function TaskManagementPage() {
       return
     }
 
+    if (newTaskForm.isRecurring && !newTaskForm.recurringFrequency) {
+      toast({
+        title: "Error",
+        description: "Please choose how often this task recurs",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (newTaskForm.isRecurring && newTaskForm.requiresSpecificTime && !newTaskForm.recurringTime) {
+      toast({
+        title: "Error",
+        description: "Please set the preferred time for recurring tasks that require a specific time",
+        variant: "destructive",
+      })
+      return
+    }
+
     const keywordsArray = newTaskForm.keywords
       .split(",")
       .map((k) => k.trim())
@@ -137,6 +166,13 @@ function TaskManagementPage() {
       keywords: keywordsArray,
       requiresRoom: newTaskForm.requiresRoom,
       requiresACLocation: newTaskForm.requiresACLocation,
+      isRecurring: newTaskForm.isRecurring || undefined,
+      recurringFrequency: newTaskForm.isRecurring ? (newTaskForm.recurringFrequency as RecurringFrequency) : undefined,
+      requiresSpecificTime: newTaskForm.isRecurring ? newTaskForm.requiresSpecificTime : undefined,
+      recurringTime:
+        newTaskForm.isRecurring && newTaskForm.requiresSpecificTime && newTaskForm.recurringTime
+          ? newTaskForm.recurringTime
+          : undefined,
       createdBy: user?.id || "unknown",
     })
 
@@ -164,6 +200,10 @@ function TaskManagementPage() {
     const photoRequiredValue = task.custom_task_photo_required ?? task.photo_required ?? false
     const photoRequired = !!photoRequiredValue
     const photoCount = task.custom_task_photo_count ?? (photoRequired ? Math.max(1, task.photo_urls.length || 1) : 0)
+    const isRecurring = Boolean(task.custom_task_is_recurring)
+    const recurringFrequency = (task.custom_task_recurring_frequency || "") as RecurringFrequency | ""
+    const requiresSpecificTime = Boolean(task.custom_task_requires_specific_time)
+    const recurringTime = task.custom_task_recurring_time || ""
 
     setNewTaskForm({
       name,
@@ -178,6 +218,10 @@ function TaskManagementPage() {
       requiresACLocation: false,
       sourceTaskId: task.id,
       photoCategories: task.custom_task_photo_categories || [],
+      isRecurring,
+      recurringFrequency,
+      requiresSpecificTime,
+      recurringTime,
     })
 
     setIsAddDialogOpen(true)
@@ -351,6 +395,107 @@ function TaskManagementPage() {
                     })
                   }
                 />
+
+                <div className="space-y-4">
+                  <div className="flex items-start gap-2 rounded-lg border border-dashed border-muted-foreground/40 p-3 bg-muted/30">
+                    <input
+                      type="checkbox"
+                      id="is-recurring"
+                      checked={newTaskForm.isRecurring}
+                      onChange={(e) => {
+                        const checked = e.target.checked
+                        setNewTaskForm({
+                          ...newTaskForm,
+                          isRecurring: checked,
+                          recurringFrequency: checked ? newTaskForm.recurringFrequency : "",
+                          requiresSpecificTime: checked ? newTaskForm.requiresSpecificTime : false,
+                          recurringTime: checked ? newTaskForm.recurringTime : "",
+                        })
+                      }}
+                      className="h-4 w-4 mt-1"
+                    />
+                    <div className="space-y-1">
+                      <Label htmlFor="is-recurring" className="cursor-pointer">
+                        Mark as recurring task
+                      </Label>
+                      <p className="text-xs text-muted-foreground">
+                        Recurring tasks stay on the front-office radar so the team can plan assignments ahead of time.
+                      </p>
+                    </div>
+                  </div>
+
+                  {newTaskForm.isRecurring && (
+                    <div className="ml-6 space-y-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="recurring-frequency">Recurring frequency *</Label>
+                        <Select
+                          value={newTaskForm.recurringFrequency || ""}
+                          onValueChange={(value) =>
+                            setNewTaskForm({
+                              ...newTaskForm,
+                              recurringFrequency: value as RecurringFrequency,
+                            })
+                          }
+                        >
+                          <SelectTrigger id="recurring-frequency">
+                            <SelectValue placeholder="Select frequency" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="daily">Daily</SelectItem>
+                            <SelectItem value="weekly">Weekly</SelectItem>
+                            <SelectItem value="biweekly">Biweekly</SelectItem>
+                            <SelectItem value="monthly">Monthly</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-3">
+                        <div className="flex items-start gap-2">
+                          <input
+                            type="checkbox"
+                            id="requires-specific-time"
+                            checked={newTaskForm.requiresSpecificTime}
+                            onChange={(e) => {
+                              const checked = e.target.checked
+                              setNewTaskForm({
+                                ...newTaskForm,
+                                requiresSpecificTime: checked,
+                                recurringTime: checked ? newTaskForm.recurringTime : "",
+                              })
+                            }}
+                            className="h-4 w-4 mt-1"
+                          />
+                          <div className="space-y-1">
+                            <Label htmlFor="requires-specific-time" className="cursor-pointer">
+                              Requires specific start time
+                            </Label>
+                            <p className="text-xs text-muted-foreground">
+                              When enabled, set the preferred time so the task is queued for front-office scheduling.
+                            </p>
+                          </div>
+                        </div>
+
+                        {newTaskForm.requiresSpecificTime && (
+                          <div className="ml-6 space-y-2">
+                            <Label htmlFor="recurring-time">Preferred time *</Label>
+                            <Input
+                              id="recurring-time"
+                              type="time"
+                              value={newTaskForm.recurringTime}
+                              onChange={(e) =>
+                                setNewTaskForm({
+                                  ...newTaskForm,
+                                  recurringTime: e.target.value,
+                                })
+                              }
+                              className="sm:w-48"
+                            />
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
 
                 <div className="space-y-3">
                   <div className="flex items-center gap-2">
@@ -609,6 +754,19 @@ function TaskManagementPage() {
                               <span className="flex items-center gap-1">
                                 <MapPin className="h-3 w-3" />
                                 Room required
+                              </span>
+                            )}
+                            {task.isRecurring && (
+                              <span className="flex items-center gap-1">
+                                <Repeat className="h-3 w-3" />
+                                <span className="capitalize">
+                                  {task.recurringFrequency
+                                    ? RECURRING_FREQUENCY_LABELS[task.recurringFrequency]
+                                    : "Recurring"}
+                                  {task.requiresSpecificTime && task.recurringTime
+                                    ? ` @ ${task.recurringTime}`
+                                    : ""}
+                                </span>
                               </span>
                             )}
                           </div>

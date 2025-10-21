@@ -22,10 +22,16 @@ export default function LoginPage() {
 
   const devAccounts = [
     { label: "Admin", username: "admin", password: "admin123", redirect: "/admin" },
-    { label: "Front Office", username: "frontdesk", password: "front123", redirect: "/front-office" },
+    { label: "Deshik (Front Office)", username: "Deshik", password: "front123", redirect: "/front-office" },
     { label: "HK Supervisor", username: "hk-super", password: "super123", redirect: "/supervisor" },
     { label: "HK Worker", username: "hk-worker", password: "worker123", redirect: "/worker" },
     { label: "Maintenance Worker", username: "maint-worker", password: "worker123", redirect: "/maintenance" },
+    { label: "Kiran", username: "Kiran", password: "kiran123", redirect: "/worker" },
+    { label: "Udit", username: "Udit", password: "udit234", redirect: "/worker" },
+    { label: "Naveen", username: "Naveen", password: "naveen987", redirect: "/worker" },
+    { label: "Sudeep", username: "Sudeep", password: "123sudeep", redirect: "/worker" },
+    { label: "Jayalaxmi", username: "Jayalaxmi", password: "123jyl", redirect: "/worker" },
+    { label: "Kumar", username: "Kumar", password: "345kumar", redirect: "/worker" },
   ]
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -139,10 +145,16 @@ export default function LoginPage() {
               <p className="font-semibold mb-2">Test Accounts:</p>
               <ul className="space-y-1 text-xs">
                 <li>Admin: admin / admin123</li>
-                <li>Front Office: frontdesk / front123</li>
+                <li>Deshik (Front Office): Deshik / front123</li>
                 <li>HK Supervisor: hk-super / super123</li>
                 <li>HK Worker: hk-worker / worker123</li>
                 <li>Maintenance Worker: maint-worker / worker123</li>
+                <li>Kiran: Kiran / kiran123</li>
+                <li>Udit: Udit / udit234</li>
+                <li>Naveen: Naveen / naveen987</li>
+                <li>Sudeep: Sudeep / 123sudeep</li>
+                <li>Jayalaxmi: Jayalaxmi / 123jyl</li>
+                <li>Kumar: Kumar / 345kumar</li>
               </ul>
             </div>
           </form>

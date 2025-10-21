@@ -13,7 +13,6 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { LogOut, Bell, AlertCircle, X, Clock, CheckCircle2, XCircle, Trash2, Save, TrendingUp } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { useRealtimeTasks } from "@/lib/use-realtime-tasks"
-import { ConnectionStatus } from "@/components/connection-status"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { useEffect, useMemo, useState } from "react"
 import { BottomNav } from "@/components/mobile/bottom-nav"
@@ -1225,7 +1224,6 @@ function WorkerDashboard() {
             )}
           </div>
           <div className="flex items-center gap-1 sm:gap-2 shrink-0">
-            <ConnectionStatus isConnected={isConnected} />
             <Button
               variant="outline"
               size="sm"

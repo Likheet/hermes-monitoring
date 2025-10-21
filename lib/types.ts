@@ -1,10 +1,10 @@
 // Core type definitions for the resort task management system
 
-import type { TaskCategory, Priority } from "./task-definitions"
-export type { TaskCategory, Priority } from "./task-definitions"
+import type { TaskCategory, Priority, RecurringFrequency } from "./task-definitions"
+export type { TaskCategory, Priority, RecurringFrequency } from "./task-definitions"
 
 export type UserRole = "worker" | "supervisor" | "front_office" | "admin"
-export type Department = "housekeeping" | "maintenance" | "front_desk"
+export type Department = "housekeeping" | "maintenance" | "front_desk" | "admin" | "housekeeping-dept" | "maintenance-dept"
 export type TaskStatus = "PENDING" | "IN_PROGRESS" | "PAUSED" | "COMPLETED" | "REJECTED"
 export type PriorityLevel = "GUEST_REQUEST" | "TIME_SENSITIVE" | "DAILY_TASK" | "PREVENTIVE_MAINTENANCE"
 
@@ -62,6 +62,10 @@ export interface Task {
   photo_count?: number | null // Number of photos if photo_required is true
   photo_documentation_required?: boolean // Categorized photo documentation
   photo_categories?: Array<{ name: string; count: number; description?: string }> | null // Categories if photo_documentation_required is true
+  is_recurring?: boolean
+  recurring_frequency?: RecurringFrequency | null
+  requires_specific_time?: boolean
+  recurring_time?: string | null
   worker_remark: string
   supervisor_remark: string
   rating: number | null
@@ -77,6 +81,10 @@ export interface Task {
   custom_task_priority?: Priority | null
   custom_task_photo_required?: boolean | null
   custom_task_photo_count?: number | null
+  custom_task_is_recurring?: boolean | null
+  custom_task_recurring_frequency?: RecurringFrequency | null
+  custom_task_requires_specific_time?: boolean | null
+  custom_task_recurring_time?: string | null
   custom_task_processed?: boolean
   rejection_acknowledged?: boolean
   rejection_acknowledged_at?: DualTimestamp | null

@@ -5,9 +5,11 @@ export type TaskCategory =
   | "PREVENTIVE_MAINTENANCE"
   | "TIME_SENSITIVE"
 
-export type Department = "housekeeping" | "maintenance"
+export type Department = "housekeeping" | "maintenance" | "housekeeping-dept" | "maintenance-dept" | "admin"
 
 export type Priority = "urgent" | "high" | "medium" | "low"
+
+export type RecurringFrequency = "daily" | "weekly" | "biweekly" | "monthly"
 
 export interface PhotoCategory {
   name: string // e.g., "Before", "After", "Room", "Proof"
@@ -31,6 +33,10 @@ export interface TaskDefinition {
   requiresRoom: boolean
   requiresACLocation?: boolean
   deadline?: string // for time-sensitive tasks (HH:MM format)
+  isRecurring?: boolean
+  requiresSpecificTime?: boolean
+  recurringTime?: string // HH:MM format
+  recurringFrequency?: RecurringFrequency
 }
 
 export const TASK_DEFINITIONS: TaskDefinition[] = [

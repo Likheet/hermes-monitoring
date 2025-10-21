@@ -27,7 +27,7 @@ export interface DatabaseUser {
   name: string
   role: "worker" | "supervisor" | "front_office" | "admin"
   phone: string | null
-  department: "housekeeping" | "maintenance" | null
+  department: "housekeeping" | "maintenance" | "housekeeping-dept" | "maintenance-dept" | "admin" | null
   shift_timing: string | null
   created_at: string
 }
@@ -159,7 +159,13 @@ const PRIORITY_APP_TO_DB: Record<PriorityLevel, DatabaseTask["priority_level"]> 
 const TASK_STATUS_VALUES: TaskStatus[] = ["PENDING", "IN_PROGRESS", "PAUSED", "COMPLETED", "REJECTED"]
 
 function normalizeDepartment(role: DatabaseUser["role"], department: DatabaseUser["department"]): Department {
-  if (department === "housekeeping" || department === "maintenance") {
+  if (
+    department === "housekeeping" ||
+    department === "maintenance" ||
+    department === "admin" ||
+    department === "housekeeping-dept" ||
+    department === "maintenance-dept"
+  ) {
     return department
   }
 
@@ -585,5 +591,6 @@ export function appShiftScheduleToDatabase(schedule: ShiftSchedule): Omit<Databa
     break_end: schedule.break_end || null,
     is_override: schedule.is_override || false,
     override_reason: schedule.override_reason || null,
+    notes: schedule.notes || null,
   }
 }

@@ -6,29 +6,33 @@ import { useAuth } from "@/lib/auth-context"
 
 export default function HomePage() {
   const router = useRouter()
-  const { isAuthenticated, user } = useAuth()
+  const { isAuthenticated, user, loading } = useAuth()
 
   useEffect(() => {
+    if (loading) {
+      return
+    }
+
     if (!isAuthenticated) {
-      router.push("/login")
+      router.replace("/login")
     } else if (user) {
       // Redirect based on role
       switch (user.role) {
         case "worker":
-          router.push("/worker")
+          router.replace("/worker")
           break
         case "supervisor":
-          router.push("/supervisor")
+          router.replace("/supervisor")
           break
         case "front_office":
-          router.push("/front-office")
+          router.replace("/front-office")
           break
         case "admin":
-          router.push("/admin")
+          router.replace("/admin")
           break
       }
     }
-  }, [isAuthenticated, user, router])
+  }, [isAuthenticated, user, router, loading])
 
   return (
     <div className="flex min-h-screen items-center justify-center">

@@ -8,11 +8,25 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { CATEGORY_LABELS } from "@/lib/task-definitions"
-import type { TaskCategory, Department, Priority, TaskDefinition, PhotoCategory } from "@/lib/task-definitions"
+import type {
+  TaskCategory,
+  Department,
+  Priority,
+  TaskDefinition,
+  PhotoCategory,
+  RecurringFrequency,
+} from "@/lib/task-definitions"
 import type { CustomTaskDefinition } from "@/lib/custom-task-definitions"
 import { updateCustomTaskDefinition, saveCustomTaskDefinition } from "@/lib/custom-task-definitions"
 import { useToast } from "@/hooks/use-toast"
 import { PhotoCategoryConfig } from "@/components/photo-category-config"
+
+const RECURRING_FREQUENCY_OPTIONS: { value: RecurringFrequency; label: string }[] = [
+  { value: "daily", label: "Daily" },
+  { value: "weekly", label: "Weekly" },
+  { value: "biweekly", label: "Biweekly" },
+  { value: "monthly", label: "Monthly" },
+]
 
 interface EditTaskDefinitionModalProps {
   task: (TaskDefinition | CustomTaskDefinition) & { isCustom?: boolean }
@@ -42,6 +56,10 @@ export function EditTaskDefinitionModal({ task, open, onOpenChange, onSuccess }:
     keywords: task.keywords.join(", "),
     requiresRoom: task.requiresRoom,
     requiresACLocation: task.requiresACLocation,
+    isRecurring: getBooleanValue(task.isRecurring, false),
+    recurringFrequency: (task.recurringFrequency || "") as RecurringFrequency | "",
+    requiresSpecificTime: getBooleanValue(task.requiresSpecificTime, false),
+    recurringTime: task.recurringTime || "",
   })
 
   useEffect(() => {
@@ -58,6 +76,10 @@ export function EditTaskDefinitionModal({ task, open, onOpenChange, onSuccess }:
       keywords: task.keywords.join(", "),
       requiresRoom: task.requiresRoom,
       requiresACLocation: task.requiresACLocation,
+      isRecurring: getBooleanValue(task.isRecurring, false),
+      recurringFrequency: (task.recurringFrequency || "") as RecurringFrequency | "",
+      requiresSpecificTime: getBooleanValue(task.requiresSpecificTime, false),
+      recurringTime: task.recurringTime || "",
     })
   }, [task])
 
@@ -89,6 +111,24 @@ export function EditTaskDefinitionModal({ task, open, onOpenChange, onSuccess }:
       return
     }
 
+    if (formData.isRecurring && !formData.recurringFrequency) {
+      toast({
+        title: "Error",
+        description: "Please choose how often this task recurs",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (formData.isRecurring && formData.requiresSpecificTime && !formData.recurringTime) {
+      toast({
+        title: "Error",
+        description: "Please set the preferred time for recurring tasks that need a specific time",
+        variant: "destructive",
+      })
+      return
+    }
+
     const keywordsArray = formData.keywords
       .split(",")
       .map((k) => k.trim())
@@ -110,6 +150,13 @@ export function EditTaskDefinitionModal({ task, open, onOpenChange, onSuccess }:
         keywords: keywordsArray,
         requiresRoom: formData.requiresRoom,
         requiresACLocation: formData.requiresACLocation,
+        isRecurring: formData.isRecurring || undefined,
+        recurringFrequency: formData.isRecurring ? (formData.recurringFrequency as RecurringFrequency) : undefined,
+        requiresSpecificTime: formData.isRecurring ? formData.requiresSpecificTime : undefined,
+        recurringTime:
+          formData.isRecurring && formData.requiresSpecificTime && formData.recurringTime
+            ? formData.recurringTime
+            : undefined,
       })
     } else {
       // Create a custom task override with the same ID as the built-in task
@@ -127,6 +174,13 @@ export function EditTaskDefinitionModal({ task, open, onOpenChange, onSuccess }:
         keywords: keywordsArray,
         requiresRoom: formData.requiresRoom,
         requiresACLocation: formData.requiresACLocation,
+        isRecurring: formData.isRecurring || undefined,
+        recurringFrequency: formData.isRecurring ? (formData.recurringFrequency as RecurringFrequency) : undefined,
+        requiresSpecificTime: formData.isRecurring ? formData.requiresSpecificTime : undefined,
+        recurringTime:
+          formData.isRecurring && formData.requiresSpecificTime && formData.recurringTime
+            ? formData.recurringTime
+            : undefined,
         createdBy: "admin",
       })
     }
@@ -260,6 +314,108 @@ export function EditTaskDefinitionModal({ task, open, onOpenChange, onSuccess }:
               })
             }
           />
+
+          <div className="space-y-4">
+            <div className="flex items-start gap-2 rounded-lg border border-dashed border-muted-foreground/40 p-3 bg-muted/30">
+              <input
+                type="checkbox"
+                id="edit-is-recurring"
+                checked={formData.isRecurring}
+                onChange={(e) => {
+                  const checked = e.target.checked
+                  setFormData({
+                    ...formData,
+                    isRecurring: checked,
+                    recurringFrequency: checked ? formData.recurringFrequency : "",
+                    requiresSpecificTime: checked ? formData.requiresSpecificTime : false,
+                    recurringTime: checked ? formData.recurringTime : "",
+                  })
+                }}
+                className="h-4 w-4 mt-1"
+              />
+              <div className="space-y-1">
+                <Label htmlFor="edit-is-recurring" className="cursor-pointer">
+                  Mark as recurring task
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  Recurring tasks stay on the front-office radar so the team can schedule them proactively.
+                </p>
+              </div>
+            </div>
+
+            {formData.isRecurring && (
+              <div className="ml-6 space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="edit-recurring-frequency">Recurring frequency *</Label>
+                  <Select
+                    value={formData.recurringFrequency || ""}
+                    onValueChange={(value) =>
+                      setFormData({
+                        ...formData,
+                        recurringFrequency: value as RecurringFrequency,
+                      })
+                    }
+                  >
+                    <SelectTrigger id="edit-recurring-frequency">
+                      <SelectValue placeholder="Select frequency" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {RECURRING_FREQUENCY_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-3">
+                  <div className="flex items-start gap-2">
+                    <input
+                      type="checkbox"
+                      id="edit-requires-specific-time"
+                      checked={formData.requiresSpecificTime}
+                      onChange={(e) => {
+                        const checked = e.target.checked
+                        setFormData({
+                          ...formData,
+                          requiresSpecificTime: checked,
+                          recurringTime: checked ? formData.recurringTime : "",
+                        })
+                      }}
+                      className="h-4 w-4 mt-1"
+                    />
+                    <div className="space-y-1">
+                      <Label htmlFor="edit-requires-specific-time" className="cursor-pointer">
+                        Requires specific start time
+                      </Label>
+                      <p className="text-xs text-muted-foreground">
+                        When enabled, set the preferred time so the task is queued for front-office scheduling.
+                      </p>
+                    </div>
+                  </div>
+
+                  {formData.requiresSpecificTime && (
+                    <div className="ml-6 space-y-2">
+                      <Label htmlFor="edit-recurring-time">Preferred time *</Label>
+                      <Input
+                        id="edit-recurring-time"
+                        type="time"
+                        value={formData.recurringTime}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            recurringTime: e.target.value,
+                          })
+                        }
+                        className="sm:w-48"
+                      />
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
 
           <div className="space-y-3">
             <div className="flex items-center gap-2">

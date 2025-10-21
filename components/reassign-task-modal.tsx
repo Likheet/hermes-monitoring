@@ -8,7 +8,10 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useTasks } from "@/lib/task-context"
 import { useAuth } from "@/lib/auth-context"
-import type { Task } from "@/lib/types"
+import type { Task, Department } from "@/lib/types"
+
+// Departments that should not be available for task assignment
+const EXCLUDED_TASK_ASSIGNMENT_DEPARTMENTS: Department[] = ["admin", "housekeeping-dept", "maintenance-dept"]
 
 interface ReassignTaskModalProps {
   task: Task
@@ -23,7 +26,12 @@ export function ReassignTaskModal({ task, open, onOpenChange }: ReassignTaskModa
   const [reason, setReason] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
 
-  const workerOptions = users.filter((u) => u.role === "worker" && u.id !== task.assigned_to_user_id)
+  const workerOptions = users.filter(
+    (u) =>
+      u.role === "worker" &&
+      u.id !== task.assigned_to_user_id &&
+      !EXCLUDED_TASK_ASSIGNMENT_DEPARTMENTS.includes(u.department as Department)
+  )
 
   const assigneeOptions = (() => {
     if (!user || user.id === task.assigned_to_user_id) {

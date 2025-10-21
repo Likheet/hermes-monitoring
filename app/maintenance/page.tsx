@@ -8,7 +8,6 @@ import { MaintenanceCalendar } from "@/components/maintenance/maintenance-calend
 import { BottomNav } from "@/components/mobile/bottom-nav"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { ConnectionStatus } from "@/components/connection-status"
 import { useRealtimeTasks } from "@/lib/use-realtime-tasks"
 import { LogOut } from "lucide-react"
 import { useRouter } from "next/navigation"
@@ -42,7 +41,6 @@ function MaintenanceDashboard() {
             <p className="text-sm text-muted-foreground">{user?.name}</p>
           </div>
           <div className="flex items-center gap-2">
-            <ConnectionStatus isConnected={isConnected} />
             <Button
               variant="outline"
               size="sm"

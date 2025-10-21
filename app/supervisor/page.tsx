@@ -16,7 +16,6 @@ import Link from "next/link"
 import { IssueCard } from "@/components/issue-card"
 import type { User as UserType } from "@/lib/types"
 import { useRealtimeTasks } from "@/lib/use-realtime-tasks"
-import { ConnectionStatus } from "@/components/connection-status"
 import { detectEscalationLevel, type Escalation } from "@/lib/escalation-utils"
 import { createDualTimestamp } from "@/lib/mock-data"
 import { TASK_TYPE_LABELS } from "@/lib/maintenance-types"
@@ -221,7 +220,6 @@ function SupervisorDashboard() {
             </p>
           </div>
           <div className="flex items-center gap-2 w-full sm:w-auto">
-            <ConnectionStatus isConnected={isConnected} />
             <Button
               variant="outline"
               size="sm"

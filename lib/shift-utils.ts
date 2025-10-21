@@ -661,3 +661,25 @@ export function getCurrentMonthAttendance(
 ): MonthlyAttendance {
   return calculateMonthlyAttendance(workerId, new Date(), shiftSchedules)
 }
+
+// Get workers with shift status, checking today's shift schedule
+export function getWorkersWithShiftStatusFromUsersAndSchedules(
+  workers: User[],
+  shiftSchedules: Array<{
+    worker_id: string
+    schedule_date: string
+    shift_start: string
+    shift_end: string
+    has_break: boolean
+    break_start?: string
+    break_end?: string
+    is_override: boolean
+    override_reason?: string
+  }>,
+): Array<User & { availability: WorkerAvailability }> {
+  return workers.map((worker) => ({
+    ...worker,
+    availability: isWorkerOnShiftWithSchedule(worker, shiftSchedules),
+  }))
+}
+
