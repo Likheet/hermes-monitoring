@@ -63,7 +63,6 @@ export function CategorizedPhotoCaptureModal({
         reloaded[key] = existingPhotos[key] || []
       })
       setPhotos(reloaded)
-      console.log("[v0] Loaded existing photos:", reloaded)
     }
   }, [open, existingPhotos, photoCategories])
 
@@ -82,7 +81,7 @@ export function CategorizedPhotoCaptureModal({
     } catch (err) {
       setError("Failed to process image. Please try again.")
       triggerErrorHaptic()
-      console.error("[v0] Image compression error:", err)
+      console.error("Image compression error:", err)
     }
   }
 
@@ -121,7 +120,7 @@ export function CategorizedPhotoCaptureModal({
     } catch (err: any) {
       setError(err.message || "Failed to upload photo. Please try again.")
       triggerErrorHaptic()
-      console.error("[v0] Photo upload error:", err)
+      console.error("Photo upload error:", err)
     } finally {
       setUploading(false)
     }

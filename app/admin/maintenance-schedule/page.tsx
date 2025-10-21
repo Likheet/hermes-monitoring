@@ -34,14 +34,12 @@ export default function MaintenanceSchedulePage() {
   const handleSaveSchedule = async (scheduleData: Partial<MaintenanceSchedule>) => {
     try {
       if (editingSchedule) {
-        console.log("[v0] Updating schedule:", editingSchedule.id, scheduleData)
         updateSchedule(editingSchedule.id, scheduleData)
         toast({
           title: "Schedule Updated",
           description: "The maintenance schedule has been updated successfully.",
         })
       } else {
-        console.log("[v0] Creating schedule:", scheduleData)
         addSchedule(scheduleData as Omit<MaintenanceSchedule, "id" | "created_at">)
         toast({
           title: "Schedule Created",
@@ -51,7 +49,7 @@ export default function MaintenanceSchedulePage() {
 
       handleCloseForm()
     } catch (error) {
-      console.error("[v0] Error saving schedule:", error)
+      console.error("Error saving schedule:", error)
       toast({
         title: "Error",
         description: "Failed to save schedule. Please try again.",

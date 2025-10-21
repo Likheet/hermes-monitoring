@@ -27,7 +27,6 @@ export function useRealtimeTasks(options: UseRealtimeTasksOptions = {}) {
 
   const handleTaskUpdate = useCallback(
     (payload: TaskRealtimePayload) => {
-      console.log("[v0] Realtime task change:", payload.eventType, payload.new)
       if (onTaskUpdate) {
         onTaskUpdate(payload)
       }
@@ -41,10 +40,9 @@ export function useRealtimeTasks(options: UseRealtimeTasksOptions = {}) {
       reconnectTimeoutRef.current = null
     }
     if (channelRef.current) {
-      console.log("[v0] Removing realtime channel")
       channelRef.current
         .unsubscribe()
-        .catch((error) => console.error("[v0] Error unsubscribing channel:", error))
+        .catch((error) => console.error("Error unsubscribing channel:", error))
       channelRef.current = null
     }
   }, [])
@@ -53,7 +51,6 @@ export function useRealtimeTasks(options: UseRealtimeTasksOptions = {}) {
     cleanup()
 
     if (!enabled) {
-      console.log("[v0] Realtime disabled")
       setConnectionStatus("DISABLED")
       setIsConnected(false)
       return
@@ -84,11 +81,10 @@ export function useRealtimeTasks(options: UseRealtimeTasksOptions = {}) {
         handleTaskUpdate,
       )
       .subscribe((status, err) => {
-        console.log("[v0] Realtime subscription status:", status)
         setConnectionStatus(status)
 
         if (err) {
-          console.error("[v0] Realtime subscription error:", err)
+          console.error("Realtime subscription error:", err)
           setIsConnected(false)
           attemptReconnectHandlerRef.current()
           return
@@ -117,15 +113,12 @@ export function useRealtimeTasks(options: UseRealtimeTasksOptions = {}) {
     const baseDelay = 2000
 
     if (reconnectAttemptsRef.current >= maxAttempts) {
-      console.error("[v0] Max reconnection attempts reached")
+      console.error("Max reconnection attempts reached")
       setConnectionStatus("FAILED")
       return
     }
 
     const delay = baseDelay * Math.pow(2, reconnectAttemptsRef.current)
-    console.log(
-      `[v0] Attempting reconnection in ${delay}ms (attempt ${reconnectAttemptsRef.current + 1}/${maxAttempts})`,
-    )
 
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current)

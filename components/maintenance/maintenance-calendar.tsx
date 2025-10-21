@@ -21,7 +21,6 @@ export function MaintenanceCalendar({ onRoomClick, searchQuery = "", onSearchCha
   const [currentYear] = useState(new Date().getFullYear())
 
   useEffect(() => {
-    console.log("[v0] Maintenance calendar loaded. Tasks:", maintenanceTasks.length)
   }, [maintenanceTasks])
 
   if (maintenanceTasks.length === 0) {

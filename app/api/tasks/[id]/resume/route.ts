@@ -42,7 +42,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       .single()
 
     if (fetchError || !currentTask) {
-      console.error("[v0] Task resume fetch error:", fetchError)
+      console.error("Task resume fetch error:", fetchError)
       return NextResponse.json({ error: "Task not found" }, { status: 404 })
     }
 
@@ -78,7 +78,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       .single()
 
     if (taskError) {
-      console.error("[v0] Task resume error:", taskError)
+      console.error("Task resume error:", taskError)
       return NextResponse.json({ error: taskError.message }, { status: 400 })
     }
 
@@ -86,7 +86,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
     return NextResponse.json({ task: appTask }, { status: 200 })
   } catch (error) {
-    console.error("[v0] Task resume POST error:", error)
+    console.error("Task resume POST error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

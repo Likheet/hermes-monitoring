@@ -125,8 +125,6 @@ function TaskDetail({ params }: TaskDetailProps) {
     }
   }, [task?.id])
 
-  console.log("[v0] TaskDetail page loaded with taskId:", taskId)
-  console.log("[v0] Task found:", !!task)
 
   if (!task || !user) {
     return (
@@ -140,8 +138,6 @@ function TaskDetail({ params }: TaskDetailProps) {
     )
   }
 
-  console.log("[v0] Task status:", task.status)
-  console.log("[v0] Should show Raise Issue button:", task.status === "IN_PROGRESS" || task.status === "PAUSED")
 
   const handleStart = async () => {
     if (!isOnline()) {
@@ -323,7 +319,6 @@ function TaskDetail({ params }: TaskDetailProps) {
 
   const handlePhotosChange = (newPhotos: string[]) => {
     setPhotos(newPhotos)
-    console.log("[v0] Photos updated:", newPhotos.length)
   }
 
   const handleRaiseIssue = (issueDescription: string, issuePhotos: string[]) => {

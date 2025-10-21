@@ -28,7 +28,6 @@ export function TaskSearch({ onSelectTask }: TaskSearchProps) {
     const loadTasks = () => {
       const tasks = getAllTaskDefinitions()
       setAllTasks(tasks)
-      console.log("[v0] TaskSearch loaded", tasks.length, "task definitions (including custom)")
     }
 
     loadTasks()

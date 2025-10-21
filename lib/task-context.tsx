@@ -1,6 +1,6 @@
 "use client"
 
-import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from "react"
+import { createContext, useContext, useState, useEffect, useCallback, useTransition, useRef, type ReactNode } from "react"
 import type { Task, AuditLogEntry, User, TaskIssue, CategorizedPhotos, Department, UserRole } from "./types"
 import type { MaintenanceSchedule, MaintenanceTask, MaintenanceTaskType, ShiftSchedule } from "./maintenance-types"
 import { createDualTimestamp, mockUsers } from "./mock-data"
@@ -9,6 +9,7 @@ import { triggerHapticFeedback } from "./haptics"
 import { ALL_ROOMS, getMaintenanceItemsForRoom } from "./location-data"
 import { useRealtimeTasks, type TaskRealtimePayload } from "./use-realtime-tasks"
 import { hashPassword } from "./auth-utils"
+import { databaseTaskToApp, type DatabaseTask } from "./database-types"
 import {
   loadTasksFromSupabase,
   loadUsersFromSupabase,
@@ -30,6 +31,122 @@ const DEFAULT_MAINTENANCE_DURATION: Record<MaintenanceTaskType, number> = {
   exhaust: 20,
   lift: 45,
   all: 60,
+}
+
+const STORAGE_KEYS = {
+  tasks: "hermes-cache-tasks-v1",
+  users: "hermes-cache-users-v1",
+  shiftSchedules: "hermes-cache-shifts-v1",
+} as const
+
+const MAX_CACHED_TASKS = 100
+const LIST_CACHE_TTL_MS = 180_000
+const storageWarningFlags: Record<string, boolean> = {}
+const STORAGE_WRITE_DEBOUNCE_MS = 150
+const storageWriteTimers: Partial<Record<string, ReturnType<typeof setTimeout>>> = {}
+const storageSnapshots: Record<string, string> = {}
+const storageObjectCache = new WeakMap<object, string>()
+const REALTIME_REFRESH_DEBOUNCE_MS = 250
+const REALTIME_REFRESH_COOLDOWN_MS = 4_000
+const storageDisabledKeys = new Set<string>()
+
+function loadFromStorage<T>(key: string): T | null {
+  if (typeof window === "undefined") return null
+  const raw = window.localStorage.getItem(key)
+  if (!raw) return null
+
+  storageSnapshots[key] = raw
+
+  try {
+    return JSON.parse(raw) as T
+  } catch (error) {
+    console.warn("[cache] Failed to parse cached data for key:", key, error)
+    return null
+  }
+}
+
+function persistToStorage(key: string, value: unknown) {
+  if (typeof window === "undefined") return
+  if (storageDisabledKeys.has(key)) return
+
+  try {
+    let payload = value
+    if (key === STORAGE_KEYS.tasks && Array.isArray(value)) {
+      payload = (value as Task[]).slice(0, MAX_CACHED_TASKS)
+    }
+    let serialized: string
+
+    if (payload && typeof payload === "object") {
+      const cached = storageObjectCache.get(payload as object)
+      if (cached) {
+        serialized = cached
+      } else {
+        serialized = JSON.stringify(payload)
+        storageObjectCache.set(payload as object, serialized)
+      }
+    } else {
+      serialized = JSON.stringify(payload)
+    }
+
+    if (storageSnapshots[key] === serialized) {
+      return
+    }
+
+    const pendingTimer = storageWriteTimers[key]
+    if (pendingTimer) {
+      clearTimeout(pendingTimer)
+    }
+
+    storageWriteTimers[key] = setTimeout(() => {
+      try {
+        window.localStorage.setItem(key, serialized)
+        storageSnapshots[key] = serialized
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        const isQuotaError =
+          (error instanceof DOMException && error.name === "QuotaExceededError") ||
+          /quotaexceedederror/i.test(message)
+
+        if (isQuotaError) {
+          storageDisabledKeys.add(key)
+          try {
+            window.localStorage.removeItem(key)
+            storageSnapshots[key] = ""
+          } catch {
+            // ignore secondary failure
+          }
+        }
+
+        if (!storageWarningFlags[key]) {
+          storageWarningFlags[key] = true
+          if (isQuotaError) {
+            console.warn(
+              `[cache] Disabled persistence for key due to storage quota limits: ${key}. Continuing without offline cache.`,
+            )
+          } else {
+            console.warn("[cache] Failed to persist data for key:", key, error)
+          }
+        }
+      } finally {
+        delete storageWriteTimers[key]
+      }
+    }, STORAGE_WRITE_DEBOUNCE_MS)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    if ((error instanceof DOMException && error.name === "QuotaExceededError") || /quotaexceedederror/i.test(message)) {
+      storageDisabledKeys.add(key)
+      if (!storageWarningFlags[key]) {
+        storageWarningFlags[key] = true
+        console.warn(`[cache] Disabled persistence for key due to storage quota limits: ${key}. Continuing without offline cache.`)
+      }
+      return
+    }
+
+    if (!storageWarningFlags[key]) {
+      storageWarningFlags[key] = true
+      console.warn("[cache] Failed to persist data for key:", key, error)
+    }
+  }
 }
 
 type NonAdminRole = Exclude<UserRole, "admin">
@@ -57,6 +174,13 @@ const DEFAULT_SHIFT_TIMING = {
   start: "09:00",
   end: "17:00",
 }
+
+
+
+
+
+
+
 
 function generateUuid() {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
@@ -125,16 +249,112 @@ interface TaskContextType {
   deleteShiftSchedule: (scheduleId: string) => void
 }
 
+type RefreshOptions = LoadOptions & { useGlobalLoader?: boolean }
+
+interface TaskProviderProps {
+  children: ReactNode
+  initialTasks?: Task[]
+  initialUsers?: User[]
+  initialShiftSchedules?: ShiftSchedule[]
+  bootstrapMeta?: {
+    tasksFetchedAt?: number
+    usersFetchedAt?: number
+    shiftSchedulesFetchedAt?: number
+  }
+}
+
 const TaskContext = createContext<TaskContextType | undefined>(undefined)
 
-export function TaskProvider({ children }: { children: ReactNode }) {
-  const [tasks, setTasks] = useState<Task[]>([])
-  const [users, setUsers] = useState<User[]>([])
+export function TaskProvider({
+  children,
+  initialTasks,
+  initialUsers,
+  initialShiftSchedules,
+  bootstrapMeta,
+}: TaskProviderProps) {
+  const sanitizedInitialTasks = initialTasks ? initialTasks.slice(0, MAX_CACHED_TASKS) : undefined
+  const sanitizedInitialUsers = initialUsers && initialUsers.length > 0 ? initialUsers : undefined
+  const sanitizedInitialShiftSchedules =
+    initialShiftSchedules && initialShiftSchedules.length > 0 ? initialShiftSchedules : undefined
+
+  const [tasks, setTasks] = useState<Task[]>(() => sanitizedInitialTasks ?? [])
+  const [users, setUsers] = useState<User[]>(() => sanitizedInitialUsers ?? [])
   const [issues, setIssues] = useState<TaskIssue[]>([])
   const [schedules, setSchedules] = useState<MaintenanceSchedule[]>([])
   const [maintenanceTasks, setMaintenanceTasks] = useState<MaintenanceTask[]>([])
-  const [shiftSchedules, setShiftSchedules] = useState<ShiftSchedule[]>([])
+  const [shiftSchedules, setShiftSchedules] = useState<ShiftSchedule[]>(() => sanitizedInitialShiftSchedules ?? [])
+  const [usersLoaded, setUsersLoaded] = useState(Boolean(sanitizedInitialUsers))
+  const [usersLoadError, setUsersLoadError] = useState(false)
+  const hasInitialPayload =
+    (sanitizedInitialTasks?.length ?? 0) > 0 ||
+    (sanitizedInitialUsers?.length ?? 0) > 0 ||
+    (sanitizedInitialShiftSchedules?.length ?? 0) > 0
+  const [isLoading, setIsLoading] = useState(!hasInitialPayload)
   const [activeRequests, setActiveRequests] = useState(0)
+  const [, startRealtimeTransition] = useTransition()
+  const lastTasksFetchRef = useRef(bootstrapMeta?.tasksFetchedAt ?? 0)
+  const lastUsersFetchRef = useRef(
+    sanitizedInitialUsers ? bootstrapMeta?.usersFetchedAt ?? Date.now() : 0,
+  )
+  const lastShiftFetchRef = useRef(
+    sanitizedInitialShiftSchedules ? bootstrapMeta?.shiftSchedulesFetchedAt ?? Date.now() : 0,
+  )
+  const lastForcedRefreshRef = useRef(bootstrapMeta?.tasksFetchedAt ?? 0)
+  const forcedRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const lastRealtimeVersionRef = useRef(
+    new Map<string, string | null>(
+      (sanitizedInitialTasks ?? []).map((task) => [
+        task.id,
+        typeof task.server_updated_at === "string" ? task.server_updated_at : null,
+      ]),
+    ),
+  )
+
+  useEffect(() => {
+    const cachedTasks = loadFromStorage<Task[]>(STORAGE_KEYS.tasks)
+    if (cachedTasks && cachedTasks.length > 0) {
+      const limitedTasks = cachedTasks.slice(0, MAX_CACHED_TASKS)
+      setTasks(limitedTasks)
+      lastTasksFetchRef.current = Date.now()
+
+      const cachedVersions = new Map<string, string | null>()
+      for (const task of limitedTasks) {
+        cachedVersions.set(task.id, typeof task.server_updated_at === "string" ? task.server_updated_at : null)
+      }
+      lastRealtimeVersionRef.current = cachedVersions
+    }
+
+    const cachedUsers = loadFromStorage<User[]>(STORAGE_KEYS.users)
+    if (cachedUsers && cachedUsers.length > 0) {
+      setUsers(cachedUsers)
+      setUsersLoaded(true)
+      setUsersLoadError(false)
+    }
+
+    const cachedShiftSchedules = loadFromStorage<ShiftSchedule[]>(STORAGE_KEYS.shiftSchedules)
+    if (cachedShiftSchedules && cachedShiftSchedules.length > 0) {
+      setShiftSchedules(cachedShiftSchedules)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (initialTasks && initialTasks.length > 0) {
+      const limitedTasks = initialTasks.length > MAX_CACHED_TASKS ? initialTasks.slice(0, MAX_CACHED_TASKS) : initialTasks
+      persistToStorage(STORAGE_KEYS.tasks, limitedTasks)
+    }
+  }, [initialTasks])
+
+  useEffect(() => {
+    if (initialUsers && initialUsers.length > 0) {
+      persistToStorage(STORAGE_KEYS.users, initialUsers)
+    }
+  }, [initialUsers])
+
+  useEffect(() => {
+    if (initialShiftSchedules && initialShiftSchedules.length > 0) {
+      persistToStorage(STORAGE_KEYS.shiftSchedules, initialShiftSchedules)
+    }
+  }, [initialShiftSchedules])
 
   const beginRequest = useCallback(() => {
     setActiveRequests((prev) => prev + 1)
@@ -162,51 +382,225 @@ export function TaskProvider({ children }: { children: ReactNode }) {
 
   const isBusy = activeRequests > 0
 
-  const refreshTasks = useCallback((options?: LoadOptions) => {
-    return runWithGlobalLoading(async () => {
-      try {
-        const data = await loadTasksFromSupabase(options)
-        setTasks(data)
-      } catch (error) {
-        console.error("[v0] Error loading tasks from Supabase:", error)
-      }
-    })
-  }, [runWithGlobalLoading])
+  const refreshTasks = useCallback(
+    (options?: RefreshOptions) => {
+      const { useGlobalLoader = true, ...loadOptions } = options ?? {}
+      const now = Date.now()
+      const shouldSkip =
+        !loadOptions.forceRefresh &&
+        lastTasksFetchRef.current !== 0 &&
+        now - lastTasksFetchRef.current < LIST_CACHE_TTL_MS
 
-  const refreshUsers = useCallback((options?: LoadOptions) => {
-    return runWithGlobalLoading(async () => {
-      try {
-        const data = await loadUsersFromSupabase(options)
-        if (data.length > 0) {
-          setUsers(data)
-        } else {
-          setUsers(mockUsers)
+      if (shouldSkip) {
+        return Promise.resolve()
+      }
+
+      const execute = async () => {
+        try {
+          const data = await loadTasksFromSupabase(loadOptions)
+          const limited = data.length > MAX_CACHED_TASKS ? data.slice(0, MAX_CACHED_TASKS) : data
+          setTasks(limited)
+          persistToStorage(STORAGE_KEYS.tasks, limited)
+          lastTasksFetchRef.current = Date.now()
+
+          const nextVersions = new Map<string, string | null>()
+          for (const task of limited) {
+            if (typeof task.server_updated_at === "string") {
+              nextVersions.set(task.id, task.server_updated_at)
+            }
+          }
+          lastRealtimeVersionRef.current = nextVersions
+        } catch (error) {
+          console.error("Error loading tasks from Supabase:", error)
         }
-      } catch (error) {
-        console.error("[v0] Error loading users from Supabase:", error)
-        setUsers(mockUsers)
       }
-    })
-  }, [runWithGlobalLoading])
 
-  const refreshShiftSchedules = useCallback((options?: LoadOptions) => {
-    return runWithGlobalLoading(async () => {
-      try {
-        const data = await loadShiftSchedulesFromSupabase(options)
-        setShiftSchedules(data)
-      } catch (error) {
-        console.error("[v0] Error loading shift schedules from Supabase:", error)
-        setShiftSchedules([])
+      return useGlobalLoader ? runWithGlobalLoading(execute) : execute()
+    },
+    [runWithGlobalLoading],
+  )
+
+  const refreshUsers = useCallback(
+    (options?: RefreshOptions) => {
+      const { useGlobalLoader = true, ...loadOptions } = options ?? {}
+      const now = Date.now()
+      const shouldSkip =
+        !loadOptions.forceRefresh &&
+        usersLoaded &&
+        !usersLoadError &&
+        lastUsersFetchRef.current !== 0 &&
+        now - lastUsersFetchRef.current < LIST_CACHE_TTL_MS
+
+      if (shouldSkip) {
+        return Promise.resolve()
       }
-    })
-  }, [runWithGlobalLoading])
+
+      setUsersLoadError(false)
+
+      const execute = async () => {
+        try {
+          const data = await loadUsersFromSupabase(loadOptions)
+          setUsers(data)
+          setUsersLoaded(true)
+          setUsersLoadError(false)
+          persistToStorage(STORAGE_KEYS.users, data)
+          lastUsersFetchRef.current = Date.now()
+        } catch (error) {
+          console.error("Error loading users from Supabase:", error)
+          setUsersLoaded(true)
+          setUsersLoadError(true)
+        }
+      }
+
+      return useGlobalLoader ? runWithGlobalLoading(execute) : execute()
+    },
+    [runWithGlobalLoading, usersLoaded, usersLoadError],
+  )
+
+  const refreshShiftSchedules = useCallback(
+    (options?: RefreshOptions) => {
+      const { useGlobalLoader = true, ...loadOptions } = options ?? {}
+      const now = Date.now()
+      const shouldSkip =
+        !loadOptions.forceRefresh && lastShiftFetchRef.current !== 0 && now - lastShiftFetchRef.current < LIST_CACHE_TTL_MS
+
+      if (shouldSkip) {
+        return Promise.resolve()
+      }
+
+      const execute = async () => {
+        try {
+          const data = await loadShiftSchedulesFromSupabase(loadOptions)
+          setShiftSchedules(data)
+          persistToStorage(STORAGE_KEYS.shiftSchedules, data)
+          lastShiftFetchRef.current = Date.now()
+        } catch (error) {
+          console.error("Error loading shift schedules from Supabase:", error)
+          setShiftSchedules([])
+        }
+      }
+
+      return useGlobalLoader ? runWithGlobalLoading(execute) : execute()
+    },
+    [runWithGlobalLoading],
+  )
+
+  const queueForcedRefresh = useCallback(() => {
+    const execute = () => {
+      forcedRefreshTimerRef.current = null
+      lastForcedRefreshRef.current = Date.now()
+      void refreshTasks({ forceRefresh: true })
+    }
+
+    const now = Date.now()
+
+    if (now - lastForcedRefreshRef.current >= REALTIME_REFRESH_COOLDOWN_MS) {
+      execute()
+      return
+    }
+
+    if (forcedRefreshTimerRef.current) {
+      return
+    }
+
+    forcedRefreshTimerRef.current = setTimeout(execute, REALTIME_REFRESH_DEBOUNCE_MS)
+  }, [refreshTasks])
 
   const handleRealtimeTaskUpdate = useCallback(
     (payload: TaskRealtimePayload) => {
-      console.log("[v0] Realtime task update received:", payload.eventType)
-      void refreshTasks({ forceRefresh: true })
+      if (!payload || payload.table !== "tasks") {
+        return
+      }
+
+      const applyUpdate = (updater: (prev: Task[]) => Task[]) => {
+        startRealtimeTransition(() => {
+          setTasks((prev) => {
+            const next = updater(prev)
+            if (next === prev) {
+              return prev
+            }
+
+            const limited = next.length > MAX_CACHED_TASKS ? next.slice(0, MAX_CACHED_TASKS) : next
+            persistToStorage(STORAGE_KEYS.tasks, limited)
+            return limited
+          })
+        })
+      }
+
+      const { eventType, new: newRow, old: oldRow } = payload
+
+      try {
+        if (eventType === "INSERT" || eventType === "UPDATE") {
+          if (!newRow || typeof newRow !== "object") {
+            queueForcedRefresh()
+            return
+          }
+
+          const taskId =
+            typeof (newRow as { id?: unknown }).id === "string" ? ((newRow as { id: string }).id) : null
+
+          if (!taskId) {
+            queueForcedRefresh()
+            return
+          }
+
+          const updatedAt =
+            typeof (newRow as { updated_at?: unknown }).updated_at === "string"
+              ? ((newRow as { updated_at: string }).updated_at)
+              : null
+
+          if (updatedAt) {
+            const previous = lastRealtimeVersionRef.current.get(taskId)
+            if (previous === updatedAt) {
+              return
+            }
+            lastRealtimeVersionRef.current.set(taskId, updatedAt)
+          } else {
+            lastRealtimeVersionRef.current.set(taskId, null)
+          }
+
+          const appTask = databaseTaskToApp(newRow as unknown as DatabaseTask)
+
+          applyUpdate((prev) => {
+            const existingIndex = prev.findIndex((task) => task.id === appTask.id)
+            if (existingIndex === -1) {
+              return [appTask, ...prev]
+            }
+
+            const existingTask = prev[existingIndex]
+            if (
+              existingTask.server_updated_at &&
+              updatedAt &&
+              existingTask.server_updated_at === updatedAt
+            ) {
+              return prev
+            }
+
+            const next = [...prev]
+            next[existingIndex] = appTask
+            return next
+          })
+        } else if (eventType === "DELETE") {
+          const deletedId =
+            oldRow && typeof oldRow === "object" && "id" in oldRow ? ((oldRow as { id?: string }).id ?? null) : null
+
+          if (!deletedId) {
+            return
+          }
+
+          lastRealtimeVersionRef.current.delete(deletedId)
+
+          applyUpdate((prev) => {
+            const next = prev.filter((task) => task.id !== deletedId)
+            return next.length === prev.length ? prev : next
+          })
+        }
+      } catch (error) {
+        console.warn("Failed to apply realtime task update, falling back to scheduled refresh", error)
+        queueForcedRefresh()
+      }
     },
-    [refreshTasks],
+    [queueForcedRefresh, startRealtimeTransition],
   )
 
   const { isConnected } = useRealtimeTasks({
@@ -219,21 +613,31 @@ export function TaskProvider({ children }: { children: ReactNode }) {
   }, [isConnected])
 
   useEffect(() => {
-    async function loadData() {
-      console.log("[v0] Loading data from Supabase...")
+    setIsLoading(false)
 
+    void (async () => {
       try {
-        await Promise.all([refreshTasks(), refreshUsers(), refreshShiftSchedules()])
-
-        console.log("[v0] ✅ Data loaded from Supabase")
+        await Promise.all([
+          refreshTasks({ useGlobalLoader: false }),
+          refreshUsers({ useGlobalLoader: false }),
+          refreshShiftSchedules({ useGlobalLoader: false }),
+        ])
       } catch (error) {
-        console.error("[v0] Error loading data:", error)
-        setUsers(mockUsers)
+        console.error("Error loading data:", error)
+        setUsers((prev) => (prev.length > 0 ? prev : mockUsers))
+        setUsersLoaded(true)
+        setUsersLoadError(true)
+      }
+    })()
+  }, [refreshTasks, refreshUsers, refreshShiftSchedules])
+
+  useEffect(() => {
+    return () => {
+      if (forcedRefreshTimerRef.current) {
+        clearTimeout(forcedRefreshTimerRef.current)
       }
     }
-
-    loadData()
-  }, [refreshTasks, refreshUsers, refreshShiftSchedules])
+  }, [])
 
   const updateTask = async (taskId: string, updates: Partial<Task>) => {
     await runWithGlobalLoading(async () => {
@@ -665,17 +1069,8 @@ export function TaskProvider({ children }: { children: ReactNode }) {
     breakStart?: string,
     breakEnd?: string,
   ) => {
-    console.log("[v0] Updating worker shift:", {
-      workerId,
-      shiftStart,
-      shiftEnd,
-      hasBreak,
-      breakStart,
-      breakEnd,
-      updatedBy: userId,
-    })
     setUsers((prev) => {
-      const updated = prev.map((user) =>
+      const updatedUsers = prev.map((user) =>
         user.id === workerId
           ? {
               ...user,
@@ -687,13 +1082,9 @@ export function TaskProvider({ children }: { children: ReactNode }) {
             }
           : user,
       )
-      console.log(
-        "[v0] Worker shift updated. Updated user:",
-        updated.find((u) => u.id === workerId),
-      )
-      return updated
+      persistToStorage(STORAGE_KEYS.users, updatedUsers)
+      return updatedUsers
     })
-    console.log("[v0] Worker shift update complete")
   }
 
   const addWorker = useCallback(
@@ -1173,4 +1564,5 @@ function useTasks() {
 }
 
 export { useTasks }
+
 

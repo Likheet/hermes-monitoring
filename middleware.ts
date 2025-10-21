@@ -10,7 +10,6 @@ export async function middleware(request: NextRequest) {
   const sessionCookie = request.cookies.get("session")
 
   if (!sessionCookie) {
-    console.log("[v0] No session found, redirecting to login")
     return NextResponse.redirect(new URL("/login", request.url))
   }
 
@@ -24,8 +23,9 @@ export const config = {
      * - _next/static (static files)
      * - _next/image (image optimization files)
      * - favicon.ico (favicon file)
+     * - manifest/service worker assets
      * - images - .svg, .png, .jpg, .jpeg, .gif, .webp
      */
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|manifest.json|sw.js|workbox-.*\\.js|.*\\.webmanifest|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 }

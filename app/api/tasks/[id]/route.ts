@@ -271,7 +271,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     const { data: task, error } = await supabase.from("tasks").select("*").eq("id", id).single()
 
     if (error) {
-      console.error("[v0] Task fetch error:", error)
+      console.error("Task fetch error:", error)
       return NextResponse.json({ error: error.message }, { status: 404 })
     }
 
@@ -279,7 +279,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 
     return NextResponse.json({ task: appTask }, { status: 200 })
   } catch (error) {
-    console.error("[v0] Task GET error:", error)
+    console.error("Task GET error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
@@ -345,14 +345,14 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     const { data: task, error } = await supabase.from("tasks").update(updates).eq("id", id).select().single()
 
     if (error) {
-      console.error("[v0] Task update error:", error)
+      console.error("Task update error:", error)
       return NextResponse.json({ error: error.message }, { status: 400 })
     }
 
     const appTask = databaseTaskToApp(task)
     return NextResponse.json({ task: appTask }, { status: 200 })
   } catch (error) {
-    console.error("[v0] Task PATCH error:", error)
+    console.error("Task PATCH error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

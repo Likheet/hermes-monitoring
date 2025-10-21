@@ -7,25 +7,7 @@
   "background_color": "#ffffff",
   "theme_color": "#0ea5e9",
   "orientation": "portrait",
-  "icons": [
-    {
-      "src": "/icon-192.jpg",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "any maskable"
-    },
-    {
-      "src": "/icon-512.jpg",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any maskable"
-    },
-    {
-      "src": "/apple-touch-icon.jpg",
-      "sizes": "180x180",
-      "type": "image/png"
-    }
-  ],
+  "icons": [],
   "categories": ["productivity", "business"],
   "shortcuts": [
     {
@@ -33,7 +15,7 @@
       "short_name": "Tasks",
       "description": "View your assigned tasks",
       "url": "/worker",
-      "icons": [{ "src": "/icon-192.jpg", "sizes": "192x192" }]
+      "icons": []
     }
   ]
 }

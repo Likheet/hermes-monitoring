@@ -43,7 +43,7 @@ export default function LoginPage() {
       }
     } catch (err) {
       setError("An error occurred during login. Please try again.")
-      console.error("[v0] Login error:", err)
+      console.error("Login error:", err)
     } finally {
       setIsLoading(false)
     }
@@ -63,7 +63,7 @@ export default function LoginPage() {
       }
     } catch (err) {
       setError("Quick login error. Please try again.")
-      console.error("[v0] Quick login error:", err)
+      console.error("Quick login error:", err)
     } finally {
       setIsLoading(false)
     }

@@ -95,6 +95,8 @@ function AdminDashboard() {
     workers,
     customTaskRequests,
     updateShiftSchedule,
+    usersLoaded,
+    usersLoadError,
   } = useTasks()
   const router = useRouter()
   const { isConnected } = useRealtimeTasks({ enabled: true })
@@ -1457,7 +1459,9 @@ function AdminDashboard() {
                 task={selectedTaskDef}
                 onCancel={handleCancelTaskCreation}
                 onSubmit={handleSubmitTask}
-                workers={users} // Assuming users contains all workers
+                workers={users.filter((u) => u.role === "worker")}
+                workersLoaded={usersLoaded}
+                workersLoadError={usersLoadError}
               />
             )}
 

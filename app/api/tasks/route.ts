@@ -31,21 +31,6 @@ function normalizePriority(priority: string | null | undefined) {
   return null
 }
 
-function normalizeStatus(status: string) {
-  const lower = status.toLowerCase()
-  switch (lower) {
-    case "pending":
-    case "in_progress":
-    case "paused":
-    case "completed":
-    case "verified":
-    case "rejected":
-      return lower
-    default:
-      return "pending"
-  }
-}
-
 // GET all tasks (filtered by user role)
 export async function GET(request: Request) {
   try {
@@ -58,26 +43,27 @@ export async function GET(request: Request) {
 
     const supabase = await createClient()
     const { searchParams } = new URL(request.url)
-    const status = searchParams.get("status")
-    const assignedTo = searchParams.get("assigned_to")
+    const statusParam = searchParams.get("status")
+    const assignedToParam = searchParams.get("assigned_to")
+    const limitParam = searchParams.get("limit")
+    const offsetParam = searchParams.get("offset")
 
-    let query = supabase.from("tasks").select("*")
+    const allowedStatuses = new Set(["pending", "in_progress", "paused", "completed", "verified", "rejected"])
+    const normalizedStatus = statusParam ? statusParam.toLowerCase() : null
+    const statusFilter = normalizedStatus && allowedStatuses.has(normalizedStatus) ? normalizedStatus : null
 
-    // Apply filters
-    if (status) {
-      query = query.eq("status", status)
-    }
-    if (assignedTo) {
-      query = query.eq("assigned_to_user_id", assignedTo)
-    }
+    const limit = Number.isFinite(Number(limitParam)) ? Math.max(parseInt(String(limitParam), 10), 0) : 200
+    const offset = Number.isFinite(Number(offsetParam)) ? Math.max(parseInt(String(offsetParam), 10), 0) : 0
 
-    // Order by priority and created date
-    query = query.order("created_at", { ascending: false })
-
-    const { data: tasks, error } = await query
+    const { data: tasks, error } = await supabase.rpc("list_tasks_summary", {
+      status_filter: statusFilter,
+      assigned_to_filter: assignedToParam || null,
+      limit_count: limit,
+      offset_count: offset,
+    })
 
     if (error) {
-      console.error("[v0] Tasks fetch error:", error)
+      console.error("Tasks fetch error:", error)
       return NextResponse.json({ error: error.message }, { status: 400 })
     }
 
@@ -85,7 +71,7 @@ export async function GET(request: Request) {
 
     return NextResponse.json({ tasks: appTasks }, { status: 200 })
   } catch (error) {
-    console.error("[v0] Tasks GET error:", error)
+    console.error("Tasks GET error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
@@ -115,8 +101,7 @@ export async function POST(request: Request) {
     } = body
 
     const assigned_at = toDualTimestamp()
-    const normalizedPriority = normalizePriority(priority_level)
-    const baseStatus = normalizeStatus("pending")
+    const normalizedPriority = normalizePriority(priority_level) ?? "low"
 
     const categorizedPhotosPayload = {
       room_photos: [] as string[],
@@ -135,89 +120,37 @@ export async function POST(request: Request) {
             },
           }
         : []
-
-    // Handle auto-pause for urgent guest requests
-    if (priority_level === "GUEST_REQUEST" || normalizedPriority === "medium") {
-      const { data: assignedWorker } = await supabase
-        .from("users")
-        .select("department")
-        .eq("id", assigned_to_user_id)
-        .single()
-
-      if (assignedWorker && assignedWorker.department !== "housekeeping") {
-        const { data: activeTasks } = await supabase
-          .from("tasks")
-          .select("*")
-          .eq("assigned_to_user_id", assigned_to_user_id)
-          .eq("status", normalizeStatus("IN_PROGRESS"))
-
-        if (activeTasks && activeTasks.length > 0) {
-          const activeTask = activeTasks[0]
-          await supabase.from("tasks").update({ status: normalizeStatus("PAUSED") }).eq("id", activeTask.id)
-
-          await supabase.from("pause_records").insert({
-            task_id: activeTask.id,
-            paused_at: toDualTimestamp(),
-            reason: "Auto-paused for urgent guest request",
-          })
-
-          const auditLog = [
-            {
-              timestamp: toDualTimestamp(),
-              user_id: sessionUserId,
-              action: "AUTO_PAUSED",
-              old_status: "IN_PROGRESS",
-              new_status: "PAUSED",
-              details: "Urgent guest request assigned",
-            },
-          ]
-
-          await supabase.from("tasks").update({ audit_log: auditLog }).eq("id", activeTask.id)
-        }
-      }
-    }
-
-    const { data: task, error: taskError } = await supabase
-      .from("tasks")
-      .insert({
-        task_type,
-        priority_level: normalizedPriority,
-        status: baseStatus,
-        assigned_to_user_id,
-        assigned_by_user_id: sessionUserId,
-        assigned_at,
-  estimated_duration: typeof expected_duration_minutes === "number" ? expected_duration_minutes : null,
-  requires_verification: Boolean(photo_documentation_required || photo_required),
-  photo_requirements: photoRequirementsPayload,
-  room_number: room_number ?? null,
-        worker_remarks: "",
-        supervisor_remarks: "",
-        audit_log: [
-          {
-            timestamp: assigned_at,
-            user_id: sessionUserId,
-            action: "CREATED",
-            old_status: null,
-            new_status: "PENDING",
-            details: `Task created with type ${task_type}`,
-          },
-        ],
-        categorized_photos: categorizedPhotosPayload,
-        pause_history: [],
-      })
-      .select()
-      .single()
+    const { data: task, error: taskError } = await supabase.rpc("create_task_with_autopause", {
+      task_type,
+      priority_level_db: normalizedPriority,
+      priority_level_app: priority_level ?? null,
+      assigned_to: assigned_to_user_id ?? null,
+      assigned_by: sessionUserId,
+      assigned_at,
+      expected_duration: typeof expected_duration_minutes === "number" ? expected_duration_minutes : null,
+      requires_verification: Boolean(photo_documentation_required || photo_required),
+      photo_requirements: photoRequirementsPayload,
+      room_number: room_number ?? null,
+      categorized_photos: categorizedPhotosPayload,
+      worker_remarks: "",
+      supervisor_remarks: "",
+    })
 
     if (taskError) {
-      console.error("[v0] Task creation error:", taskError)
+      console.error("Task creation error:", taskError)
       return NextResponse.json({ error: taskError.message }, { status: 400 })
+    }
+
+    if (!task) {
+      console.error("Task creation error: RPC returned no data")
+      return NextResponse.json({ error: "Failed to create task" }, { status: 400 })
     }
 
     const appTask = databaseTaskToApp(task)
 
     return NextResponse.json({ task: appTask }, { status: 201 })
   } catch (error) {
-    console.error("[v0] Task POST error:", error)
+    console.error("Task POST error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

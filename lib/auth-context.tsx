@@ -13,6 +13,23 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
+const fallbackAuthContext: AuthContextType = {
+  user: null,
+  login: async () => {
+    if (process.env.NODE_ENV !== "production") {
+      console.warn("[auth] AuthProvider is not mounted; login() ignored.")
+    }
+    return false
+  },
+  logout: async () => {
+    if (process.env.NODE_ENV !== "production") {
+      console.warn("[auth] AuthProvider is not mounted; logout() ignored.")
+    }
+  },
+  isAuthenticated: false,
+  loading: false,
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
@@ -25,11 +42,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           const { user } = await response.json()
           if (user) {
             setUser(user)
-            console.log("[v0] Session restored:", user.name)
           }
         }
       } catch (error) {
-        console.error("[v0] Session restore error:", error)
+        console.error("Session restore error:", error)
       } finally {
         setLoading(false)
       }
@@ -49,15 +65,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (response.ok) {
         const { user } = await response.json()
         setUser(user)
-        console.log("[v0] Login successful:", user.name, "Role:", user.role)
         return true
       } else {
         const { error } = await response.json()
-        console.log("[v0] Login failed:", error)
         return false
       }
     } catch (error) {
-      console.error("[v0] Login error:", error)
+      console.error("Login error:", error)
       return false
     }
   }
@@ -65,10 +79,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = async () => {
     try {
       await fetch("/api/auth/logout", { method: "POST" })
-      console.log("[v0] User logged out:", user?.name)
       setUser(null)
     } catch (error) {
-      console.error("[v0] Logout error:", error)
+      console.error("Logout error:", error)
     }
   }
 
@@ -82,7 +95,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 export function useAuth() {
   const context = useContext(AuthContext)
   if (context === undefined) {
-    throw new Error("useAuth must be used within an AuthProvider")
+    if (process.env.NODE_ENV !== "production") {
+      console.warn("[auth] useAuth accessed outside of AuthProvider; returning fallback context.")
+    }
+    return fallbackAuthContext
   }
   return context
 }

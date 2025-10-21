@@ -20,7 +20,7 @@ function decodeSessionPayload(value: string | undefined) {
     const decoded = Buffer.from(value, "base64url").toString("utf-8")
     return JSON.parse(decoded)
   } catch (error) {
-    console.warn("[v0] Failed to decode session payload cookie, falling back to database lookup", error)
+    console.warn("Failed to decode session payload cookie, falling back to database lookup", error)
     return null
   }
 }
@@ -48,7 +48,7 @@ export async function GET() {
     const { data: user, error } = await supabase.from("users").select("*").eq("id", sessionId).single()
 
     if (error || !user) {
-      console.error("[v0] Session validation error:", error)
+      console.error("Session validation error:", error)
       return NextResponse.json({ user: null }, { status: 401 })
     }
 
@@ -58,7 +58,7 @@ export async function GET() {
 
     return response
   } catch (error) {
-    console.error("[v0] Session error:", error)
+    console.error("Session error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

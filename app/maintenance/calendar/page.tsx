@@ -18,14 +18,12 @@ function MaintenanceCalendarContent() {
   const router = useRouter()
 
   const handleRoomClick = (roomNumber: string, tasks: MaintenanceTask[]) => {
-    console.log("[v0] Room clicked:", roomNumber, "Tasks:", tasks.length)
     setSelectedRoom(roomNumber)
     setSelectedTasks(tasks)
   }
 
   const handleTaskComplete = async (taskId: string, data: TaskCompletionData) => {
     try {
-      console.log("[v0] Task completed:", taskId, data)
 
       updateMaintenanceTask(taskId, {
         status: "completed",
@@ -46,13 +44,12 @@ function MaintenanceCalendarContent() {
       // Update local state
       setSelectedTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, status: "completed" as const } : t)))
     } catch (error) {
-      console.error("[v0] Error completing task:", error)
+      console.error("Error completing task:", error)
       throw error
     }
   }
 
   const handleCloseModal = () => {
-    console.log("[v0] Closing modal")
     setSelectedRoom(null)
     setSelectedTasks([])
   }

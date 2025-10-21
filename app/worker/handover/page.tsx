@@ -11,7 +11,6 @@ import { ArrowLeft } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 
 function HandoverPage() {
-  console.log("[v0] Handover page loaded")
 
   const router = useRouter()
   const { user } = useAuth()
@@ -37,7 +36,6 @@ function HandoverPage() {
     },
   ) => {
     // In real implementation, this would call an API to save handover
-    console.log("[v0] Handover submitted:", { taskId, ...data })
 
     setSubmittedTasks((prev) => new Set(prev).add(taskId))
 

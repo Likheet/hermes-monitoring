@@ -35,12 +35,10 @@ export function RatingModal({ open, onOpenChange, onSubmit, taskId }: RatingModa
   const { toast } = useToast()
 
   const startCamera = async () => {
-    console.log("[v0] Starting camera...")
     try {
       const mediaStream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: "environment" },
       })
-      console.log("[v0] Camera stream obtained:", mediaStream)
       if (videoRef.current) {
         videoRef.current.srcObject = mediaStream
         await videoRef.current.play()
@@ -48,7 +46,7 @@ export function RatingModal({ open, onOpenChange, onSubmit, taskId }: RatingModa
       setStream(mediaStream)
       setShowCamera(true)
     } catch (error) {
-      console.error("[v0] Camera error:", error)
+      console.error("Camera error:", error)
       toast({
         title: "Camera Error",
         description: "Could not access camera. Please check permissions.",
@@ -58,7 +56,6 @@ export function RatingModal({ open, onOpenChange, onSubmit, taskId }: RatingModa
   }
 
   const stopCamera = () => {
-    console.log("[v0] Stopping camera...")
     if (stream) {
       stream.getTracks().forEach((track) => track.stop())
       setStream(null)
@@ -67,9 +64,8 @@ export function RatingModal({ open, onOpenChange, onSubmit, taskId }: RatingModa
   }
 
   const capturePhoto = async () => {
-    console.log("[v0] Capturing photo...")
     if (!videoRef.current) {
-      console.error("[v0] Video ref not available")
+      console.error("Video ref not available")
       toast({
         title: "Capture Failed",
         description: "Video element not ready",
@@ -81,10 +77,9 @@ export function RatingModal({ open, onOpenChange, onSubmit, taskId }: RatingModa
     const videoWidth = videoRef.current.videoWidth
     const videoHeight = videoRef.current.videoHeight
 
-    console.log("[v0] Video dimensions:", { videoWidth, videoHeight })
 
     if (videoWidth === 0 || videoHeight === 0) {
-      console.error("[v0] Invalid video dimensions")
+      console.error("Invalid video dimensions")
       toast({
         title: "Capture Failed",
         description: "Video not ready. Please wait a moment and try again.",
@@ -99,7 +94,7 @@ export function RatingModal({ open, onOpenChange, onSubmit, taskId }: RatingModa
     const ctx = canvas.getContext("2d")
 
     if (!ctx) {
-      console.error("[v0] Canvas context not available")
+      console.error("Canvas context not available")
       toast({
         title: "Capture Failed",
         description: "Could not create canvas context",
@@ -117,7 +112,7 @@ export function RatingModal({ open, onOpenChange, onSubmit, taskId }: RatingModa
         async (blob) => {
           try {
             if (!blob) {
-              console.error("[v0] Blob creation failed - blob is null")
+              console.error("Blob creation failed - blob is null")
               toast({
                 title: "Capture Failed",
                 description: "Could not create image from video. Please try again.",
@@ -127,10 +122,7 @@ export function RatingModal({ open, onOpenChange, onSubmit, taskId }: RatingModa
               return
             }
 
-            console.log("[v0] Blob created successfully, size:", blob.size)
-            console.log("[v0] Uploading photo...")
             const photoUrl = await uploadTaskPhoto(blob, taskId)
-            console.log("[v0] Photo uploaded:", photoUrl)
             setProofPhoto(photoUrl)
             stopCamera()
             toast({
@@ -138,7 +130,7 @@ export function RatingModal({ open, onOpenChange, onSubmit, taskId }: RatingModa
               description: "Proof photo uploaded successfully",
             })
           } catch (error) {
-            console.error("[v0] Upload error:", error)
+            console.error("Upload error:", error)
             toast({
               title: "Upload Failed",
               description: "Could not upload proof photo",
@@ -152,7 +144,7 @@ export function RatingModal({ open, onOpenChange, onSubmit, taskId }: RatingModa
         0.8,
       )
     } catch (error) {
-      console.error("[v0] Canvas toBlob error:", error)
+      console.error("Canvas toBlob error:", error)
       toast({
         title: "Capture Failed",
         description: "Could not capture photo",

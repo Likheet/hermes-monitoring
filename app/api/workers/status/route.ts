@@ -18,7 +18,7 @@ export async function GET() {
     const { data: workers, error: workersError } = await supabase.from("users").select("*").eq("role", "worker")
 
     if (workersError) {
-      console.error("[v0] Workers fetch error:", workersError)
+      console.error("Workers fetch error:", workersError)
       return NextResponse.json({ error: workersError.message }, { status: 400 })
     }
 
@@ -43,7 +43,7 @@ export async function GET() {
 
     return NextResponse.json({ workers: workersWithStatus }, { status: 200 })
   } catch (error) {
-    console.error("[v0] Workers status GET error:", error)
+    console.error("Workers status GET error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

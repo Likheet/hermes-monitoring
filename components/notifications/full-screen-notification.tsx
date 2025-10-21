@@ -90,7 +90,7 @@ export function FullScreenNotificationOverlay() {
           .maybeSingle()
 
         if (error) {
-          console.error("[v0] Failed to load task for notification prioritization:", error)
+          console.error("Failed to load task for notification prioritization:", error)
           return false
         }
 
@@ -98,7 +98,7 @@ export function FullScreenNotificationOverlay() {
           return data.priority_level === "GUEST_REQUEST"
         }
       } catch (error) {
-        console.error("[v0] Error determining notification priority:", error)
+        console.error("Error determining notification priority:", error)
       }
 
       return false
@@ -116,7 +116,7 @@ export function FullScreenNotificationOverlay() {
 
         if (!isMounted) return
         if (error) {
-          console.error("[v0] Failed to fetch high priority notifications:", error)
+          console.error("Failed to fetch high priority notifications:", error)
           return
         }
 
@@ -146,7 +146,7 @@ export function FullScreenNotificationOverlay() {
           }
         }
       } catch (error) {
-        console.error("[v0] Error preloading high priority notifications:", error)
+        console.error("Error preloading high priority notifications:", error)
       }
     }
 
@@ -207,7 +207,7 @@ export function FullScreenNotificationOverlay() {
     try {
       await markNotificationAsRead(notification.id)
     } catch (error) {
-      console.error("[v0] Failed to mark notification as read:", error)
+      console.error("Failed to mark notification as read:", error)
     }
   }
 

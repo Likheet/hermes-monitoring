@@ -46,7 +46,7 @@ export async function POST(request: NextRequest) {
     })
 
     if (error) {
-      console.error("[v0] Supabase upload error:", error)
+      console.error("Supabase upload error:", error)
       return NextResponse.json({ error: `Upload failed: ${error.message}` }, { status: 500 })
     }
 
@@ -55,7 +55,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ url: urlData.publicUrl })
   } catch (error) {
-    console.error("[v0] Upload API error:", error)
+    console.error("Upload API error:", error)
     return NextResponse.json({ error: error instanceof Error ? error.message : "Upload failed" }, { status: 500 })
   }
 }

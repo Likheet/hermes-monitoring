@@ -12,7 +12,7 @@ export async function GET() {
       .order("name", { ascending: true })
 
     if (error) {
-      console.error("[v0] Users fetch error:", error)
+      console.error("Users fetch error:", error)
       return NextResponse.json({ error: error.message }, { status: 400 })
     }
 
@@ -20,7 +20,7 @@ export async function GET() {
 
     return NextResponse.json({ users: appUsers }, { status: 200 })
   } catch (error) {
-    console.error("[v0] Users GET error:", error)
+    console.error("Users GET error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
@@ -37,7 +37,7 @@ export async function POST(request: Request) {
       .single()
 
     if (error) {
-      console.error("[v0] User creation error:", error)
+      console.error("User creation error:", error)
       return NextResponse.json({ error: error.message }, { status: 400 })
     }
 
@@ -45,7 +45,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ user: appUser }, { status: 201 })
   } catch (error) {
-    console.error("[v0] User POST error:", error)
+    console.error("User POST error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

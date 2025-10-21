@@ -16,7 +16,7 @@ export function getCustomTaskDefinitions(): CustomTaskDefinition[] {
   try {
     return JSON.parse(stored)
   } catch (error) {
-    console.error("[v0] Error loading custom task definitions:", error)
+    console.error("Error loading custom task definitions:", error)
     return []
   }
 }
@@ -53,7 +53,6 @@ export function saveCustomTaskDefinition(
   }
 
   localStorage.setItem("custom_task_definitions", JSON.stringify(updated))
-  console.log("[v0] Saved custom task definition:", newTask.id)
 
   window.dispatchEvent(new Event("customTasksUpdated"))
 
@@ -68,7 +67,7 @@ export function updateCustomTaskDefinition(
   const taskIndex = existing.findIndex((task) => task.id === id)
 
   if (taskIndex === -1) {
-    console.error("[v0] Task not found:", id)
+    console.error("Task not found:", id)
     return null
   }
 
@@ -76,7 +75,6 @@ export function updateCustomTaskDefinition(
   const updated = [...existing.slice(0, taskIndex), updatedTask, ...existing.slice(taskIndex + 1)]
 
   localStorage.setItem("custom_task_definitions", JSON.stringify(updated))
-  console.log("[v0] Updated custom task definition:", id)
 
   window.dispatchEvent(new Event("customTasksUpdated"))
 
@@ -88,7 +86,6 @@ export function deleteCustomTaskDefinition(id: string): void {
   const updated = existing.filter((task) => task.id !== id)
 
   localStorage.setItem("custom_task_definitions", JSON.stringify(updated))
-  console.log("[v0] Deleted custom task definition:", id)
 
   window.dispatchEvent(new Event("customTasksUpdated"))
 }

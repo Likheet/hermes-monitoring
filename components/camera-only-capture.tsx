@@ -98,7 +98,7 @@ export function CameraOnlyCapture({
         }
       }
     } catch (err: any) {
-      console.error("[v0] Camera error:", err)
+      console.error("Camera error:", err)
       setError(
         err.name === "NotAllowedError"
           ? "Camera access denied. Please allow camera permissions in your browser settings."
@@ -138,7 +138,7 @@ export function CameraOnlyCapture({
         })
       }
     } catch (err) {
-      console.error("[v0] Flash toggle error:", err)
+      console.error("Flash toggle error:", err)
     }
   }
 
@@ -213,7 +213,7 @@ export function CameraOnlyCapture({
     } catch (err: any) {
       setError(err.message || "Failed to upload photo. Please try again.")
       triggerErrorHaptic()
-      console.error("[v0] Photo upload error:", err)
+      console.error("Photo upload error:", err)
     } finally {
       setUploading(false)
       setUploadProgress(0)

@@ -17,7 +17,6 @@ export function MaintenanceScheduleList({ onCreateNew, onEdit }: ScheduleListPro
   const [currentYear] = useState(new Date().getFullYear())
 
   const handleToggleSchedule = (scheduleId: string) => {
-    console.log("[v0] Toggling schedule:", scheduleId)
     toggleSchedule(scheduleId)
   }
 
@@ -25,7 +24,6 @@ export function MaintenanceScheduleList({ onCreateNew, onEdit }: ScheduleListPro
     if (!confirm("Are you sure you want to delete this schedule? This will remove all associated tasks.")) {
       return
     }
-    console.log("[v0] Deleting schedule:", scheduleId)
     deleteScheduleFromContext(scheduleId)
   }
 

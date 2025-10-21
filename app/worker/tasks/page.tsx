@@ -13,7 +13,6 @@ import { formatDistanceToNow } from "@/lib/date-utils"
 import { cn } from "@/lib/utils"
 
 function TasksPage() {
-  console.log("[v0] Tasks page loaded")
 
   const router = useRouter()
   const { user } = useAuth()

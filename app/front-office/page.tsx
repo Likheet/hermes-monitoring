@@ -665,7 +665,6 @@ function FrontOfficeDashboard() {
                         issue={issue}
                         task={task}
                         onResolve={(issueId) => {
-                          console.log("[v0] Resolving issue:", issueId)
                         }}
                       />
                     )

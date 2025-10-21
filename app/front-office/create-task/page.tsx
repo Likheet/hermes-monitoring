@@ -26,7 +26,7 @@ function CreateTaskForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { user } = useAuth()
-  const { createTask, tasks, users } = useTasks()
+  const { createTask, tasks, users, usersLoaded, usersLoadError } = useTasks()
   const { toast } = useToast()
 
   const [selectedTaskDef, setSelectedTaskDef] = useState<TaskDefinition | null>(null)
@@ -125,7 +125,6 @@ function CreateTaskForm() {
     })
 
     if (isCustomTask && trimmedCustomName) {
-      console.log("[v0] Custom task created, admin will be notified:", trimmedCustomName)
     }
 
     const workerCurrentTask = tasks.find((t) => t.assigned_to_user_id === data.assignedTo && t.status === "IN_PROGRESS")
@@ -178,6 +177,17 @@ function CreateTaskForm() {
           </Alert>
         )}
 
+        {usersLoadError && (
+          <Alert variant="destructive">
+            <AlertCircle className="h-4 w-4" />
+            <AlertTitle>Unable to load workers</AlertTitle>
+            <AlertDescription className="mt-2">
+              Check your internet connection or Supabase project, then refresh the page before assigning new
+              tasks.
+            </AlertDescription>
+          </Alert>
+        )}
+
         {!selectedTaskDef && !rejectedTask && (
           <Card>
             <CardHeader>
@@ -195,6 +205,8 @@ function CreateTaskForm() {
             onCancel={handleCancel}
             onSubmit={handleSubmit}
             workers={workers}
+            workersLoaded={usersLoaded}
+            workersLoadError={usersLoadError}
             initialData={
               rejectedTask
                 ? {

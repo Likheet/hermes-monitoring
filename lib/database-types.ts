@@ -222,7 +222,7 @@ function parseShiftTiming(raw: string | null) {
         hasBreak: Boolean(breakStart && breakEnd),
       }
     } catch (error) {
-      console.warn("[v0] shift_timing JSON parse failed, falling back to range parsing:", error)
+      console.warn("shift_timing JSON parse failed, falling back to range parsing:", error)
     }
   }
 
@@ -256,7 +256,7 @@ function parseDualTimestampJson(data: Json | null, fallback?: string | null): Du
     const server = typeof parsed?.server === "string" ? parsed.server : undefined
     return toDualTimestamp(client ?? server, fallback)
   } catch (error) {
-    console.warn("[v0] assigned_at JSON parse failed, using fallback:", error)
+    console.warn("assigned_at JSON parse failed, using fallback:", error)
     return toDualTimestamp(undefined, fallback)
   }
 }
@@ -291,7 +291,7 @@ function parsePauseHistory(data: Json): PauseRecord[] {
         .filter((entry): entry is PauseRecord => Boolean(entry.paused_at))
     }
   } catch (error) {
-    console.warn("[v0] pause_history JSON parse failed, defaulting to empty array:", error)
+    console.warn("pause_history JSON parse failed, defaulting to empty array:", error)
   }
 
   return []
@@ -324,7 +324,7 @@ function parseAuditLog(data: Json): AuditLogEntry[] {
         .filter((entry): entry is AuditLogEntry => Boolean(entry.action))
     }
   } catch (error) {
-    console.warn("[v0] audit_log JSON parse failed, defaulting to empty array:", error)
+    console.warn("audit_log JSON parse failed, defaulting to empty array:", error)
   }
 
   return []
@@ -339,7 +339,7 @@ function parseCategorizedPhotos(data: Json): CategorizedPhotos | null {
       return value as CategorizedPhotos
     }
   } catch (error) {
-    console.warn("[v0] categorized_photos JSON parse failed, defaulting to null:", error)
+    console.warn("categorized_photos JSON parse failed, defaulting to null:", error)
   }
 
   return null
@@ -385,7 +385,7 @@ function parsePhotoRequirements(data: Json): {
       }
     }
   } catch (error) {
-    console.warn("[v0] photo_requirements JSON parse failed, defaulting to null:", error)
+    console.warn("photo_requirements JSON parse failed, defaulting to null:", error)
   }
 
   return {
@@ -462,6 +462,7 @@ export function databaseTaskToApp(dbTask: DatabaseTask): Task {
     custom_task_processed: false,
     rejection_acknowledged: false,
     rejection_acknowledged_at: null,
+    server_updated_at: dbTask.updated_at ?? null,
   }
 }
 

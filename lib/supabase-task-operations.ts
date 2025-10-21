@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/client"
+import type { SupabaseClient } from "@supabase/supabase-js"
 import type { Task, User, ShiftSchedule } from "./types"
 import {
   AREA_LABELS,
@@ -17,13 +18,35 @@ import {
   appTaskToDatabase,
   databaseUserToApp,
   appUserToDatabase,
-  databaseToMaintenanceSchedule,
   type DatabaseTask,
   type DatabaseUser,
   type DatabaseMaintenanceSchedule,
+  type DatabaseShiftSchedule,
 } from "./database-types"
 
 const CACHE_TTL_MS = 30_000
+const TASK_FETCH_LIMIT = 200
+
+type DatabaseTaskSummary = Pick<
+  DatabaseTask,
+  | "id"
+  | "task_type"
+  | "room_number"
+  | "status"
+  | "priority_level"
+  | "assigned_to_user_id"
+  | "assigned_by_user_id"
+  | "created_at"
+  | "updated_at"
+  | "started_at"
+  | "completed_at"
+  | "assigned_at"
+  | "estimated_duration"
+  | "actual_duration"
+  | "worker_remarks"
+  | "supervisor_remarks"
+  | "requires_verification"
+>
 
 type CacheKey =
   | "tasks"
@@ -72,6 +95,24 @@ function invalidateCache(...keys: CacheKey[]) {
   }
 }
 
+const SUPABASE_FAILURE_COOLDOWN_MS = 15_000
+const lastSupabaseFailureLog: Partial<Record<string, number>> = {}
+
+function logSupabaseFailure(scope: CacheKey | "bootstrap", error: unknown) {
+  const now = Date.now()
+  const lastLogged = lastSupabaseFailureLog[scope]
+  if (lastLogged && now - lastLogged < SUPABASE_FAILURE_COOLDOWN_MS) {
+    return
+  }
+  lastSupabaseFailureLog[scope] = now
+
+  const message = error instanceof Error ? error.message : String(error)
+  const isNetwork =
+    /fetch failed/i.test(message) || /ECONN|ENOTFOUND|ETIMEDOUT/i.test(message)
+  const logger = isNetwork ? console.warn : console.error
+  logger(`[supabase] ${scope} fetch failed; continuing with cached data`, error)
+}
+
 export interface LoadOptions {
   forceRefresh?: boolean
 }
@@ -95,40 +136,102 @@ function normalizeMaintenanceStatus(status: MaintenanceTask["status"]): "pending
   }
 }
 
-export async function loadTasksFromSupabase(options: LoadOptions = {}): Promise<Task[]> {
+export async function loadTasksFromSupabase(
+  options: LoadOptions = {},
+  supabaseOverride?: SupabaseClient,
+): Promise<Task[]> {
   const cached = getCachedValue<Task[]>("tasks", options.forceRefresh)
   if (cached) {
     return cached
   }
 
   try {
-    const supabase = createClient()
-    const { data, error } = await supabase.from("tasks").select("*").order("created_at", { ascending: false })
+    const supabase = supabaseOverride ?? createClient()
+    const { data, error } = await supabase
+      .from("tasks")
+      .select<
+        DatabaseTaskSummary
+      >(
+        [
+          "id",
+          "task_type",
+          "room_number",
+          "status",
+          "priority_level",
+          "assigned_to_user_id",
+          "assigned_by_user_id",
+          "created_at",
+          "updated_at",
+          "started_at",
+          "completed_at",
+          "assigned_at",
+          "estimated_duration",
+          "actual_duration",
+          "worker_remarks",
+          "supervisor_remarks",
+          "requires_verification",
+        ].join(","),
+      )
+      .order("updated_at", { ascending: false })
+      .limit(TASK_FETCH_LIMIT)
 
     if (error) {
       console.error("[v0] Error loading tasks from Supabase:", error)
       throw new Error(`Failed to load tasks: ${error.message}`)
     }
 
-    const mapped = (data || []).map((dbTask: DatabaseTask) => databaseTaskToApp(dbTask))
+    const mapped = (data ?? []).map((row) =>
+      databaseTaskToApp({
+        id: row.id,
+        task_type: row.task_type,
+        room_number: row.room_number,
+        status: row.status,
+        priority_level: row.priority_level,
+        assigned_to_user_id: row.assigned_to_user_id,
+        assigned_by_user_id: row.assigned_by_user_id,
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+        started_at: row.started_at ?? null,
+        completed_at: row.completed_at ?? null,
+        verified_at: null,
+        verified_by_user_id: null,
+        assigned_at: row.assigned_at ?? null,
+        description: null,
+        special_instructions: null,
+        estimated_duration: row.estimated_duration ?? null,
+        actual_duration: row.actual_duration ?? null,
+        categorized_photos: [],
+        worker_remarks: row.worker_remarks ?? null,
+        supervisor_remarks: row.supervisor_remarks ?? null,
+        quality_rating: null,
+        requires_verification: row.requires_verification ?? false,
+        timer_validation_flag: false,
+        audit_log: [],
+        pause_history: [],
+        photo_requirements: [],
+      } as DatabaseTask),
+    )
     setCachedValue("tasks", mapped)
 
     console.log(`[v0] Loaded ${mapped.length} tasks from Supabase`)
     return mapped
   } catch (error) {
-    console.error("[v0] Exception loading tasks:", error)
+    logSupabaseFailure("tasks", error)
     return []
   }
 }
 
-export async function loadUsersFromSupabase(options: LoadOptions = {}): Promise<User[]> {
+export async function loadUsersFromSupabase(
+  options: LoadOptions = {},
+  supabaseOverride?: SupabaseClient,
+): Promise<User[]> {
   const cached = getCachedValue<User[]>("users", options.forceRefresh)
   if (cached) {
     return cached
   }
 
   try {
-    const supabase = createClient()
+    const supabase = supabaseOverride ?? createClient()
     const { data, error } = await supabase
       .from("users")
       .select("id, username, name, role, phone, department, shift_timing, created_at")
@@ -139,13 +242,13 @@ export async function loadUsersFromSupabase(options: LoadOptions = {}): Promise<
       throw new Error(`Failed to load users: ${error.message}`)
     }
 
-    const mapped = (data || []).map((dbUser) => databaseUserToApp(dbUser as DatabaseUser))
+  const mapped = ((data ?? []) as DatabaseUser[]).map((dbUser) => databaseUserToApp(dbUser))
     setCachedValue("users", mapped)
 
     console.log(`[v0] Loaded ${mapped.length} users from Supabase`)
     return mapped
   } catch (error) {
-    console.error("[v0] Exception loading users:", error)
+    logSupabaseFailure("users", error)
     return []
   }
 }
@@ -203,17 +306,33 @@ export async function saveUserToSupabase(
   }
 }
 
-export async function loadShiftSchedulesFromSupabase(options: LoadOptions = {}): Promise<ShiftSchedule[]> {
+export async function loadShiftSchedulesFromSupabase(
+  options: LoadOptions = {},
+  supabaseOverride?: SupabaseClient,
+): Promise<ShiftSchedule[]> {
   const cached = getCachedValue<ShiftSchedule[]>("shift_schedules", options.forceRefresh)
   if (cached) {
     return cached
   }
 
   try {
-    const supabase = createClient()
+    const supabase = supabaseOverride ?? createClient()
     const { data, error } = await supabase
       .from("shift_schedules")
-      .select("*")
+      .select(
+        [
+          "id",
+          "worker_id",
+          "schedule_date",
+          "shift_start",
+          "shift_end",
+          "break_start",
+          "break_end",
+          "is_override",
+          "override_reason",
+          "created_at",
+        ].join(","),
+      )
       .order("schedule_date", { ascending: true })
 
     if (error) {
@@ -221,7 +340,7 @@ export async function loadShiftSchedulesFromSupabase(options: LoadOptions = {}):
       throw new Error(`Failed to load shift schedules: ${error.message}`)
     }
 
-    const mapped = (data || []).map((dbSchedule: any) => ({
+    const mapped = ((data ?? []) as DatabaseShiftSchedule[]).map((dbSchedule) => ({
       id: dbSchedule.id,
       worker_id: dbSchedule.worker_id,
       schedule_date: dbSchedule.schedule_date,
@@ -239,7 +358,7 @@ export async function loadShiftSchedulesFromSupabase(options: LoadOptions = {}):
     console.log(`[v0] Loaded ${mapped.length} shift schedules from Supabase`)
     return mapped
   } catch (error) {
-    console.error("[v0] Exception loading shift schedules:", error)
+    logSupabaseFailure("shift_schedules", error)
     return []
   }
 }
@@ -315,8 +434,8 @@ export async function loadMaintenanceSchedulesFromSupabase(
       throw new Error(`Failed to load maintenance schedules: ${error.message}`)
     }
 
-    const mapped = (data || []).map((dbSchedule) =>
-      databaseToMaintenanceSchedule(dbSchedule as DatabaseMaintenanceSchedule),
+    const mapped = ((data ?? []) as DatabaseMaintenanceSchedule[]).map((dbSchedule) =>
+      databaseToMaintenanceSchedule(dbSchedule),
     )
     setCachedValue("maintenance_schedules", mapped)
 

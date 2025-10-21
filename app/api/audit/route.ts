@@ -28,13 +28,13 @@ export async function GET(request: Request) {
     const { data: logs, error } = await query
 
     if (error) {
-      console.error("[v0] Audit logs fetch error:", error)
+      console.error("Audit logs fetch error:", error)
       return NextResponse.json({ error: error.message }, { status: 400 })
     }
 
     return NextResponse.json({ logs }, { status: 200 })
   } catch (error) {
-    console.error("[v0] Audit GET error:", error)
+    console.error("Audit GET error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

@@ -45,7 +45,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       .single()
 
     if (fetchError || !currentTask) {
-      console.error("[v0] Task pause fetch error:", fetchError)
+      console.error("Task pause fetch error:", fetchError)
       return NextResponse.json({ error: "Task not found" }, { status: 404 })
     }
 
@@ -78,7 +78,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       .single()
 
     if (taskError) {
-      console.error("[v0] Task pause error:", taskError)
+      console.error("Task pause error:", taskError)
       return NextResponse.json({ error: taskError.message }, { status: 400 })
     }
 
@@ -86,7 +86,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
     return NextResponse.json({ task: appTask }, { status: 200 })
   } catch (error) {
-    console.error("[v0] Task pause POST error:", error)
+    console.error("Task pause POST error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

@@ -36,11 +36,10 @@ export function MaintenanceScheduleForm({ schedule, onClose, onSave }: ScheduleF
         active: true,
       }
 
-      console.log("[v0] Saving schedule:", scheduleData)
       await onSave(scheduleData)
       onClose()
     } catch (error) {
-      console.error("[v0] Error saving schedule:", error)
+      console.error("Error saving schedule:", error)
       alert("Failed to save schedule. Please try again.")
     } finally {
       setSaving(false)

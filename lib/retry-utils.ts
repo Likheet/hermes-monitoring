@@ -27,7 +27,6 @@ export async function retryWithBackoff<T>(fn: () => Promise<T>, options: RetryOp
         onRetry(attempt, lastError)
       }
 
-      console.log(`[v0] Retry attempt ${attempt}/${maxAttempts} after ${delay}ms`)
 
       await new Promise((resolve) => setTimeout(resolve, delay))
     }

@@ -80,6 +80,7 @@ export interface Task {
   custom_task_processed?: boolean
   rejection_acknowledged?: boolean
   rejection_acknowledged_at?: DualTimestamp | null
+  server_updated_at?: string | null
 }
 
 export interface AuditLogEntry {

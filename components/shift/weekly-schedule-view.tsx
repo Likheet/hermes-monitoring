@@ -92,12 +92,10 @@ export function WeeklyScheduleView({ workers }: WeeklyScheduleViewProps) {
   }
 
   const loadSchedules = useCallback(() => {
-    console.log("[v0] Loading schedules for workers:", workers.length)
     setLoading(true)
     const newSchedules: Record<string, WeekSchedule> = {}
 
     for (const worker of workers) {
-      console.log("[v0] Loading schedule for worker:", worker.name, "ID:", worker.id)
       const workerSchedule: WeekSchedule = {}
 
       for (let i = 0; i < weekDates.length; i++) {
@@ -108,7 +106,6 @@ export function WeeklyScheduleView({ workers }: WeeklyScheduleViewProps) {
         const savedSchedule = savedSchedules[0]
 
         if (savedSchedule) {
-          console.log("[v0] Loaded schedule for", worker.name, day, savedSchedule)
           workerSchedule[day] = {
             shift_start: savedSchedule.shift_start,
             shift_end: savedSchedule.shift_end,
@@ -120,7 +117,6 @@ export function WeeklyScheduleView({ workers }: WeeklyScheduleViewProps) {
             notes: savedSchedule.notes || "",
           }
         } else {
-          console.log("[v0] No schedule found, using default shift for", worker.name, day)
           workerSchedule[day] = {
             shift_start: worker.shift_start,
             shift_end: worker.shift_end,
@@ -139,11 +135,9 @@ export function WeeklyScheduleView({ workers }: WeeklyScheduleViewProps) {
 
     setSchedules(newSchedules)
     setLoading(false)
-    console.log("[v0] Schedules loaded successfully")
   }, [getShiftSchedules, weekDates, workers])
 
   useEffect(() => {
-    console.log("[v0] WeeklyScheduleView syncing schedules. workers:", workers.length, "shiftSchedules:", shiftSchedules.length)
     loadSchedules()
   }, [loadSchedules, shiftSchedules])
 
@@ -161,7 +155,6 @@ export function WeeklyScheduleView({ workers }: WeeklyScheduleViewProps) {
   }
 
   const saveSchedule = (workerId: string, day: string, schedule: DaySchedule) => {
-    console.log("[v0] Saving schedule:", { workerId, day, schedule })
     setSaving(true)
 
     const dayIndex = DAYS_OF_WEEK.indexOf(day)
@@ -181,13 +174,12 @@ export function WeeklyScheduleView({ workers }: WeeklyScheduleViewProps) {
         notes: schedule.notes,
       })
 
-      console.log("[v0] Schedule saved successfully")
       toast({
         title: "Schedule Saved",
         description: `Schedule for ${day} has been updated`,
       })
     } catch (error) {
-      console.error("[v0] Save schedule exception:", error)
+      console.error("Save schedule exception:", error)
       toast({
         title: "Error",
         description: `Failed to save schedule: ${error instanceof Error ? error.message : "Unknown error"}`,
@@ -199,10 +191,9 @@ export function WeeklyScheduleView({ workers }: WeeklyScheduleViewProps) {
   }
 
   const toggleOverride = (workerId: string, day: string, reason: string) => {
-    console.log("[v0] toggleOverride called:", { workerId, day, reason })
     const currentSchedule = schedules[workerId]?.[day]
     if (!currentSchedule) {
-      console.error("[v0] No current schedule found for:", { workerId, day })
+      console.error("No current schedule found for:", { workerId, day })
       return
     }
 
@@ -212,7 +203,6 @@ export function WeeklyScheduleView({ workers }: WeeklyScheduleViewProps) {
       override_reason: !currentSchedule.is_override ? reason : "",
     }
 
-    console.log("[v0] New schedule after toggle:", newSchedule)
     updateSchedule(workerId, day, newSchedule)
     saveSchedule(workerId, day, newSchedule)
   }

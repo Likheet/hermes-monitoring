@@ -1,26 +1,21 @@
 import type React from "react"
-import type { Metadata } from "next"
+import type { Metadata, Viewport } from "next"
 
 import { Analytics } from "@vercel/analytics/next"
 import { AuthProvider } from "@/lib/auth-context"
-import { TaskProvider } from "@/lib/task-context"
 import { Toaster } from "@/components/ui/toaster"
 import { Suspense } from "react"
 import "./globals.css"
 import { PWAInstallPrompt } from "@/components/pwa-install-prompt"
 import { ErrorBoundary } from "@/components/error-boundary"
 import { StorageCleaner } from "@/components/storage-cleaner"
+import { LogSuppressor } from "@/components/log-suppressor"
 import { PWARegister } from "@/components/pwa-register"
-import { GlobalLoadingOverlay } from "@/components/global-loading-overlay"
-import { FullScreenNotificationOverlay } from "@/components/notifications/full-screen-notification"
+import { TaskProviderGate } from "@/components/task-provider-gate"
 
-import { Geist, Geist_Mono, Source_Serif_4, Geist as V0_Font_Geist, Geist_Mono as V0_Font_Geist_Mono, Source_Serif_4 as V0_Font_Source_Serif_4 } from "next/font/google"
+import { Geist, Geist_Mono, Source_Serif_4 } from "next/font/google"
 
 // Initialize fonts
-const _geist = V0_Font_Geist({ subsets: ['latin'], weight: ["100","200","300","400","500","600","700","800","900"] })
-const _geistMono = V0_Font_Geist_Mono({ subsets: ['latin'], weight: ["100","200","300","400","500","600","700","800","900"] })
-const _sourceSerif_4 = V0_Font_Source_Serif_4({ subsets: ['latin'], weight: ["200","300","400","500","600","700","800","900"] })
-
 const geistSans = Geist({
   subsets: ["latin"],
   variable: "--font-geist-sans",
@@ -51,13 +46,14 @@ export const metadata: Metadata = {
   formatDetection: {
     telephone: false,
   },
+}
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
   themeColor: "#0ea5e9",
-  viewport: {
-    width: "device-width",
-    initialScale: 1,
-    maximumScale: 1,
-    userScalable: false,
-  },
 }
 
 export default function RootLayout({
@@ -76,16 +72,13 @@ export default function RootLayout({
         <ErrorBoundary>
           <Suspense fallback={null}>
             <StorageCleaner />
+            <LogSuppressor />
             <PWARegister />
-            <TaskProvider>
-              <AuthProvider>
-                {children}
-                <Toaster />
-                <PWAInstallPrompt />
-                <FullScreenNotificationOverlay />
-              </AuthProvider>
-              <GlobalLoadingOverlay />
-            </TaskProvider>
+            <AuthProvider>
+              <TaskProviderGate>{children}</TaskProviderGate>
+              <Toaster />
+              <PWAInstallPrompt />
+            </AuthProvider>
           </Suspense>
         </ErrorBoundary>
         <Analytics />

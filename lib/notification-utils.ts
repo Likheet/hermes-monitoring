@@ -63,7 +63,7 @@ export async function createNotification(
     return data as Notification
   }
 
-  console.error("[v0] Failed to create notification via Supabase, returning local fallback:", error)
+  console.error("Failed to create notification via Supabase, returning local fallback:", error)
 
   return {
     id: generateUuid(),
@@ -89,7 +89,7 @@ export async function getUnreadNotifications(userId: string) {
     .order("created_at", { ascending: false })
 
   if (error) {
-    console.error("[v0] Failed to fetch notifications:", error)
+    console.error("Failed to fetch notifications:", error)
     return []
   }
 
@@ -107,7 +107,7 @@ export async function getAllNotifications(userId: string, limit = 50) {
     .limit(limit)
 
   if (error) {
-    console.error("[v0] Failed to fetch notifications:", error)
+    console.error("Failed to fetch notifications:", error)
     return []
   }
 
@@ -123,7 +123,7 @@ export async function markNotificationAsRead(notificationId: string) {
     .eq("id", notificationId)
 
   if (error) {
-    console.error("[v0] Failed to mark notification as read:", error)
+    console.error("Failed to mark notification as read:", error)
     return false
   }
 
@@ -136,7 +136,7 @@ export async function markAllNotificationsAsRead(userId: string) {
   const { error } = await supabase.from("notifications").update({ read: true }).eq("user_id", userId).eq("read", false)
 
   if (error) {
-    console.error("[v0] Failed to mark all notifications as read:", error)
+    console.error("Failed to mark all notifications as read:", error)
     return false
   }
 
@@ -169,6 +169,5 @@ export function playNotificationSound() {
     oscillator.start(audioContext.currentTime)
     oscillator.stop(audioContext.currentTime + 0.3)
   } catch (error) {
-    console.log("[v0] Failed to play notification sound:", error)
   }
 }

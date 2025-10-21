@@ -9,7 +9,7 @@ export async function POST(request: Request) {
     const sessionCookie = cookieStore.get("session")
 
     if (!sessionCookie) {
-      console.error("[v0] Unauthorized: No session cookie found")
+      console.error("Unauthorized: No session cookie found")
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
@@ -17,14 +17,13 @@ export async function POST(request: Request) {
     const supabase = await createClient()
     const body = await request.json()
 
-    console.log("[v0] Shift schedule save request:", body)
 
     const { worker_id, schedule_date, shift_start, shift_end, break_start, break_end, is_override, override_reason } =
       body
 
     // Validate required fields
     if (!worker_id || !schedule_date) {
-      console.error("[v0] Missing required fields:", { worker_id, schedule_date })
+      console.error("Missing required fields:", { worker_id, schedule_date })
       return NextResponse.json({ error: "Missing required fields: worker_id and schedule_date" }, { status: 400 })
     }
 
@@ -50,15 +49,14 @@ export async function POST(request: Request) {
       .single()
 
     if (error) {
-      console.error("[v0] Shift schedule save error:", error)
+      console.error("Shift schedule save error:", error)
       return NextResponse.json({ error: error.message, details: error }, { status: 400 })
     }
 
-    console.log("[v0] Shift schedule saved successfully:", data)
 
     return NextResponse.json({ schedule: data }, { status: 200 })
   } catch (error) {
-    console.error("[v0] Shift schedule POST error:", error)
+    console.error("Shift schedule POST error:", error)
     return NextResponse.json({ error: "Internal server error", details: error }, { status: 500 })
   }
 }
@@ -96,13 +94,13 @@ export async function GET(request: Request) {
     const { data: schedules, error } = await query
 
     if (error) {
-      console.error("[v0] Shift schedules fetch error:", error)
+      console.error("Shift schedules fetch error:", error)
       return NextResponse.json({ error: error.message }, { status: 400 })
     }
 
     return NextResponse.json({ schedules }, { status: 200 })
   } catch (error) {
-    console.error("[v0] Shift schedules GET error:", error)
+    console.error("Shift schedules GET error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
