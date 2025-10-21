@@ -96,5 +96,3 @@ export function TaskCard({ task, href }: TaskCardProps) {
     </Link>
   )
 }
-
-

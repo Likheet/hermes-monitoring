@@ -51,4 +51,3 @@
 - [ ] **End-to-end regression suite is missing**  
   - Areas impacted: task lifecycle (create→start→pause→resume→complete), worker availability, maintenance schedule activation, notification delivery.  
   - Action: After the schema alignment fixes, script API-level tests (or Cypress/Playwright flows) that hit the Supabase-backed endpoints to ensure no latent NOT NULL/CHECK violations remain.
-

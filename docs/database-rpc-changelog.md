@@ -25,7 +25,7 @@
 - `supervisor_remarks text`
 
 **Rollback:**
-```sql
+\`\`\`sql
 drop function if exists public.create_task_with_autopause(
   text,
   text,
@@ -41,7 +41,7 @@ drop function if exists public.create_task_with_autopause(
   text,
   text
 );
-```
+\`\`\`
 
 ### `public.list_tasks_summary`
 **Purpose:** Provides a server-side filtered, ordered, and paginated projection of records from `public.tasks` for list views.
@@ -53,9 +53,9 @@ drop function if exists public.create_task_with_autopause(
 - `offset_count int default 0`
 
 **Rollback:**
-```sql
+\`\`\`sql
 drop function if exists public.list_tasks_summary(text, uuid, int, int);
-```
+\`\`\`
 
 ## Deployment Notes
 - Both functions were created using the Supabase MCP integration on 2025-10-20.

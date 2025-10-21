@@ -5,18 +5,18 @@
 ## Changes Applied
 
 ### New Indexes Created
-```sql
+\`\`\`sql
 create index if not exists idx_tasks_updated_at on public.tasks (updated_at desc);
 create index if not exists idx_maintenance_tasks_created_at on public.maintenance_tasks (created_at desc);
 create index if not exists idx_maintenance_tasks_status_assigned on public.maintenance_tasks (status, assigned_to);
 create index if not exists idx_pause_records_task on public.pause_records (task_id);
-```
+\`\`\`
 
 ### Redundant Indexes Dropped
-```sql
+\`\`\`sql
 drop index if exists public.idx_users_username;  -- Covered by unique constraint users_username_key
 drop index if exists public.idx_shift_schedules_worker_date;  -- Covered by unique constraint (worker_id, schedule_date)
-```
+\`\`\`
 
 ## EXPLAIN ANALYZE Results
 
@@ -25,7 +25,7 @@ drop index if exists public.idx_shift_schedules_worker_date;  -- Covered by uniq
 **After:** Seq Scan + Sort (0.13 ms)  
 **Status:** ⚠️ Still using Seq Scan (dataset too small for index to win; will benefit as row count grows)  
 **Plan:**
-```
+\`\`\`
 Limit  (cost=3.14..3.15 rows=6 width=566) (actual time=0.068..0.070 rows=6 loops=1)
   ->  Sort  (cost=3.14..3.15 rows=6 width=566) (actual time=0.067..0.067 rows=6 loops=1)
         Sort Key: updated_at DESC
@@ -33,7 +33,7 @@ Limit  (cost=3.14..3.15 rows=6 width=566) (actual time=0.068..0.070 rows=6 loops
         ->  Seq Scan on tasks  (cost=0.00..3.06 rows=6 width=566)
               Buffers: shared hit=3
 Execution Time: 0.130 ms
-```
+\`\`\`
 
 **Production Impact:** As `tasks` grows beyond ~100 rows, expect automatic planner switch to `Index Scan using idx_tasks_updated_at DESC`.
 
@@ -44,13 +44,13 @@ Execution Time: 0.130 ms
 **After:** ✅ **Index Scan using `idx_maintenance_tasks_created_at`** (16.76 ms)  
 **Status:** 🟢 Index active and used  
 **Plan:**
-```
+\`\`\`
 Limit  (cost=0.28..2.62 rows=50 width=194) (actual time=4.922..16.685 rows=50 loops=1)
   ->  Index Scan using idx_maintenance_tasks_created_at on maintenance_tasks
        (cost=0.28..137.74 rows=2932 width=194) (actual time=4.920..16.677 rows=50)
         Buffers: shared hit=10 read=2
 Execution Time: 16.759 ms
-```
+\`\`\`
 
 **Key Metrics:**
 - Cost improved: `211.72` → `0.28` (cost units)
@@ -64,14 +64,14 @@ Execution Time: 16.759 ms
 **After:** ✅ **Index Scan using `idx_maintenance_tasks_status_assigned`** (1.57 ms)  
 **Status:** 🟢 Composite index active and used  
 **Plan:**
-```
+\`\`\`
 Limit  (cost=0.28..1.88 rows=1 width=194) (actual time=1.506..1.507 rows=0 loops=1)
   ->  Index Scan using idx_maintenance_tasks_status_assigned on maintenance_tasks
        (cost=0.28..1.88 rows=1 width=194)
         Index Cond: ((status = 'pending'::text) AND (assigned_to IS NOT NULL))
         Buffers: shared read=2
 Execution Time: 1.573 ms
-```
+\`\`\`
 
 **Key Metrics:**
 - Composite index efficiently filters both columns
@@ -85,7 +85,7 @@ Execution Time: 1.573 ms
 **After:** ✅ **Bitmap Index Scan using `idx_pause_records_task`** (0.061 ms)  
 **Status:** 🟢 Index active and used  
 **Plan:**
-```
+\`\`\`
 Limit  (cost=1.26..3.40 rows=2 width=136) (actual time=0.009..0.009 rows=0 loops=1)
   ->  Bitmap Heap Scan on pause_records
        (cost=1.26..3.40 rows=2 width=136)
@@ -94,7 +94,7 @@ Limit  (cost=1.26..3.40 rows=2 width=136) (actual time=0.009..0.009 rows=0 loops
              Index Cond: (task_id = '00000000-0000-0000-0000-000000000001'::uuid)
              Buffers: shared hit=2
 Execution Time: 0.061 ms
-```
+\`\`\`
 
 **Key Metrics:**
 - Bitmap scan eliminates full table scan

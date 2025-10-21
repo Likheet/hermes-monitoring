@@ -11,6 +11,9 @@ importers:
       '@ducanh2912/next-pwa':
         specifier: latest
         version: 10.2.9(next@15.2.4(@babel/core@7.28.4)(react-dom@19.0.0(react@19.0.0))(react@19.0.0))(webpack@5.102.1)
+      '@emotion/is-prop-valid':
+        specifier: latest
+        version: 1.4.0
       '@hookform/resolvers':
         specifier: ^3.10.0
         version: 3.10.0(react-hook-form@7.60.0(react@19.0.0))
@@ -97,10 +100,10 @@ importers:
         version: 1.1.6(@types/react-dom@19.0.0)(@types/react@19.0.0)(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
       '@supabase/ssr':
         specifier: latest
-        version: 0.7.0(@supabase/supabase-js@2.75.1)
+        version: 0.7.0(@supabase/supabase-js@2.76.1)
       '@supabase/supabase-js':
         specifier: latest
-        version: 2.75.1
+        version: 2.76.1
       '@vercel/analytics':
         specifier: latest
         version: 1.5.0(next@15.2.4(@babel/core@7.28.4)(react-dom@19.0.0(react@19.0.0))(react@19.0.0))(react@19.0.0)
@@ -147,8 +150,8 @@ importers:
         specifier: ^0.454.0
         version: 0.454.0(react@19.0.0)
       motion:
-        specifier: ^12.23.24
-        version: 12.23.24(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
+        specifier: latest
+        version: 12.23.24(@emotion/is-prop-valid@1.4.0)(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
       next:
         specifier: 15.2.4
         version: 15.2.4(@babel/core@7.28.4)(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
@@ -754,6 +757,12 @@ packages:
 
   '@emnapi/wasi-threads@1.1.0':
     resolution: {integrity: sha512-WI0DdZ8xFSbgMjR1sFsKABJ/C5OnRrjT06JXbZKexJGrDuPTzZdDYfFlsgcCXCyf+suG5QU2e/y1Wo2V/OapLQ==}
+
+  '@emotion/is-prop-valid@1.4.0':
+    resolution: {integrity: sha512-QgD4fyscGcbbKwJmqNvUMSE02OsHUa+lAWKdEUIJKgqe5IwRSKd7+KhibEWdaKwgjLj0DRSHA9biAIqGBk05lw==}
+
+  '@emotion/memoize@0.9.0':
+    resolution: {integrity: sha512-30FAj7/EoJ5mwVPOWhAyCX+FPfMDrVecJAM+Iw9NRoSl4BBAQeqj4cApHHUXOVvIPgLVDsCFoz/hGD+5QQD1GQ==}
 
   '@eslint-community/eslint-utils@4.9.0':
     resolution: {integrity: sha512-ayVFHdtZ+hsq1t2Dy24wCmGXGe4q9Gu3smhLYALJrr473ZH27MsnSL+LKUlimp4BWJqMDMLmPpx/Q9R3OAlL4g==}
@@ -1996,32 +2005,32 @@ packages:
   '@standard-schema/utils@0.3.0':
     resolution: {integrity: sha512-e7Mew686owMaPJVNNLs55PUvgz371nKgwsc4vxE49zsODpJEnxgxRo2y/OKrqueavXgZNMDVj3DdHFlaSAeU8g==}
 
-  '@supabase/auth-js@2.75.1':
-    resolution: {integrity: sha512-zktlxtXstQuVys/egDpVsargD9hQtG20CMdtn+mMn7d2Ulkzy2tgUT5FUtpppvCJtd9CkhPHO/73rvi5W6Am5A==}
+  '@supabase/auth-js@2.76.1':
+    resolution: {integrity: sha512-bxmcgPuyjTUBg7+jAohJ15TDh3ph4hXcv7QkRsQgnIpszurD5LYaJPzX638ETQ8zDL4fvHZRHfGrcmHV8C91jA==}
 
-  '@supabase/functions-js@2.75.1':
-    resolution: {integrity: sha512-xO+01SUcwVmmo67J7Htxq8FmhkYLFdWkxfR/taxBOI36wACEUNQZmroXGPl4PkpYxBO7TaDsRHYGxUpv9zTKkg==}
+  '@supabase/functions-js@2.76.1':
+    resolution: {integrity: sha512-+zJym/GC1sofm5QYKGxHSszCpMW4Ao2dj/WC3YlffAGuIlIhUtWTJvKsv5q7sWaSKUKdDhGpWhZ2OD++fW5BtQ==}
 
   '@supabase/node-fetch@2.6.15':
     resolution: {integrity: sha512-1ibVeYUacxWYi9i0cf5efil6adJ9WRyZBLivgjs+AUpewx1F3xPi7gLgaASI2SmIQxPoCEjAsLAzKPgMJVgOUQ==}
     engines: {node: 4.x || >=6.0.0}
 
-  '@supabase/postgrest-js@2.75.1':
-    resolution: {integrity: sha512-FiYBD0MaKqGW8eo4Xqu7/100Xm3ddgh+3qHtqS18yQRoglJTFRQCJzY1xkrGS0JFHE2YnbjL6XCiOBXiG8DK4Q==}
+  '@supabase/postgrest-js@2.76.1':
+    resolution: {integrity: sha512-QJ1Cwim6L9gzWKP8U4Lgw9x/4lMWkZSVMDRYFCH+vVGitVbtfU885swTiioOjjUe4EYGZm+Xktg90twzSVv6IA==}
 
-  '@supabase/realtime-js@2.75.1':
-    resolution: {integrity: sha512-lBIJ855bUsBFScHA/AY+lxIFkubduUvmwbagbP1hq0wDBNAsYdg3ql80w8YmtXCDjkCwlE96SZqcFn7BGKKJKQ==}
+  '@supabase/realtime-js@2.76.1':
+    resolution: {integrity: sha512-B5Lfmprea2fx2FS7obp4uAWiRUlEa6j9J3+BvvETGp/2LdkSRBaLEJCBylfcZTXk67ajNPX6ppvKvAZsckqXYg==}
 
   '@supabase/ssr@0.7.0':
     resolution: {integrity: sha512-G65t5EhLSJ5c8hTCcXifSL9Q/ZRXvqgXeNo+d3P56f4U1IxwTqjB64UfmfixvmMcjuxnq2yGqEWVJqUcO+AzAg==}
     peerDependencies:
       '@supabase/supabase-js': ^2.43.4
 
-  '@supabase/storage-js@2.75.1':
-    resolution: {integrity: sha512-WdGEhroflt5O398Yg3dpf1uKZZ6N3CGloY9iGsdT873uWbkQKoP0wG8mtx98dh0fhj6dAlzBqOAvnlV12cJfzA==}
+  '@supabase/storage-js@2.76.1':
+    resolution: {integrity: sha512-OJiNT8tocI9tcTjTjv1SBVLabzgEnS1NorZuqivkiJ0gTYmeg2c2PFmqCARhoQ4whF6zR9MVsX/Mtj2oSv4i/w==}
 
-  '@supabase/supabase-js@2.75.1':
-    resolution: {integrity: sha512-GEPVBvjQimcMd9z5K1eTKTixTRb6oVbudoLQ9JKqTUJnR6GQdBU4OifFZean1AnHfsQwtri1fop2OWwsMv019w==}
+  '@supabase/supabase-js@2.76.1':
+    resolution: {integrity: sha512-dYMh9EsTVXZ6WbQ0QmMGIhbXct5+x636tXXaaxUmwjj3kY1jyBTQU8QehxAIfjyRu1mWGV07hoYmTYakkxdSGQ==}
 
   '@surma/rollup-plugin-off-main-thread@2.2.3':
     resolution: {integrity: sha512-lR8q/9W7hZpMWweNiAKU7NQerBnzQQLvi8qnTDU/fxItPhtZVMbPV3lbCwjhIlNBe9Bbr5V+KHshvWmVSG9cxQ==}
@@ -5283,6 +5292,12 @@ snapshots:
       tslib: 2.8.1
     optional: true
 
+  '@emotion/is-prop-valid@1.4.0':
+    dependencies:
+      '@emotion/memoize': 0.9.0
+
+  '@emotion/memoize@0.9.0': {}
+
   '@eslint-community/eslint-utils@4.9.0(eslint@9.38.0(jiti@2.6.1))':
     dependencies:
       eslint: 9.38.0(jiti@2.6.1)
@@ -6490,49 +6505,54 @@ snapshots:
 
   '@standard-schema/utils@0.3.0': {}
 
-  '@supabase/auth-js@2.75.1':
+  '@supabase/auth-js@2.76.1':
     dependencies:
       '@supabase/node-fetch': 2.6.15
+      tslib: 2.8.1
 
-  '@supabase/functions-js@2.75.1':
+  '@supabase/functions-js@2.76.1':
     dependencies:
       '@supabase/node-fetch': 2.6.15
+      tslib: 2.8.1
 
   '@supabase/node-fetch@2.6.15':
     dependencies:
       whatwg-url: 5.0.0
 
-  '@supabase/postgrest-js@2.75.1':
+  '@supabase/postgrest-js@2.76.1':
     dependencies:
       '@supabase/node-fetch': 2.6.15
+      tslib: 2.8.1
 
-  '@supabase/realtime-js@2.75.1':
+  '@supabase/realtime-js@2.76.1':
     dependencies:
       '@supabase/node-fetch': 2.6.15
       '@types/phoenix': 1.6.6
       '@types/ws': 8.18.1
+      tslib: 2.8.1
       ws: 8.18.3
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
 
-  '@supabase/ssr@0.7.0(@supabase/supabase-js@2.75.1)':
+  '@supabase/ssr@0.7.0(@supabase/supabase-js@2.76.1)':
     dependencies:
-      '@supabase/supabase-js': 2.75.1
+      '@supabase/supabase-js': 2.76.1
       cookie: 1.0.2
 
-  '@supabase/storage-js@2.75.1':
+  '@supabase/storage-js@2.76.1':
     dependencies:
       '@supabase/node-fetch': 2.6.15
+      tslib: 2.8.1
 
-  '@supabase/supabase-js@2.75.1':
+  '@supabase/supabase-js@2.76.1':
     dependencies:
-      '@supabase/auth-js': 2.75.1
-      '@supabase/functions-js': 2.75.1
+      '@supabase/auth-js': 2.76.1
+      '@supabase/functions-js': 2.76.1
       '@supabase/node-fetch': 2.6.15
-      '@supabase/postgrest-js': 2.75.1
-      '@supabase/realtime-js': 2.75.1
-      '@supabase/storage-js': 2.75.1
+      '@supabase/postgrest-js': 2.76.1
+      '@supabase/realtime-js': 2.76.1
+      '@supabase/storage-js': 2.76.1
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
@@ -7780,12 +7800,13 @@ snapshots:
 
   fraction.js@4.3.7: {}
 
-  framer-motion@12.23.24(react-dom@19.0.0(react@19.0.0))(react@19.0.0):
+  framer-motion@12.23.24(@emotion/is-prop-valid@1.4.0)(react-dom@19.0.0(react@19.0.0))(react@19.0.0):
     dependencies:
       motion-dom: 12.23.23
       motion-utils: 12.23.6
       tslib: 2.8.1
     optionalDependencies:
+      '@emotion/is-prop-valid': 1.4.0
       react: 19.0.0
       react-dom: 19.0.0(react@19.0.0)
 
@@ -8298,11 +8319,12 @@ snapshots:
 
   motion-utils@12.23.6: {}
 
-  motion@12.23.24(react-dom@19.0.0(react@19.0.0))(react@19.0.0):
+  motion@12.23.24(@emotion/is-prop-valid@1.4.0)(react-dom@19.0.0(react@19.0.0))(react@19.0.0):
     dependencies:
-      framer-motion: 12.23.24(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
+      framer-motion: 12.23.24(@emotion/is-prop-valid@1.4.0)(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
       tslib: 2.8.1
     optionalDependencies:
+      '@emotion/is-prop-valid': 1.4.0
       react: 19.0.0
       react-dom: 19.0.0(react@19.0.0)
 
