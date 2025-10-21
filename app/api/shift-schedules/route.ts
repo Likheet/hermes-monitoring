@@ -98,7 +98,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: error.message }, { status: 400 })
     }
 
-    return NextResponse.json({ schedules }, { status: 200 })
+    return NextResponse.json({ schedules }, { status: 200, headers: { "Cache-Control": "s-maxage=30, stale-while-revalidate=60" } })
   } catch (error) {
     console.error("Shift schedules GET error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })

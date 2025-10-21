@@ -12,7 +12,14 @@ export async function POST(request: NextRequest) {
     }
 
     // Create Supabase client with service role key to bypass RLS
-    const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+
+    if (!supabaseUrl || !serviceRoleKey) {
+      return NextResponse.json({ error: "Supabase credentials missing" }, { status: 500 })
+    }
+
+    const supabase = createClient(supabaseUrl, serviceRoleKey, {
       auth: {
         autoRefreshToken: false,
         persistSession: false,
@@ -20,14 +27,26 @@ export async function POST(request: NextRequest) {
     })
 
     // Ensure bucket exists
-    const { data: buckets } = await supabase.storage.listBuckets()
-    const bucketExists = buckets?.some((b) => b.name === "task-photos")
+    const bucketName = "task-photos"
+    const maxFileSizeBytes = 10 * 1024 * 1024 // 10MB
 
-    if (!bucketExists) {
-      // Create bucket with public access
-      await supabase.storage.createBucket("task-photos", {
+    const { data: buckets, error: bucketListError } = await supabase.storage.listBuckets()
+    if (bucketListError) {
+      console.error("Supabase list bucket error:", bucketListError)
+      return NextResponse.json({ error: "Unable to access storage bucket" }, { status: 500 })
+    }
+
+    const existingBucket = buckets?.find((b) => b.name === bucketName)
+
+    if (!existingBucket) {
+      await supabase.storage.createBucket(bucketName, {
         public: true,
-        fileSizeLimit: 1024 * 1024, // 1MB
+        fileSizeLimit: maxFileSizeBytes,
+      })
+    } else if (!existingBucket.public || (existingBucket.file_size_limit ?? 0) < maxFileSizeBytes) {
+      await supabase.storage.updateBucket(bucketName, {
+        public: true,
+        fileSizeLimit: maxFileSizeBytes,
       })
     }
 
@@ -35,12 +54,8 @@ export async function POST(request: NextRequest) {
     const timestamp = Date.now()
     const filename = `${taskId}_${timestamp}.jpg`
 
-    const arrayBuffer = await file.arrayBuffer()
-    const blob = new Blob([arrayBuffer], { type: "image/jpeg" })
-
-    // Upload file using service role (bypasses RLS)
-    const { data, error } = await supabase.storage.from("task-photos").upload(filename, blob, {
-      contentType: "image/jpeg",
+    const { data, error } = await supabase.storage.from(bucketName).upload(filename, file, {
+      contentType: file.type || "image/jpeg",
       cacheControl: "3600",
       upsert: false,
     })

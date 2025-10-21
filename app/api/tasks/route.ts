@@ -69,7 +69,7 @@ export async function GET(request: Request) {
 
     const appTasks = tasks.map(databaseTaskToApp)
 
-    return NextResponse.json({ tasks: appTasks }, { status: 200 })
+    return NextResponse.json({ tasks: appTasks }, { status: 200, headers: { "Cache-Control": "s-maxage=30, stale-while-revalidate=60" } })
   } catch (error) {
     console.error("Tasks GET error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })

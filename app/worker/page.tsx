@@ -318,7 +318,18 @@ function WorkerDashboard() {
   }
 
   const saveNotes = (updatedNotes: Note[]) => {
-    localStorage.setItem(`notes_${user?.id}`, JSON.JSON.stringify(updatedNotes))
+    try {
+      const payload = JSON.stringify(
+        updatedNotes.map((note) => ({
+          ...note,
+          created_at: note.created_at.toISOString(),
+          updated_at: note.updated_at.toISOString(),
+        })),
+      )
+      localStorage.setItem(`notes_${user?.id}`, payload)
+    } catch (error) {
+      console.error("[notes] Failed to persist notes:", error)
+    }
     setNotes(updatedNotes)
   }
 

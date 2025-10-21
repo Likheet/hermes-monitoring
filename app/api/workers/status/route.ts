@@ -22,24 +22,57 @@ export async function GET() {
       return NextResponse.json({ error: workersError.message }, { status: 400 })
     }
 
-    // Get active tasks for each worker
-    const workersWithStatus = await Promise.all(
-      workers.map(async (worker) => {
-        const { data: activeTasks } = await supabase
-          .from("tasks")
-          .select("*")
-          .eq("assigned_to_user_id", worker.id)
-          .in("status", ["IN_PROGRESS", "PAUSED"])
+    const workerIds = workers.map((worker) => worker.id)
 
-        const appWorker = databaseUserToApp(worker)
+    let activeTasksByWorker: Record<string, any[]> = {}
 
-        return {
-          ...appWorker,
-          is_available: !activeTasks || activeTasks.length === 0,
-          current_task: activeTasks && activeTasks.length > 0 ? activeTasks[0] : null,
+    if (workerIds.length > 0) {
+      const { data: activeTasks, error: tasksError } = await supabase
+        .from("tasks")
+        .select(
+          [
+            "id",
+            "task_type",
+            "status",
+            "room_number",
+            "assigned_to_user_id",
+            "created_at",
+            "updated_at",
+            "expected_duration",
+          ].join(","),
+        )
+        .in("assigned_to_user_id", workerIds)
+        .in("status", ["in_progress", "paused"])
+        .order("updated_at", { ascending: false })
+
+      if (tasksError) {
+        console.error("Active tasks fetch error:", tasksError)
+        return NextResponse.json({ error: tasksError.message }, { status: 400 })
+      }
+
+      activeTasksByWorker = (activeTasks ?? []).reduce<Record<string, any[]>>((acc, task) => {
+        const assignedId = task.assigned_to_user_id
+        if (!assignedId) {
+          return acc
         }
-      }),
-    )
+        if (!acc[assignedId]) {
+          acc[assignedId] = []
+        }
+        acc[assignedId].push(task)
+        return acc
+      }, {})
+    }
+
+    const workersWithStatus = workers.map((worker) => {
+      const appWorker = databaseUserToApp(worker)
+      const activeTasks = activeTasksByWorker[worker.id] ?? []
+
+      return {
+        ...appWorker,
+        is_available: activeTasks.length === 0,
+        current_task: activeTasks.length > 0 ? activeTasks[0] : null,
+      }
+    })
 
     return NextResponse.json({ workers: workersWithStatus }, { status: 200 })
   } catch (error) {

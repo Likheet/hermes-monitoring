@@ -1,6 +1,8 @@
 import type React from "react"
 import type { Metadata, Viewport } from "next"
 
+export const dynamic = "force-dynamic"
+
 import { Analytics } from "@vercel/analytics/next"
 import { AuthProvider } from "@/lib/auth-context"
 import { Toaster } from "@/components/ui/toaster"
@@ -64,7 +66,10 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${geistSans.variable} ${geistMono.variable}`}>
       <head>
-        <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+  <link rel="icon" href="/favicon.ico" />
+  <link rel="mask-icon" href="/placeholder-logo.svg" color="#0ea5e9" />
+        <link rel="manifest" href="/manifest.json" />
+  <link rel="apple-touch-icon" href="/favicon.ico" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
       </head>

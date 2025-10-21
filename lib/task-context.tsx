@@ -485,6 +485,80 @@ export function TaskProvider({
     [runWithGlobalLoading],
   )
 
+  const refreshDashboardSnapshot = useCallback(
+    (options?: { useGlobalLoader?: boolean; forceRefresh?: boolean }) => {
+      const { useGlobalLoader = true, forceRefresh = false } = options ?? {}
+      const now = Date.now()
+
+      const tasksFresh =
+        !forceRefresh && lastTasksFetchRef.current !== 0 && now - lastTasksFetchRef.current < LIST_CACHE_TTL_MS
+      const usersFresh =
+        !forceRefresh && lastUsersFetchRef.current !== 0 && now - lastUsersFetchRef.current < LIST_CACHE_TTL_MS
+      const shiftsFresh =
+        !forceRefresh && lastShiftFetchRef.current !== 0 && now - lastShiftFetchRef.current < LIST_CACHE_TTL_MS
+
+      if (tasksFresh && usersFresh && shiftsFresh) {
+        return Promise.resolve()
+      }
+
+      const execute = async () => {
+        try {
+          const response = await fetch("/api/dashboard/summary", {
+            method: "GET",
+            cache: "no-store",
+          })
+
+          if (!response.ok) {
+            throw new Error(`Failed to load dashboard snapshot: ${response.status}`)
+          }
+
+          const payload: {
+            tasks: Task[]
+            users: User[]
+            shiftSchedules: ShiftSchedule[]
+          } = await response.json()
+
+          const limitedTasks =
+            payload.tasks.length > MAX_CACHED_TASKS ? payload.tasks.slice(0, MAX_CACHED_TASKS) : payload.tasks
+
+          setTasks(limitedTasks)
+          persistToStorage(STORAGE_KEYS.tasks, limitedTasks)
+
+          setUsers(payload.users)
+          setUsersLoaded(true)
+          setUsersLoadError(false)
+          persistToStorage(STORAGE_KEYS.users, payload.users)
+
+          setShiftSchedules(payload.shiftSchedules)
+          persistToStorage(STORAGE_KEYS.shiftSchedules, payload.shiftSchedules)
+
+          const timestamp = Date.now()
+          lastTasksFetchRef.current = timestamp
+          lastUsersFetchRef.current = timestamp
+          lastShiftFetchRef.current = timestamp
+
+          const nextVersions = new Map<string, string | null>()
+          for (const task of limitedTasks) {
+            if (typeof task.server_updated_at === "string") {
+              nextVersions.set(task.id, task.server_updated_at)
+            }
+          }
+          lastRealtimeVersionRef.current = nextVersions
+        } catch (error) {
+          console.error("Dashboard snapshot fetch failed, falling back to individual refresh", error)
+          await Promise.all([
+            refreshTasks({ useGlobalLoader: false, forceRefresh: true }),
+            refreshUsers({ useGlobalLoader: false, forceRefresh: true }),
+            refreshShiftSchedules({ useGlobalLoader: false, forceRefresh: true }),
+          ])
+        }
+      }
+
+      return useGlobalLoader ? runWithGlobalLoading(execute) : execute()
+    },
+    [refreshShiftSchedules, refreshTasks, refreshUsers, runWithGlobalLoading],
+  )
+
   const queueForcedRefresh = useCallback(() => {
     const execute = () => {
       forcedRefreshTimerRef.current = null
@@ -617,11 +691,7 @@ export function TaskProvider({
 
     void (async () => {
       try {
-        await Promise.all([
-          refreshTasks({ useGlobalLoader: false }),
-          refreshUsers({ useGlobalLoader: false }),
-          refreshShiftSchedules({ useGlobalLoader: false }),
-        ])
+        await refreshDashboardSnapshot({ useGlobalLoader: false })
       } catch (error) {
         console.error("Error loading data:", error)
         setUsers((prev) => (prev.length > 0 ? prev : mockUsers))
@@ -629,7 +699,7 @@ export function TaskProvider({
         setUsersLoadError(true)
       }
     })()
-  }, [refreshTasks, refreshUsers, refreshShiftSchedules])
+  }, [refreshDashboardSnapshot])
 
   useEffect(() => {
     return () => {
@@ -819,7 +889,22 @@ export function TaskProvider({
         })
 
         if (response.ok) {
-          await refreshTasks()
+          const payload = (await response.json()) as { task?: Task }
+          if (payload?.task) {
+            setTasks((prev) => {
+              const next = prev.map((task) => (task.id === payload.task!.id ? payload.task! : task))
+              const limited = next.length > MAX_CACHED_TASKS ? next.slice(0, MAX_CACHED_TASKS) : next
+              persistToStorage(STORAGE_KEYS.tasks, limited)
+
+              const versions = new Map(lastRealtimeVersionRef.current)
+              versions.set(payload.task!.id, payload.task!.server_updated_at ?? null)
+              lastRealtimeVersionRef.current = versions
+
+              return limited
+            })
+            lastTasksFetchRef.current = Date.now()
+          }
+          await refreshTasks({ useGlobalLoader: false, forceRefresh: true })
           console.log("[v0] Task completed successfully via API:", taskId)
         } else {
           console.error("[v0] Failed to complete task via API:", await response.text())

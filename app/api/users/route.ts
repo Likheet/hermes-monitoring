@@ -18,7 +18,7 @@ export async function GET() {
 
     const appUsers = users.map(databaseUserToApp)
 
-    return NextResponse.json({ users: appUsers }, { status: 200 })
+    return NextResponse.json({ users: appUsers }, { status: 200, headers: { "Cache-Control": "s-maxage=30, stale-while-revalidate=60" } })
   } catch (error) {
     console.error("Users GET error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
