@@ -8,7 +8,7 @@ import { createNotification, playNotificationSound } from "./notification-utils"
 import { triggerHapticFeedback } from "./haptics"
 import { ALL_ROOMS, getMaintenanceItemsForRoom } from "./location-data"
 import { useRealtimeTasks, type TaskRealtimePayload } from "./use-realtime-tasks"
-import { hashPassword } from "./auth-utils"
+import type { hashPassword } from "./auth-utils"
 import { databaseTaskToApp, type DatabaseTask } from "./database-types"
 import {
   loadTasksFromSupabase,
@@ -203,6 +203,8 @@ interface TaskContextType {
   maintenanceTasks: MaintenanceTask[]
   shiftSchedules: ShiftSchedule[]
   isBusy: boolean
+  usersLoaded: boolean
+  usersLoadError: boolean
   updateTask: (taskId: string, updates: Partial<Task>) => Promise<void>
   addAuditLog: (taskId: string, entry: Omit<AuditLogEntry, "timestamp">) => void
   startTask: (taskId: string, userId: string) => Promise<{ success: boolean; error?: string }>
@@ -1091,7 +1093,7 @@ export function TaskProvider({
     }
   }
 
-  const reassignTask = (taskId: string, newWorkerId: string, userId: string, reason: string) => {
+    const reassignTask = (taskId: string, newWorkerId: string, userId: string, reason: string) => {
     const task = tasks.find((t) => t.id === taskId)
     if (!task || task.status !== "PENDING") return
 
@@ -1099,42 +1101,58 @@ export function TaskProvider({
     const newWorker = users.find((u) => u.id === newWorkerId)
 
     const reassignedAt = createDualTimestamp()
+    const nextDepartment =
+      newWorker?.department ||
+      task.department ||
+      (oldWorkerId ? users.find((u) => u.id === oldWorkerId)?.department ?? null : null) ||
+      user?.department ||
+      null
 
-    updateTask(taskId, {
+    const nextTaskShape = {
+      ...task,
       assigned_to_user_id: newWorkerId,
+      assigned_by_user_id: userId,
       assigned_at: reassignedAt,
-    })
+      department: nextDepartment ?? task.department,
+    }
 
-    setTasks((prev) =>
-      prev.map((t) =>
-        t.id === taskId
-          ? {
-              ...t,
-              assigned_to_user_id: newWorkerId,
-              assigned_at: reassignedAt,
-              department: newWorker?.department || t.department,
-            }
-          : t,
-      ),
-    )
+    setTasks((prev) => {
+      const updated = prev.map((t) => (t.id === taskId ? nextTaskShape : t))
+      persistToStorage(STORAGE_KEYS.tasks, updated)
+      return updated
+    })
 
     addAuditLog(taskId, {
       user_id: userId,
       action: "TASK_REASSIGNED",
       old_status: task.status,
       new_status: task.status,
-      details: `Task reassigned from worker ${oldWorkerId} to ${newWorkerId}. Reason: ${reason}`,
+      details: `Task reassigned from worker ${oldWorkerId ?? "N/A"} to ${newWorkerId}. Reason: ${reason}`,
     })
 
     createNotification(
       newWorkerId,
       "task_assigned",
       "New Task Assigned",
-      `You have been assigned: ${task.task_type} at ${task.room_number}`,
+      `You have been assigned: ${task.task_type} at ${task.room_number ?? "N/A"}`,
       taskId,
     )
-    playNotificationSound()
-    triggerHapticFeedback("success")
+
+    if (oldWorkerId && oldWorkerId !== newWorkerId) {
+      createNotification(
+        oldWorkerId,
+        "task_reassigned",
+        "Task Reassigned",
+        `Task ${task.task_type} at ${task.room_number ?? "N/A"} has been reassigned.`,
+        taskId,
+      )
+    }
+
+    runWithGlobalLoading(async () => {
+      await updateTask(taskId, nextTaskShape)
+    }).catch((error) => {
+      console.error("[v0] Error reassigning task in Supabase:", error)
+    })
   }
 
   const dismissRejectedTask = (taskId: string, userId: string) => {
@@ -1197,7 +1215,6 @@ export function TaskProvider({
 
         const role: NonAdminRole = input.role
         try {
-          const passwordHash = await hashPassword(password)
           const department = input.department ?? DEFAULT_DEPARTMENT_FOR_ROLE[role]
           const newUser: User = {
             id: generateUuid(),
@@ -1213,7 +1230,7 @@ export function TaskProvider({
             is_available: true,
           }
 
-          const saved = await saveUserToSupabase(newUser, { username, passwordHash })
+          const saved = await saveUserToSupabase(newUser, { username, passwordHash: password })
           if (!saved) {
             return { success: false, error: "Unable to store the new user in the database." }
           }
@@ -1625,7 +1642,9 @@ export function TaskProvider({
         schedules,
         maintenanceTasks,
         shiftSchedules,
-  isBusy,
+        isBusy,
+        usersLoaded,
+        usersLoadError,
         updateTask,
         addAuditLog,
         startTask,

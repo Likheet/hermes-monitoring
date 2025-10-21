@@ -654,7 +654,7 @@ function TaskDetail({ params }: TaskDetailProps) {
 
 export default function TaskDetailPage(props: TaskDetailProps) {
   return (
-    <ProtectedRoute allowedRoles={["worker"]}>
+    <ProtectedRoute allowedRoles={["worker", "front_office"]}>
       <TaskDetail {...props} />
     </ProtectedRoute>
   )

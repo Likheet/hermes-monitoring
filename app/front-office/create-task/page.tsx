@@ -205,6 +205,7 @@ function CreateTaskForm() {
             onCancel={handleCancel}
             onSubmit={handleSubmit}
             workers={workers}
+            currentUser={user ?? null}
             workersLoaded={usersLoaded}
             workersLoadError={usersLoadError}
             initialData={

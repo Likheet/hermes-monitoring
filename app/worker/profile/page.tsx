@@ -641,7 +641,7 @@ function ProfilePage() {
 
 export default function WorkerProfilePage() {
   return (
-    <ProtectedRoute allowedRoles={["worker"]}>
+    <ProtectedRoute allowedRoles={["worker", "front_office"]}>
       <ProfilePage />
     </ProtectedRoute>
   )

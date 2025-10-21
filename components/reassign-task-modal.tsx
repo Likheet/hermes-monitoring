@@ -23,7 +23,16 @@ export function ReassignTaskModal({ task, open, onOpenChange }: ReassignTaskModa
   const [reason, setReason] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
 
-  const workers = users.filter((u) => u.role === "worker" && u.id !== task.assigned_to_user_id)
+  const workerOptions = users.filter((u) => u.role === "worker" && u.id !== task.assigned_to_user_id)
+
+  const assigneeOptions = (() => {
+    if (!user || user.id === task.assigned_to_user_id) {
+      return workerOptions
+    }
+
+    const alreadyIncluded = workerOptions.some((worker) => worker.id === user.id)
+    return alreadyIncluded ? workerOptions : [user, ...workerOptions]
+  })()
 
   const handleReassign = () => {
     if (!selectedWorkerId || !reason.trim() || !user) return
@@ -56,17 +65,20 @@ export function ReassignTaskModal({ task, open, onOpenChange }: ReassignTaskModa
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="worker">Select New Worker</Label>
+            <Label htmlFor="worker">Select New Assignee</Label>
             <Select value={selectedWorkerId} onValueChange={setSelectedWorkerId}>
               <SelectTrigger id="worker">
-                <SelectValue placeholder="Choose a worker" />
+                <SelectValue placeholder="Choose an assignee" />
               </SelectTrigger>
               <SelectContent>
-                {workers.map((worker) => (
-                  <SelectItem key={worker.id} value={worker.id}>
-                    {worker.name} - {worker.department}
-                  </SelectItem>
-                ))}
+                {assigneeOptions.map((assignee) => {
+                  const isSelf = user && assignee.id === user.id
+                  return (
+                    <SelectItem key={assignee.id} value={assignee.id}>
+                      {isSelf ? `Assign to myself (${assignee.name})` : `${assignee.name} - ${assignee.department}`}
+                    </SelectItem>
+                  )
+                })}
               </SelectContent>
             </Select>
           </div>

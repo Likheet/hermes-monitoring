@@ -160,7 +160,7 @@ function TasksPage() {
 
 export default function TasksPageWrapper() {
   return (
-    <ProtectedRoute allowedRoles={["worker"]}>
+    <ProtectedRoute allowedRoles={["worker", "front_office"]}>
       <TasksPage />
     </ProtectedRoute>
   )

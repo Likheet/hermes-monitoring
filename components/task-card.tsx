@@ -22,9 +22,10 @@ const statusColors = {
 
 interface TaskCardProps {
   task: Task
+  href?: string
 }
 
-export function TaskCard({ task }: TaskCardProps) {
+export function TaskCard({ task, href }: TaskCardProps) {
   const getPhotoRequirementText = () => {
     if (task.photo_documentation_required && task.photo_categories) {
       const totalPhotos = task.photo_categories.reduce((sum: number, cat: any) => sum + cat.count, 0)
@@ -41,8 +42,10 @@ export function TaskCard({ task }: TaskCardProps) {
   const photoText = getPhotoRequirementText()
   // </CHANGE>
 
+  const destination = href ?? `/worker/${task.id}`
+
   return (
-    <Link href={`/worker/${task.id}`}>
+    <Link href={destination}>
       <Card className="hover:shadow-md transition-shadow cursor-pointer active:scale-[0.98] min-h-[120px] touch-manipulation">
         <CardHeader className="pb-3 px-4 sm:px-6 pt-4 sm:pt-6">
           <div className="flex items-start justify-between gap-2">
@@ -93,3 +96,5 @@ export function TaskCard({ task }: TaskCardProps) {
     </Link>
   )
 }
+
+

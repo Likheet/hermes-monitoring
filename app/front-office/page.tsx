@@ -29,7 +29,6 @@ import {
   Edit,
   Edit2,
   Filter,
-  ShieldCheck,
 } from "lucide-react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
@@ -44,6 +43,7 @@ import { validateBreakTimes, getWorkerShiftForDate } from "@/lib/shift-utils"
 import { WeeklyScheduleView } from "@/components/shift/weekly-schedule-view"
 import { ReassignTaskModal } from "@/components/reassign-task-modal"
 import { EditTaskModal } from "@/components/edit-task-modal"
+import { FrontDeskActiveTaskModal } from "@/components/front-desk-active-task-modal"
 import type { Task } from "@/lib/types"
 
 const priorityColors = {
@@ -72,6 +72,7 @@ function FrontOfficeDashboard() {
   const [assignmentFilter, setAssignmentFilter] = useState<"mine" | "all">("mine")
   const [reassignTask, setReassignTask] = useState<Task | null>(null)
   const [editTask, setEditTask] = useState<Task | null>(null)
+  const [selfTaskModal, setSelfTaskModal] = useState<Task | null>(null)
 
   const workers = users.filter((u) => u.role === "worker")
   const today = new Date()
@@ -126,10 +127,15 @@ function FrontOfficeDashboard() {
     return maintenanceTask
   }
 
+  const closeSelfTaskModal = () => {
+    setSelfTaskModal(null)
+  }
+
   const availableWorkers = workers.filter((w) => !getWorkerCurrentTask(w.id))
   const busyWorkers = workers.filter((w) => getWorkerCurrentTask(w.id))
   const rejectedTasks = tasks.filter((t) => t.status === "REJECTED")
   const openIssues = issues.filter((issue) => issue.status === "OPEN")
+
 
   const myAssignments = tasks
     .filter((t) => t.assigned_by_user_id === user?.id)
@@ -149,12 +155,12 @@ function FrontOfficeDashboard() {
 
   const displayedAssignments = assignmentFilter === "mine" ? myAssignments : allAssignments
 
-  const getWorkerName = (workerId: string) => {
+  function getWorkerName(workerId: string) {
     const worker = users.find((u) => u.id === workerId)
     return worker?.name || "Unknown"
   }
 
-  const getAssignerName = (assignerId: string) => {
+  function getAssignerName(assignerId: string) {
     const assigner = users.find((u) => u.id === assignerId)
     return assigner?.name || "Unknown"
   }
@@ -246,18 +252,7 @@ function FrontOfficeDashboard() {
     return result.formatted
   }
 
-  const userDepartmentLookup = new Map(users.map((u) => [u.id, u.department]))
-  const departmentWorkers = users.filter((u) => u.role === "worker" && (!user?.department || u.department === user.department))
-  const departmentTasks = tasks.filter((task) => {
-    const taskDepartment = task.department ?? (task.assigned_to_user_id ? userDepartmentLookup.get(task.assigned_to_user_id) ?? null : null)
-    if (!user?.department) return true
-    return taskDepartment === user.department
-  })
-  const departmentIssues = openIssues.filter((issue) => departmentTasks.some((task) => task.id === issue.task_id))
-  const supervisorPendingTasks = departmentTasks.filter((task) => task.status === "PENDING")
-  const supervisorInProgressTasks = departmentTasks.filter((task) => task.status === "IN_PROGRESS" || task.status === "PAUSED")
-  const supervisorCompletedTasks = departmentTasks.filter((task) => task.status === "COMPLETED")
-  const supervisorRejectedTasks = departmentTasks.filter((task) => task.status === "REJECTED")
+  const selfAssignedTasks = tasks.filter((t) => t.assigned_to_user_id === user?.id)
 
   const renderContent = () => {
     switch (activeTab) {
@@ -447,7 +442,25 @@ function FrontOfficeDashboard() {
           </main>
         )
 
-      case "supervisor":
+      case "supervisor": {
+        const userDepartmentLookup = new Map(users.map((teamMember) => [teamMember.id, teamMember.department]))
+        const departmentWorkers = users.filter(
+          (teamMember) => teamMember.role === "worker" && (!user?.department || teamMember.department === user.department),
+        )
+        const departmentTasks = tasks.filter((taskItem) => {
+          const taskDepartment =
+            taskItem.department ?? (taskItem.assigned_to_user_id ? userDepartmentLookup.get(taskItem.assigned_to_user_id) ?? null : null)
+          if (!user?.department) return true
+          return taskDepartment === user.department
+        })
+        const departmentIssues = openIssues.filter((issue) => departmentTasks.some((taskItem) => taskItem.id === issue.task_id))
+        const supervisorPendingTasks = departmentTasks.filter((taskItem) => taskItem.status === "PENDING")
+        const supervisorInProgressTasks = departmentTasks.filter(
+          (taskItem) => taskItem.status === "IN_PROGRESS" || taskItem.status === "PAUSED",
+        )
+        const supervisorCompletedTasks = departmentTasks.filter((taskItem) => taskItem.status === "COMPLETED")
+        const supervisorRejectedTasks = departmentTasks.filter((taskItem) => taskItem.status === "REJECTED")
+
         return (
           <main className="container mx-auto max-w-7xl px-4 py-6 space-y-8">
             <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -564,6 +577,7 @@ function FrontOfficeDashboard() {
             )}
           </main>
         )
+      }
 
       case "assignments":
         return (
@@ -745,7 +759,47 @@ function FrontOfficeDashboard() {
       default:
         return (
           <main className="container mx-auto px-4 py-6 space-y-6">
-            <section>
+            {selfAssignedTasks.length > 0 && (
+              <section>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <h2 className="text-lg font-semibold">My Active Tasks</h2>
+                  <Badge variant="outline">{selfAssignedTasks.length} assigned to me</Badge>
+                </div>
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                  {selfAssignedTasks.map((task) => (
+                    <Card
+                      key={task.id}
+                      className="border-primary/30 hover:border-primary cursor-pointer transition-shadow hover:shadow-md"
+                      onClick={() => {
+                        setSelfTaskModal(task)
+                      }}
+                    >
+                      <CardHeader className="pb-3">
+                        <CardTitle className="text-base">{task.task_type}</CardTitle>
+                        <Badge variant="secondary" className="capitalize">{task.status.replace(/_/g, " ")}</Badge>
+                      </CardHeader>
+                      <CardContent className="space-y-2 text-sm text-muted-foreground">
+                        <div className="flex items-center gap-2">
+                          <MapPin className="h-4 w-4" />
+                          <span>{task.room_number || "N/A"}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <CalendarClock className="h-4 w-4" />
+                          <span>Updated {formatFullTimestamp(task.assigned_at.client)}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Clock className="h-4 w-4" />
+                          <span>{task.expected_duration_minutes} min expected</span>
+                        </div>
+                        <p className="text-xs text-muted-foreground">Tap to manage this task.</p>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              </section>
+            )}
+
+<section>
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-lg font-semibold">Available Workers</h2>
                 <span className="text-sm text-muted-foreground">{availableWorkers.length} available</span>
@@ -844,32 +898,42 @@ function FrontOfficeDashboard() {
               <p className="text-sm text-muted-foreground">{user?.name}</p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <Button asChild size="sm" className="min-h-[44px] px-3 sm:px-4 flex-1 sm:flex-none">
-              <Link href="/front-office/create-task">
-                <Plus className="mr-2 h-4 w-4" />
-                Create Task
-              </Link>
-            </Button>
-            <ConnectionStatus isConnected={isConnected} />
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleLogout}
-              className="min-h-[44px] min-w-[44px] px-2 sm:px-3 bg-transparent"
-            >
-              <LogOut className="h-4 w-4 sm:mr-2" />
-              <span className="hidden sm:inline">Logout</span>
-            </Button>
-          </div>
-        </div>
-      </header>
+      <div className="flex items-center gap-2">
+        <Button asChild size="sm" className="min-h-[44px] px-3 sm:px-4 flex-1 sm:flex-none">
+          <Link href="/front-office/create-task">
+            <Plus className="mr-2 h-4 w-4" />
+            Create Task
+          </Link>
+        </Button>
+        <ConnectionStatus isConnected={isConnected} />
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleLogout}
+          className="min-h-[44px] min-w-[44px] px-2 sm:px-3 bg-transparent"
+        >
+          <LogOut className="h-4 w-4 sm:mr-2" />
+          <span className="hidden sm:inline">Logout</span>
+        </Button>
+      </div>
+    </div>
+  </header>
 
-      <div className="flex-1 overflow-y-auto pb-20">{renderContent()}</div>
+  <div className="flex-1 overflow-y-auto pb-20">{renderContent()}</div>
 
-      <FrontOfficeBottomNav activeTab={activeTab} onTabChange={setActiveTab} />
+  <FrontDeskActiveTaskModal
+    task={selfTaskModal}
+    open={!!selfTaskModal}
+    onOpenChange={(open) => {
+      if (!open) {
+        closeSelfTaskModal()
+      }
+    }}
+  />
 
-      {reassignTask && (
+  <FrontOfficeBottomNav activeTab={activeTab} onTabChange={setActiveTab} />
+
+  {reassignTask && (
         <ReassignTaskModal task={reassignTask} open={!!reassignTask} onOpenChange={() => setReassignTask(null)} />
       )}
 

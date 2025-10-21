@@ -233,7 +233,7 @@ function SettingsPage() {
 
 export default function WorkerSettingsPage() {
   return (
-    <ProtectedRoute allowedRoles={["worker"]}>
+    <ProtectedRoute allowedRoles={["worker", "front_office"]}>
       <SettingsPage />
     </ProtectedRoute>
   )

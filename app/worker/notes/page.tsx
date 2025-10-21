@@ -206,7 +206,7 @@ function NotesPage() {
 
 export default function NotesPageWrapper() {
   return (
-    <ProtectedRoute allowedRoles={["worker"]}>
+    <ProtectedRoute allowedRoles={["worker", "front_office"]}>
       <NotesPage />
     </ProtectedRoute>
   )

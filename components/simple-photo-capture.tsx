@@ -13,6 +13,8 @@ interface SimplePhotoCaptureProps {
   existingPhotos?: string[]
   onPhotosChange: (photos: string[]) => void
   minPhotos: number // Removed default value of 2, made it required
+  initialButtonLabel?: string
+  additionalButtonLabel?: string
 }
 
 export function SimplePhotoCapture({
@@ -20,6 +22,8 @@ export function SimplePhotoCapture({
   existingPhotos = [],
   onPhotosChange,
   minPhotos,
+  initialButtonLabel = "Take Photo",
+  additionalButtonLabel = "Add Another Photo",
 }: SimplePhotoCaptureProps) {
   const [photos, setPhotos] = useState<string[]>(existingPhotos)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -119,7 +123,7 @@ export function SimplePhotoCapture({
           type="button"
         >
           <Camera className="mr-2 h-5 w-5" />
-          {photos.length === 0 ? "Take Photo" : "Add Another Photo"}
+          {photos.length === 0 ? initialButtonLabel : additionalButtonLabel}
         </Button>
 
         {/* Hidden File Input - Camera Only */}

@@ -17,11 +17,21 @@ export async function hashPassword(password: string): Promise<string> {
 /**
  * Verify a password against a hash
  * @param password - Plain text password to verify
- * @param hash - Stored password hash
+ * @param hash - Stored password (plain text for local app, or bcrypt hash)
  * @returns True if password matches
  */
 export async function verifyPassword(password: string, hash: string): Promise<boolean> {
-  return bcrypt.compare(password, hash)
+  // For local 5-user app: accept both plain text and bcrypt formats
+  // Try plain text comparison first (for new users)
+  if (password === hash) {
+    return true
+  }
+  // Fall back to bcrypt for existing hashed passwords
+  try {
+    return await bcrypt.compare(password, hash)
+  } catch {
+    return false
+  }
 }
 
 /**

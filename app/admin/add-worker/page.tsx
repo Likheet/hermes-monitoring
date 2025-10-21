@@ -15,9 +15,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ArrowLeft, UserPlus } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { useToast } from "@/hooks/use-toast"
-import type { UserRole } from "@/lib/types"
+import type { UserRole, Department } from "@/lib/types"
 
 type NonAdminRole = Exclude<UserRole, "admin">
+const DEFAULT_ROLE_DEPARTMENT: Record<NonAdminRole, Department> = {
+  worker: "housekeeping",
+  supervisor: "maintenance",
+  front_office: "front_desk",
+}
 
 function AddAccountForm(): JSX.Element {
   const router = useRouter()
@@ -28,6 +33,7 @@ function AddAccountForm(): JSX.Element {
     username: "",
     password: "",
     role: "worker" as NonAdminRole,
+    department: "housekeeping" as Department,
   })
   const [isSubmitting, setIsSubmitting] = useState(false)
 
@@ -61,6 +67,7 @@ function AddAccountForm(): JSX.Element {
         username,
         password,
         role: formData.role,
+        department: formData.role === "worker" ? formData.department : undefined,
       })
 
       if (result.success) {
@@ -141,7 +148,21 @@ function AddAccountForm(): JSX.Element {
                 <Select
                   value={formData.role}
                   onValueChange={(value) =>
-                    setFormData((prev) => ({ ...prev, role: value as NonAdminRole }))
+                    setFormData((prev) => {
+                      const nextRole = value as NonAdminRole
+                      const isWorker = nextRole === "worker"
+                      const nextDepartment = isWorker
+                        ? (prev.department === "housekeeping" || prev.department === "maintenance"
+                            ? prev.department
+                            : "housekeeping")
+                        : DEFAULT_ROLE_DEPARTMENT[nextRole]
+
+                      return {
+                        ...prev,
+                        role: nextRole,
+                        department: nextDepartment,
+                      }
+                    })
                   }
                 >
                   <SelectTrigger id="role">
@@ -154,6 +175,29 @@ function AddAccountForm(): JSX.Element {
                   </SelectContent>
                 </Select>
               </div>
+
+              {formData.role === "worker" && (
+                <div className="space-y-2">
+                  <Label htmlFor="department">Worker department</Label>
+                  <Select
+                    value={formData.department}
+                    onValueChange={(value) =>
+                      setFormData((prev) => ({ ...prev, department: value as Department }))
+                    }
+                  >
+                    <SelectTrigger id="department">
+                      <SelectValue placeholder="Select department" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="housekeeping">Housekeeping</SelectItem>
+                      <SelectItem value="maintenance">Maintenance</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    This decides which task pool the worker joins by default.
+                  </p>
+                </div>
+              )}
 
               <p className="text-sm text-muted-foreground">
                 We fill in the rest of the profile with sensible defaults. You can fine-tune their

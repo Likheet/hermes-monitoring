@@ -1248,7 +1248,7 @@ function WorkerDashboard() {
 
 export default function WorkerPage() {
   return (
-    <ProtectedRoute allowedRoles={["worker"]}>
+    <ProtectedRoute allowedRoles={["worker", "front_office"]}>
       <WorkerDashboard />
     </ProtectedRoute>
   )

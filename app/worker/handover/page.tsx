@@ -126,7 +126,7 @@ function HandoverPage() {
 
 export default function HandoverPageWrapper() {
   return (
-    <ProtectedRoute allowedRoles={["worker"]}>
+    <ProtectedRoute allowedRoles={["worker", "front_office"]}>
       <HandoverPage />
     </ProtectedRoute>
   )

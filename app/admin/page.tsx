@@ -1460,6 +1460,7 @@ function AdminDashboard() {
                 onCancel={handleCancelTaskCreation}
                 onSubmit={handleSubmitTask}
                 workers={users.filter((u) => u.role === "worker")}
+                currentUser={user ?? null}
                 workersLoaded={usersLoaded}
                 workersLoadError={usersLoadError}
               />

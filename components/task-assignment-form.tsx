@@ -6,7 +6,11 @@ import type { TaskDefinition, TaskCategory, Priority } from "@/lib/task-definiti
 import { ALL_LOCATIONS, getACLocationsForRoom } from "@/lib/location-data"
 import { CATEGORY_COLORS, CATEGORY_LABELS } from "@/lib/task-definitions"
 import type { User as WorkerType } from "@/lib/types"
-import { getWorkersWithShiftStatusFromUsers } from "@/lib/shift-utils"
+import {
+  getWorkersWithShiftStatusFromUsers,
+  isWorkerOnShiftFromUser,
+  type WorkerAvailability,
+} from "@/lib/shift-utils"
 import type { Department } from "@/lib/types"
 
 interface TaskAssignmentFormProps {
@@ -14,6 +18,9 @@ interface TaskAssignmentFormProps {
   onCancel: () => void
   onSubmit: (data: TaskAssignmentData) => void
   workers: WorkerType[]
+  currentUser?: WorkerType | null
+  workersLoaded?: boolean
+  workersLoadError?: boolean
   initialData?: {
     assignedTo?: string
     location?: string
@@ -41,7 +48,7 @@ export interface TaskAssignmentData {
   isCustomTask: boolean
 }
 
-export function TaskAssignmentForm({ task, onCancel, onSubmit, workers, initialData }: TaskAssignmentFormProps) {
+export function TaskAssignmentForm({ task, onCancel, onSubmit, workers, initialData, currentUser }: TaskAssignmentFormProps) {
   // Form state
   const [priority, setPriority] = useState<Priority>(task.priority)
   const [duration, setDuration] = useState(task.duration)
@@ -82,11 +89,43 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers, initialD
 
   // Sort workers: idle first, then busy
   const sortedWorkers = useMemo(() => {
-    return [...workersWithShifts].sort((a, b) => {
-      const statusOrder = { ON_SHIFT: 0, ENDING_SOON: 1, OFF_DUTY: 2 }
-      return statusOrder[a.availability.status] - statusOrder[b.availability.status]
-    })
+    const statusOrder: Record<WorkerAvailability["status"], number> = {
+      ON_SHIFT: 0,
+      ON_BREAK: 1,
+      ENDING_SOON: 2,
+      OFF_DUTY: 3,
+    }
+
+    return [...workersWithShifts].sort((a, b) => statusOrder[a.availability.status] - statusOrder[b.availability.status])
   }, [workersWithShifts])
+
+  const assigneeOptions = useMemo(() => {
+    if (!currentUser) return sortedWorkers
+
+    const alreadyIncluded = sortedWorkers.some((worker) => worker.id === currentUser.id)
+    if (alreadyIncluded) return sortedWorkers
+
+    return [
+      {
+        ...currentUser,
+        availability: isWorkerOnShiftFromUser(currentUser),
+      },
+      ...sortedWorkers,
+    ]
+  }, [sortedWorkers, currentUser])
+
+  const formatAvailabilityLabel = (availability: WorkerAvailability) => {
+    switch (availability.status) {
+      case "ON_SHIFT":
+        return "✅ Available"
+      case "ENDING_SOON":
+        return availability.minutesUntilEnd ? `⚠️ Shift ending in ${availability.minutesUntilEnd}min` : "⚠️ Ending soon"
+      case "ON_BREAK":
+        return "☕ On Break"
+      default:
+        return "❌ Off Duty"
+    }
+  }
 
   // Filter locations based on input
   const filteredLocations = useMemo(() => {
@@ -141,7 +180,7 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers, initialD
     }
 
     if (!assignedTo) {
-      newErrors.assignedTo = "Please select a worker"
+      newErrors.assignedTo = "Please select an assignee"
     }
 
     if (duration < 1 || duration > 300) {
@@ -457,9 +496,9 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers, initialD
           <p className="mt-1 text-xs text-muted-foreground text-right">{remarks.length}/500 characters</p>
         </div>
 
-        {/* Assign To Worker */}
+        {/* Assignee selection */}
         <div>
-          <label className="block text-sm font-semibold text-foreground mb-2">Assign To Worker</label>
+          <label className="block text-sm font-semibold text-foreground mb-2">Assign To</label>
           <div className="relative">
             <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
             <select
@@ -469,17 +508,19 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers, initialD
                 errors.assignedTo ? "border-destructive" : "border-border"
               }`}
             >
-              <option value="">Select a worker...</option>
-              {sortedWorkers.map((worker) => (
-                <option key={worker.id} value={worker.id}>
-                  {worker.name} -{" "}
-                  {worker.availability.status === "ON_SHIFT"
-                    ? "✅ Available"
-                    : worker.availability.status === "ENDING_SOON"
-                      ? `⚠️ Shift ending in ${worker.availability.minutesUntilEnd}min`
-                      : "❌ Off Duty"}
-                </option>
-              ))}
+              <option value="">Select an assignee...</option>
+              {assigneeOptions.map((worker) => {
+                const isSelf = worker.id === currentUser?.id
+                const availabilityLabel = formatAvailabilityLabel(worker.availability)
+                const label = isSelf
+                  ? `Assign to myself (${worker.name}) - ${availabilityLabel}`
+                  : `${worker.name} - ${availabilityLabel}`
+                return (
+                  <option key={worker.id} value={worker.id}>
+                    {label}
+                  </option>
+                )
+              })}
             </select>
           </div>
           {errors.assignedTo && (
