@@ -37,7 +37,7 @@ export function ShiftBadge({ availability, showDetails = false }: ShiftBadgeProp
   return (
     <Badge variant="secondary" className="flex items-center gap-1">
       <Clock className="h-3 w-3" />
-      Off Duty
+      Off-Duty
     </Badge>
   )
 }

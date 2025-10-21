@@ -42,15 +42,16 @@ import { useAuth } from "@/lib/auth-context"
 import { useTasks } from "@/lib/task-context"
 import { useRealtimeTasks } from "@/lib/use-realtime-tasks"
 import { CATEGORY_LABELS } from "@/lib/task-definitions"
-import { useState } from "react"
-import type { User, PriorityLevel, Priority, Department } from "@/lib/types"
+import { useMemo, useState } from "react"
+import type { User, PriorityLevel, Priority, Department, Task } from "@/lib/types"
+import type { MaintenanceTask } from "@/lib/maintenance-types"
 import { TaskSearch } from "@/components/task-search"
 import { TaskAssignmentForm, type TaskAssignmentData } from "@/components/task-assignment-form"
 import type { TaskDefinition, TaskCategory } from "@/lib/task-definitions"
 import { createDualTimestamp } from "@/lib/mock-data"
 import { useToast } from "@/hooks/use-toast"
 import { formatShiftRange } from "@/lib/date-utils"
-import { getWorkerShiftForDate } from "@/lib/shift-utils"
+import { getWorkerShiftForDate, isWorkerOnShiftFromUser } from "@/lib/shift-utils"
 import {
   BarChart,
   Bar,
@@ -82,6 +83,10 @@ function mapPriorityToPriorityLevel(priority: Priority, category: TaskCategory):
   if (category === "PREVENTIVE_MAINTENANCE") return "PREVENTIVE_MAINTENANCE"
   return "DAILY_TASK"
 }
+
+const DEPARTMENT_SORT_ORDER = ["housekeeping", "maintenance", "front_desk"] as const
+
+type ShiftSortOption = "status" | "department" | "name"
 
 function AdminDashboard() {
   const { user, logout } = useAuth()
@@ -133,6 +138,7 @@ function AdminDashboard() {
     start: string
     end: string
   }>({ start: "", end: "" })
+  const [shiftSortOption, setShiftSortOption] = useState<ShiftSortOption>("status")
 
   // Added selectedTask and showTaskForm states
   const [selectedTask, setSelectedTask] = useState<any>(null)
@@ -192,7 +198,45 @@ function AdminDashboard() {
     setShiftEditForm({ start: "", end: "" }) // This line might be redundant if using editingShift directly
   }
 
-  const workersList = users.filter((u) => u.role === "worker") // Renamed to workersList for clarity
+  const isManagedStaff = (user: User) => user.role === "worker" || user.role === "front_office"
+
+  const workersList = useMemo(() => users.filter(isManagedStaff), [users]) // Renamed to workersList for clarity
+
+  const today = new Date()
+
+  const sortedManagedStaff = useMemo(() => {
+    const getStatusRank = (worker: User) => {
+      const todayShift = getWorkerShiftForDate(worker, today, shiftSchedules)
+      if (todayShift.is_override) return 2
+      const availability = isWorkerOnShiftFromUser(worker)
+      if (availability.status === "OFF_DUTY") return 2
+      if (availability.status === "ON_BREAK") return 1
+      if (!todayShift.shift_start || !todayShift.shift_end) return 1
+      return 0
+    }
+
+    return [...workersList].sort((a, b) => {
+      switch (shiftSortOption) {
+        case "name":
+          return a.name.localeCompare(b.name)
+        case "department": {
+          const deptRank = (dept: string) => {
+            const index = DEPARTMENT_SORT_ORDER.indexOf(dept as (typeof DEPARTMENT_SORT_ORDER)[number])
+            return index === -1 ? DEPARTMENT_SORT_ORDER.length : index
+          }
+          const compare = deptRank(a.department) - deptRank(b.department)
+          if (compare !== 0) return compare
+          return a.name.localeCompare(b.name)
+        }
+        case "status":
+        default: {
+          const statusCompare = getStatusRank(a) - getStatusRank(b)
+          if (statusCompare !== 0) return statusCompare
+          return a.name.localeCompare(b.name)
+        }
+      }
+    })
+  }, [workersList, shiftSortOption, shiftSchedules, today])
 
   const getFilteredTasks = () => {
     const now = new Date()
@@ -277,8 +321,40 @@ function AdminDashboard() {
     }
   }
 
-  const availableWorkers = workersList.filter((w) => !getWorkerCurrentTask(w.id))
-  const busyWorkers = workersList.filter((w) => getWorkerCurrentTask(w.id))
+  type StaffStatusEntry = {
+    worker: User
+    currentTask: Task | MaintenanceTask | undefined
+    isOffDuty: boolean
+    isAvailable: boolean
+  }
+
+  const staffStatus: StaffStatusEntry[] = workersList.map((worker) => {
+    const currentTask = getWorkerCurrentTask(worker.id)
+    const todayShift = getWorkerShiftForDate(worker, today, shiftSchedules)
+    const availability = isWorkerOnShiftFromUser(worker)
+    const isOffDuty = Boolean(todayShift.is_override) || availability.status === "OFF_DUTY"
+    const isAvailable = !currentTask && !isOffDuty
+
+    return {
+      worker,
+      currentTask,
+      isOffDuty,
+      isAvailable,
+    }
+  })
+
+  const availableWorkers = staffStatus.filter((entry) => entry.isAvailable).map((entry) => entry.worker)
+
+  const availableStaffEntries = staffStatus
+    .filter((entry) => !entry.currentTask)
+    .sort((a, b) => Number(a.isOffDuty) - Number(b.isOffDuty))
+
+  const busyStaffEntries = staffStatus.filter(
+    (entry): entry is StaffStatusEntry & { currentTask: Task | MaintenanceTask } =>
+      Boolean(entry.currentTask) && !entry.isOffDuty,
+  )
+
+  const busyWorkers = busyStaffEntries.map((entry) => entry.worker)
 
   const allAuditLogs = filteredTasks
     .flatMap((task) =>
@@ -381,8 +457,9 @@ function AdminDashboard() {
     return "text-red-600"
   }
 
-  const calculateDepartmentStats = (department: "housekeeping" | "maintenance") => {
-    const departmentWorkers = workersList.filter((w) => w.department === department)
+  const calculateDepartmentStats = (department: Department) => {
+    const departmentStaffEntries = staffStatus.filter((entry) => entry.worker.department === department)
+    const departmentWorkers = departmentStaffEntries.map((entry) => entry.worker)
     const departmentTasks = filteredTasks.filter((t) => {
       const worker = users.find((u) => u.id === t.assigned_to_user_id)
       return worker?.department === department
@@ -404,15 +481,19 @@ function AdminDashboard() {
         ? (ratedTasks.reduce((sum, t) => sum + (t.rating || 0), 0) / ratedTasks.length).toFixed(1)
         : "N/A"
 
+    const departmentCompletedTasksWithDuration = departmentTasks.filter(
+      (t) => t.status === "COMPLETED" && t.actual_duration_minutes,
+    )
+
     const avgDuration =
-      completedTasksWithDuration.length > 0
+      departmentCompletedTasksWithDuration.length > 0
         ? Math.round(
-            completedTasksWithDuration.reduce((sum, t) => sum + (t.actual_duration_minutes || 0), 0) /
-              completedTasksWithDuration.length,
+            departmentCompletedTasksWithDuration.reduce((sum, t) => sum + (t.actual_duration_minutes || 0), 0) /
+              departmentCompletedTasksWithDuration.length,
           )
         : 0
 
-    const availableWorkers = departmentWorkers.filter((w) => !getWorkerCurrentTask(w.id)).length
+    const availableWorkers = departmentStaffEntries.filter((entry) => entry.isAvailable).length
 
     return {
       totalWorkers: departmentWorkers.length,
@@ -427,6 +508,7 @@ function AdminDashboard() {
 
   const housekeepingStats = calculateDepartmentStats("housekeeping")
   const maintenanceStats = calculateDepartmentStats("maintenance")
+  const frontDeskStats = calculateDepartmentStats("front_desk")
 
   const exportToExcel = () => {
     import("xlsx").then((XLSX) => {
@@ -465,7 +547,7 @@ function AdminDashboard() {
           "Completion Rate": `${housekeepingStats.completionRate}%`,
           "Avg Rating": housekeepingStats.avgRating,
           "Avg Duration": `${housekeepingStats.avgDuration} min`,
-          "Available Workers": housekeepingStats.availableWorkers,
+          "Available Staff": housekeepingStats.availableWorkers,
         },
         {
           Department: "Maintenance",
@@ -475,7 +557,17 @@ function AdminDashboard() {
           "Completion Rate": `${maintenanceStats.completionRate}%`,
           "Avg Rating": maintenanceStats.avgRating,
           "Avg Duration": `${maintenanceStats.avgDuration} min`,
-          "Available Workers": maintenanceStats.availableWorkers,
+          "Available Staff": maintenanceStats.availableWorkers,
+        },
+        {
+          Department: "Front Desk",
+          "Total Workers": frontDeskStats.totalWorkers,
+          "Total Tasks": frontDeskStats.totalTasks,
+          "Completed Tasks": frontDeskStats.completedTasks,
+          "Completion Rate": `${frontDeskStats.completionRate}%`,
+          "Avg Rating": frontDeskStats.avgRating,
+          "Avg Duration": `${frontDeskStats.avgDuration} min`,
+          "Available Staff": frontDeskStats.availableWorkers,
         },
       ]
 
@@ -559,6 +651,16 @@ function AdminDashboard() {
       doc.text(`${maintenanceStats.completionRate}%`, 110, yPos + 5)
       doc.text(maintenanceStats.avgRating, 145, yPos + 5)
       doc.text(`${maintenanceStats.avgDuration} min`, 170, yPos + 5)
+      yPos += 7
+
+      // Front Desk row
+      doc.rect(14, yPos, 182, 7)
+      doc.text("Front Desk", 16, yPos + 5)
+      doc.text(frontDeskStats.totalWorkers.toString(), 60, yPos + 5)
+      doc.text(frontDeskStats.totalTasks.toString(), 85, yPos + 5)
+      doc.text(`${frontDeskStats.completionRate}%`, 110, yPos + 5)
+      doc.text(frontDeskStats.avgRating, 145, yPos + 5)
+      doc.text(`${frontDeskStats.avgDuration} min`, 170, yPos + 5)
       yPos += 15
 
       // Add worker performance section
@@ -943,7 +1045,7 @@ function AdminDashboard() {
                   onClick={() => setShowWorkersModal(true)}
                 >
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Active Workers</CardTitle>
+                    <CardTitle className="text-sm font-medium">Active Staff</CardTitle>
                     <Users className="h-4 w-4 text-muted-foreground" />
                   </CardHeader>
                   <CardContent>
@@ -976,11 +1078,9 @@ function AdminDashboard() {
             </section>
 
             <section className="space-y-4">
-              <h2 className="text-lg font-semibold">Worker Status</h2>
+              <h2 className="text-lg font-semibold">Staff Status</h2>
               <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
-                {users
-                  .filter((w) => w.role === "worker")
-                  .map((worker) => {
+                {workersList.map((worker) => {
                     const currentTask = tasks.find(
                       (t) =>
                         t.assigned_to_user_id === worker.id && (t.status === "IN_PROGRESS" || t.status === "PAUSED"),
@@ -1459,7 +1559,7 @@ function AdminDashboard() {
                 task={selectedTaskDef}
                 onCancel={handleCancelTaskCreation}
                 onSubmit={handleSubmitTask}
-                workers={users.filter((u) => u.role === "worker")}
+                workers={workersList}
                 currentUser={user ?? null}
                 workersLoaded={usersLoaded}
                 workersLoadError={usersLoadError}
@@ -1500,7 +1600,7 @@ function AdminDashboard() {
         {/* Staff Tab */}
         {activeTab === "staff" && (
           <div className="p-6 space-y-6">
-            <div className="grid gap-4 md:grid-cols-2">
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
               <Card className="border-l-4 border-l-blue-500">
                 <CardHeader className="pb-3">
                   <CardTitle className="text-lg flex items-center gap-2">
@@ -1535,6 +1635,45 @@ function AdminDashboard() {
                     <div>
                       <p className="text-sm text-muted-foreground">Avg Duration</p>
                       <p className="text-xl font-semibold">{housekeepingStats.avgDuration} min</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="border-l-4 border-l-purple-500">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <UserCog className="h-5 w-5 text-purple-500" />
+                    Front Desk Team
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-sm text-muted-foreground">Total Staff</p>
+                      <p className="text-2xl font-bold">{frontDeskStats.totalWorkers}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">Available</p>
+                      <p className="text-2xl font-bold text-green-600">{frontDeskStats.availableWorkers}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">Completion Rate</p>
+                      <p className="text-2xl font-bold">{frontDeskStats.completionRate}%</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">Avg Rating</p>
+                      <p className="text-2xl font-bold">
+                        {frontDeskStats.avgRating !== "N/A" ? `${frontDeskStats.avgRating} ?` : "N/A"}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">Total Tasks</p>
+                      <p className="text-xl font-semibold">{frontDeskStats.totalTasks}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">Avg Duration</p>
+                      <p className="text-xl font-semibold">{frontDeskStats.avgDuration} min</p>
                     </div>
                   </div>
                 </CardContent>
@@ -1609,10 +1748,10 @@ function AdminDashboard() {
                         <DialogHeader>
                           <DialogTitle>Weekly Shift Schedule</DialogTitle>
                           <DialogDescription>
-                            View and manage the weekly shift schedule for all workers
+                            View and manage the weekly shift schedule for all staff
                           </DialogDescription>
                         </DialogHeader>
-                        <WeeklyScheduleView workers={users.filter((u) => u.role === "worker")} />
+                        <WeeklyScheduleView workers={sortedManagedStaff} />
                       </DialogContent>
                     </Dialog>
                     <Button
@@ -1638,9 +1777,27 @@ function AdminDashboard() {
               </CardHeader>
               <Collapsible open={showShiftManagement} onOpenChange={setShowShiftManagement}>
                 <CollapsibleContent>
-                  <CardContent className="pt-6">
+                  <CardContent className="pt-6 space-y-6">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <p className="text-sm text-muted-foreground">
+                        Showing {sortedManagedStaff.length} staff members scheduled for today.
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-muted-foreground">Sort by</span>
+                        <select
+                          value={shiftSortOption}
+                          onChange={(event) => setShiftSortOption(event.target.value as ShiftSortOption)}
+                          className="min-h-[44px] rounded-md border border-border bg-background px-3 py-2 text-sm"
+                        >
+                          <option value="status">Status (On duty first)</option>
+                          <option value="department">Department</option>
+                          <option value="name">Name</option>
+                        </select>
+                      </div>
+                    </div>
+
                     <div className="space-y-3">
-                      {workersList.map((worker) => {
+                      {sortedManagedStaff.map((worker) => {
                         const today = new Date()
                         const todayShift = getWorkerShiftForDate(worker, today, shiftSchedules)
                         const isEditing = editingShift?.workerId === worker.id
@@ -1902,39 +2059,47 @@ function AdminDashboard() {
 
             <Card>
               <CardHeader>
-                <CardTitle>Available Workers</CardTitle>
+                <CardTitle>Available Staff</CardTitle>
               </CardHeader>
               <CardContent>
-                {availableWorkers.length > 0 ? (
+                {availableStaffEntries.length > 0 ? (
                   <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                    {availableWorkers.map((worker) => (
-                      <WorkerStatusCard key={worker.id} worker={worker} onClick={() => handleWorkerClick(worker)} />
+                    {availableStaffEntries.map(({ worker, isOffDuty }) => (
+                      <div
+                        key={worker.id}
+                        className={isOffDuty ? "opacity-60 grayscale transition-opacity" : "transition-opacity"}
+                      >
+                        <WorkerStatusCard
+                          worker={worker}
+                          onClick={() => handleWorkerClick(worker)}
+                        />
+                      </div>
                     ))}
                   </div>
                 ) : (
-                  <p className="text-sm text-muted-foreground text-center py-8">No workers available</p>
+                  <p className="text-sm text-muted-foreground text-center py-8">No staff available</p>
                 )}
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader>
-                <CardTitle>Busy Workers</CardTitle>
+                <CardTitle>Busy Staff</CardTitle>
               </CardHeader>
               <CardContent>
-                {busyWorkers.length > 0 ? (
+                {busyStaffEntries.length > 0 ? (
                   <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                    {busyWorkers.map((worker) => (
+                    {busyStaffEntries.map(({ worker, currentTask }) => (
                       <WorkerStatusCard
                         key={worker.id}
                         worker={worker}
-                        currentTask={getWorkerCurrentTask(worker.id)}
+                        currentTask={currentTask}
                         onClick={() => handleWorkerClick(worker)}
                       />
                     ))}
                   </div>
                 ) : (
-                  <p className="text-sm text-muted-foreground text-center py-8">No workers currently busy</p>
+                  <p className="text-sm text-muted-foreground text-center py-8">No staff currently busy</p>
                 )}
               </CardContent>
             </Card>
@@ -2102,13 +2267,11 @@ function AdminDashboard() {
       <Dialog open={showWorkersModal} onOpenChange={setShowWorkersModal}>
         <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>All Workers</DialogTitle>
-            <DialogDescription>Complete list of all workers and their current status</DialogDescription>
+            <DialogTitle>All Staff</DialogTitle>
+            <DialogDescription>Complete list of all staff members and their current status</DialogDescription>
           </DialogHeader>
           <div className="space-y-3 mt-4">
-            {users
-              .filter((u) => u.role === "worker")
-              .map((worker) => {
+            {workersList.map((worker) => {
                 const currentTask = tasks.find(
                   (t) => t.assigned_to === worker.id && (t.status === "IN_PROGRESS" || t.status === "PAUSED"),
                 )

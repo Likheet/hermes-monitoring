@@ -112,7 +112,11 @@ export function WorkerStatusCard({ worker, currentTask, onClick }: WorkerStatusC
           </div>
           {todayShift.is_override && todayShift.override_reason ? (
             <Badge variant="secondary" className="bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-100">
-              Off Duty
+              Off-Duty
+            </Badge>
+          ) : availability.status === "OFF_DUTY" ? (
+            <Badge variant="secondary" className="bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-100">
+              Off-Duty
             </Badge>
           ) : isOnBreak ? (
             <Badge variant="secondary" className="bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-100">

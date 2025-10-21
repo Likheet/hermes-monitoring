@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useMemo, useRef, useEffect } from "react"
-import { X, MapPin, Clock, Camera, AlertCircle, User } from "lucide-react"
+import { X, MapPin, Clock, Camera, AlertCircle, AlertTriangle, User } from "lucide-react"
 import type { TaskDefinition, TaskCategory, Priority } from "@/lib/task-definitions"
 import { ALL_LOCATIONS, getACLocationsForRoom } from "@/lib/location-data"
 import { CATEGORY_COLORS, CATEGORY_LABELS } from "@/lib/task-definitions"
@@ -12,6 +12,29 @@ import {
   type WorkerAvailability,
 } from "@/lib/shift-utils"
 import type { Department } from "@/lib/types"
+import { Badge } from "@/components/ui/badge"
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import { cn } from "@/lib/utils"
+
+const DEPARTMENT_ORDER: Department[] = ["housekeeping", "maintenance", "front_desk"]
 
 interface TaskAssignmentFormProps {
   task: TaskDefinition
@@ -74,58 +97,136 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers, initialD
   const [photoDocumentationRequired, setPhotoDocumentationRequired] = useState(task.photoDocumentationRequired || false)
   const [photoCategories, setPhotoCategories] = useState(task.photoCategories || [])
   //
+  const [crossDeptCandidate, setCrossDeptCandidate] = useState<WorkerWithAvailability | null>(null)
 
   const locationRef = useRef<HTMLDivElement>(null)
 
+  const departmentLabels: Record<Department, string> = {
+    housekeeping: "Housekeeping",
+    maintenance: "Maintenance",
+    front_desk: "Front Desk",
+  }
+
   const isOtherTask = task.id === "other-custom-task"
 
-  // Filter workers by department
-  const departmentWorkers = useMemo(() => {
-    return workers.filter((w) => w.department === selectedDepartment)
-  }, [workers, selectedDepartment])
+  type WorkerWithAvailability = ReturnType<typeof getWorkersWithShiftStatusFromUsers>[number]
 
-  // Get workers with shift status
-  const workersWithShifts = getWorkersWithShiftStatusFromUsers(departmentWorkers)
+  const workersWithShifts = useMemo(() => getWorkersWithShiftStatusFromUsers(workers), [workers])
 
-  // Sort workers: idle first, then busy
-  const sortedWorkers = useMemo(() => {
-    const statusOrder: Record<WorkerAvailability["status"], number> = {
-      ON_SHIFT: 0,
-      ON_BREAK: 1,
-      ENDING_SOON: 2,
-      OFF_DUTY: 3,
-    }
+  const staffIncludingCurrent = useMemo<WorkerWithAvailability[]>(() => {
+    if (!currentUser) return workersWithShifts
 
-    return [...workersWithShifts].sort((a, b) => statusOrder[a.availability.status] - statusOrder[b.availability.status])
-  }, [workersWithShifts])
-
-  const assigneeOptions = useMemo(() => {
-    if (!currentUser) return sortedWorkers
-
-    const alreadyIncluded = sortedWorkers.some((worker) => worker.id === currentUser.id)
-    if (alreadyIncluded) return sortedWorkers
+    const alreadyIncluded = workersWithShifts.some((worker) => worker.id === currentUser.id)
+    if (alreadyIncluded) return workersWithShifts
 
     return [
+      ...workersWithShifts,
       {
         ...currentUser,
         availability: isWorkerOnShiftFromUser(currentUser),
       },
-      ...sortedWorkers,
     ]
-  }, [sortedWorkers, currentUser])
+  }, [workersWithShifts, currentUser])
 
-  const formatAvailabilityLabel = (availability: WorkerAvailability) => {
-    switch (availability.status) {
-      case "ON_SHIFT":
-        return "✅ Available"
-      case "ENDING_SOON":
-        return availability.minutesUntilEnd ? `⚠️ Shift ending in ${availability.minutesUntilEnd}min` : "⚠️ Ending soon"
-      case "ON_BREAK":
-        return "☕ On Break"
-      default:
-        return "❌ Off Duty"
+  const sortedStaff = useMemo(() => {
+    const orderByStatus = (status: WorkerAvailability["status"]) => (status === "OFF_DUTY" ? 1 : 0)
+
+    return [...staffIncludingCurrent].sort((a, b) => {
+      const statusCompare = orderByStatus(a.availability.status) - orderByStatus(b.availability.status)
+      if (statusCompare !== 0) return statusCompare
+
+      const deptCompare =
+        DEPARTMENT_ORDER.indexOf(a.department as Department) - DEPARTMENT_ORDER.indexOf(b.department as Department)
+      if (deptCompare !== 0) return deptCompare
+
+      return a.name.localeCompare(b.name)
+    })
+  }, [staffIncludingCurrent])
+
+  const staffGroupedByDepartment = useMemo<Record<Department, WorkerWithAvailability[]>>(() => {
+    return DEPARTMENT_ORDER.reduce(
+      (acc, dept) => {
+        acc[dept] = sortedStaff.filter((worker) => worker.department === dept)
+        return acc
+      },
+      { housekeeping: [], maintenance: [], front_desk: [] } as Record<Department, WorkerWithAvailability[]>,
+    )
+  }, [sortedStaff])
+
+  const hasOnDutyStaff = useMemo(
+    () => sortedStaff.some((worker) => worker.availability.status !== "OFF_DUTY"),
+    [sortedStaff],
+  )
+
+  const selectedWorkerEntry = useMemo(
+    () => sortedStaff.find((worker) => worker.id === assignedTo),
+    [sortedStaff, assignedTo],
+  )
+
+  const selectedWorkerLabel = selectedWorkerEntry
+    ? `${selectedWorkerEntry.name} (${departmentLabels[selectedWorkerEntry.department as Department]}) • ${
+        selectedWorkerEntry.availability.status !== "OFF_DUTY" ? "On Duty" : "Off-Duty"
+      }`
+    : undefined
+
+  const clearAssignedToError = () =>
+    setErrors((prev) => {
+      if (!prev.assignedTo) return prev
+      const { assignedTo: _removed, ...rest } = prev
+      return rest
+    })
+
+  const finalizeAssignment = (worker: WorkerWithAvailability) => {
+    setAssignedTo(worker.id)
+    clearAssignedToError()
+  }
+
+  const handleAssigneeSelection = (value: string) => {
+    if (!value) {
+      setAssignedTo("")
+      return
+    }
+
+    const worker = sortedStaff.find((candidate) => candidate.id === value)
+    if (!worker) {
+      setAssignedTo("")
+      return
+    }
+
+    if (worker.department !== selectedDepartment) {
+      setCrossDeptCandidate(worker)
+      return
+    }
+
+    finalizeAssignment(worker)
+  }
+
+  const handleCancelCrossDeptAssignment = () => {
+    setCrossDeptCandidate(null)
+  }
+
+  const handleConfirmCrossDeptAssignment = () => {
+    if (crossDeptCandidate) {
+      finalizeAssignment(crossDeptCandidate)
+      setCrossDeptCandidate(null)
     }
   }
+
+  const taskDisplayName = useMemo(
+    () => (isOtherTask ? (customTaskName.trim() || task.name) : task.name),
+    [isOtherTask, customTaskName, task.name],
+  )
+
+  const taskDepartmentLabel = departmentLabels[selectedDepartment]
+  const crossDeptWorkerLabel = crossDeptCandidate
+    ? departmentLabels[crossDeptCandidate.department as Department]
+    : ""
+
+  useEffect(() => {
+    if (assignedTo && !sortedStaff.some((worker) => worker.id === assignedTo)) {
+      setAssignedTo("")
+    }
+  }, [assignedTo, sortedStaff])
 
   // Filter locations based on input
   const filteredLocations = useMemo(() => {
@@ -195,6 +296,19 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers, initialD
   const handleSubmit = () => {
     if (!validateForm()) return
 
+    const assignedEntry = sortedStaff.find((worker) => worker.id === assignedTo)
+    if (!assignedEntry) {
+      setErrors((prev) => ({ ...prev, assignedTo: "Please select an on-duty staff member" }))
+      return
+    }
+
+    if (assignedEntry.availability.status === "OFF_DUTY") {
+      setErrors((prev) => ({ ...prev, assignedTo: "Selected staff member is currently off duty" }))
+      return
+    }
+
+    clearAssignedToError()
+
     const data: TaskAssignmentData = {
       taskId: task.id,
       taskName: isOtherTask ? customTaskName : task.name,
@@ -234,9 +348,10 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers, initialD
   const photoTypesCount = photoDocumentationRequired ? photoCategories.length : 0
   //
 
-  return (
-    <div className="mt-4 sm:mt-6 p-4 sm:p-6 bg-card border-2 border-border rounded-xl">
-      <div className="flex items-start justify-between mb-4 sm:mb-6 gap-3">
+    return (
+      <>
+        <div className="mt-4 sm:mt-6 p-4 sm:p-6 bg-card border-2 border-border rounded-xl">
+          <div className="flex items-start justify-between mb-4 sm:mb-6 gap-3">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 sm:gap-3 mb-2 flex-wrap">
             <h2 className="text-lg sm:text-xl font-bold text-foreground truncate">{task.name}</h2>
@@ -322,6 +437,7 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers, initialD
             >
               <option value="housekeeping">Housekeeping</option>
               <option value="maintenance">Maintenance</option>
+              <option value="front_desk">Front Desk</option>
             </select>
           </div>
         )}
@@ -500,29 +616,64 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers, initialD
         <div>
           <label className="block text-sm font-semibold text-foreground mb-2">Assign To</label>
           <div className="relative">
-            <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
-            <select
-              value={assignedTo}
-              onChange={(e) => setAssignedTo(e.target.value)}
-              className={`w-full pl-11 pr-4 py-3 border-2 rounded-lg focus:border-ring focus:outline-none appearance-none bg-background text-foreground ${
-                errors.assignedTo ? "border-destructive" : "border-border"
-              }`}
-            >
-              <option value="">Select an assignee...</option>
-              {assigneeOptions.map((worker) => {
-                const isSelf = worker.id === currentUser?.id
-                const availabilityLabel = formatAvailabilityLabel(worker.availability)
-                const label = isSelf
-                  ? `Assign to myself (${worker.name}) - ${availabilityLabel}`
-                  : `${worker.name} - ${availabilityLabel}`
-                return (
-                  <option key={worker.id} value={worker.id}>
-                    {label}
-                  </option>
-                )
-              })}
-            </select>
+            <User className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+            <Select value={assignedTo || undefined} onValueChange={handleAssigneeSelection}>
+              <SelectTrigger aria-invalid={Boolean(errors.assignedTo)} className="pl-9">
+                <SelectValue placeholder="Select an assignee...">{selectedWorkerLabel}</SelectValue>
+              </SelectTrigger>
+              <SelectContent className="min-w-[18rem]">
+                {DEPARTMENT_ORDER.map((dept) => {
+                  const workersInDept = staffGroupedByDepartment[dept]
+                  if (!workersInDept.length) return null
+
+                  return (
+                    <SelectGroup key={dept}>
+                      <SelectLabel>{departmentLabels[dept]}</SelectLabel>
+                      {workersInDept.map((worker) => {
+                        const isOnDuty = worker.availability.status !== "OFF_DUTY"
+                        return (
+                          <SelectItem
+                            key={worker.id}
+                            value={worker.id}
+                            disabled={!isOnDuty}
+                            className={cn(!isOnDuty && "opacity-65 cursor-not-allowed")}
+                          >
+                            <div className="flex w-full items-center justify-between">
+                              <div className="flex flex-col text-left">
+                                <span className="font-medium">{worker.name}</span>
+                                <span className="text-xs text-muted-foreground">
+                                  {departmentLabels[worker.department as Department]}
+                                </span>
+                              </div>
+                              <Badge
+                                variant="outline"
+                                className={cn(
+                                  "text-xs",
+                                  isOnDuty
+                                    ? "border-emerald-200 bg-emerald-100 text-emerald-700"
+                                    : "border-slate-200 bg-slate-100 text-slate-500",
+                                )}
+                              >
+                                {isOnDuty ? "On Duty" : "Off-Duty"}
+                              </Badge>
+                            </div>
+                          </SelectItem>
+                        )
+                      })}
+                    </SelectGroup>
+                  )
+                })}
+                {sortedStaff.length === 0 && (
+                  <div className="px-3 py-6 text-sm text-muted-foreground">No staff members available.</div>
+                )}
+              </SelectContent>
+            </Select>
           </div>
+          {!hasOnDutyStaff && (
+            <p className="mt-1 text-xs text-muted-foreground">
+              {"No one is currently on duty\u2014showing all staff members."}
+            </p>
+          )}
           {errors.assignedTo && (
             <p className="mt-1 text-sm text-destructive flex items-center gap-1">
               <AlertCircle className="w-4 h-4" />
@@ -567,5 +718,36 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers, initialD
         </div>
       </div>
     </div>
+
+    <AlertDialog
+      open={Boolean(crossDeptCandidate)}
+      onOpenChange={(open) => {
+        if (!open) {
+          handleCancelCrossDeptAssignment()
+        }
+      }}
+    >
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <div className="flex items-center gap-3">
+            <div className="rounded-full bg-amber-100 p-2 text-amber-600">
+              <AlertTriangle className="h-5 w-5" />
+            </div>
+            <AlertDialogTitle>Confirm cross-department assignment</AlertDialogTitle>
+          </div>
+          <AlertDialogDescription>
+            This is a {taskDisplayName} ({taskDepartmentLabel}) task being assigned to{" "}
+            {crossDeptWorkerLabel || "another department"} staff. Are you sure you want to proceed?
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel onClick={handleCancelCrossDeptAssignment}>Cancel</AlertDialogCancel>
+          <AlertDialogAction onClick={handleConfirmCrossDeptAssignment}>Confirm Assignment</AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  </>
   )
 }
+
+

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useMemo, useState } from "react"
 
 export const dynamic = "force-dynamic"
 
@@ -15,6 +15,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import {
   LogOut,
   Plus,
@@ -29,6 +30,7 @@ import {
   Edit,
   Edit2,
   Filter,
+  ChevronDown,
 } from "lucide-react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
@@ -44,7 +46,7 @@ import { WeeklyScheduleView } from "@/components/shift/weekly-schedule-view"
 import { ReassignTaskModal } from "@/components/reassign-task-modal"
 import { EditTaskModal } from "@/components/edit-task-modal"
 import { FrontDeskActiveTaskModal } from "@/components/front-desk-active-task-modal"
-import type { Task } from "@/lib/types"
+import type { Task, User } from "@/lib/types"
 
 const priorityColors = {
   GUEST_REQUEST: "bg-red-500 text-white",
@@ -61,6 +63,10 @@ const statusColors = {
   REJECTED: "bg-red-500",
 }
 
+const DEPARTMENT_SORT_ORDER = ["housekeeping", "maintenance", "front_desk"] as const
+
+type ShiftSortOption = "status" | "department" | "name"
+
 function FrontOfficeDashboard() {
   const { user, logout } = useAuth()
   const { tasks, issues, users, maintenanceTasks, updateWorkerShift, shiftSchedules, saveShiftSchedule } = useTasks()
@@ -73,8 +79,10 @@ function FrontOfficeDashboard() {
   const [reassignTask, setReassignTask] = useState<Task | null>(null)
   const [editTask, setEditTask] = useState<Task | null>(null)
   const [selfTaskModal, setSelfTaskModal] = useState<Task | null>(null)
+  const [isStaffStatusOpen, setStaffStatusOpen] = useState(true)
+  const [shiftSortOption, setShiftSortOption] = useState<ShiftSortOption>("status")
 
-  const workers = users.filter((u) => u.role === "worker")
+  const workers = users.filter((u) => u.role === "worker" || u.role === "front_office")
   const today = new Date()
 
   const [editingShifts, setEditingShifts] = useState<
@@ -114,6 +122,40 @@ function FrontOfficeDashboard() {
       }),
     ),
   )
+
+  const sortedShiftWorkers = useMemo(() => {
+    const getStatusRank = (worker: User) => {
+      const overrideOff = offDutyStatus[worker.id]
+      if (overrideOff) return 2
+
+      const todayShift = getWorkerShiftForDate(worker, today, shiftSchedules)
+      if (todayShift.is_override) return 2
+      if (!todayShift.shift_start || !todayShift.shift_end) return 1
+      return 0
+    }
+
+    return [...workers].sort((a, b) => {
+      switch (shiftSortOption) {
+        case "name":
+          return a.name.localeCompare(b.name)
+        case "department": {
+          const deptRank = (dept: string) => {
+            const index = DEPARTMENT_SORT_ORDER.indexOf(dept as (typeof DEPARTMENT_SORT_ORDER)[number])
+            return index === -1 ? DEPARTMENT_SORT_ORDER.length : index
+          }
+          const compare = deptRank(a.department) - deptRank(b.department)
+          if (compare !== 0) return compare
+          return a.name.localeCompare(b.name)
+        }
+        case "status":
+        default: {
+          const statusCompare = getStatusRank(a) - getStatusRank(b)
+          if (statusCompare !== 0) return statusCompare
+          return a.name.localeCompare(b.name)
+        }
+      }
+    })
+  }, [workers, shiftSortOption, offDutyStatus, shiftSchedules, today])
 
   const getWorkerCurrentTask = (workerId: string) => {
     const regularTask = tasks.find(
@@ -272,8 +314,26 @@ function FrontOfficeDashboard() {
               </TabsList>
 
               <TabsContent value="current" className="space-y-6">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="text-sm text-muted-foreground">
+                    Showing {sortedShiftWorkers.length} staff members scheduled for today.
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-muted-foreground">Sort by</span>
+                    <select
+                      value={shiftSortOption}
+                      onChange={(event) => setShiftSortOption(event.target.value as ShiftSortOption)}
+                      className="min-h-[44px] rounded-md border border-border bg-background px-3 py-2 text-sm"
+                    >
+                      <option value="status">Status (On duty first)</option>
+                      <option value="department">Department</option>
+                      <option value="name">Name</option>
+                    </select>
+                  </div>
+                </div>
+
                 <div className="grid gap-4 md:grid-cols-2">
-                  {workers.map((worker) => {
+                  {sortedShiftWorkers.map((worker) => {
                     const edited = editingShifts[worker.id]
                     const todayShift = getWorkerShiftForDate(worker, today, shiftSchedules)
                     const isOffDuty = offDutyStatus[worker.id]
@@ -799,40 +859,61 @@ function FrontOfficeDashboard() {
               </section>
             )}
 
-<section>
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-semibold">Available Workers</h2>
-                <span className="text-sm text-muted-foreground">{availableWorkers.length} available</span>
-              </div>
-              {availableWorkers.length > 0 ? (
-                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                  {availableWorkers.map((worker) => (
-                    <WorkerStatusCard key={worker.id} worker={worker} />
-                  ))}
-                </div>
-              ) : (
-                <div className="flex min-h-[200px] items-center justify-center border-2 border-dashed rounded-lg">
-                  <p className="text-muted-foreground">No workers available</p>
-                </div>
-              )}
-            </section>
-
             <section>
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-semibold">Busy Workers</h2>
-                <span className="text-sm text-muted-foreground">{busyWorkers.length} working</span>
-              </div>
-              {busyWorkers.length > 0 ? (
-                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                  {busyWorkers.map((worker) => (
-                    <WorkerStatusCard key={worker.id} worker={worker} currentTask={getWorkerCurrentTask(worker.id)} />
-                  ))}
+              <Collapsible open={isStaffStatusOpen} onOpenChange={setStaffStatusOpen}>
+                <div className="flex items-center justify-between mb-2">
+                  <h2 className="text-lg font-semibold">Staff Status</h2>
+                  <CollapsibleTrigger asChild>
+                    <Button variant="ghost" size="sm" className="flex items-center gap-2">
+                      <ChevronDown
+                        className={`h-4 w-4 transition-transform ${isStaffStatusOpen ? "rotate-180" : ""}`}
+                      />
+                      {isStaffStatusOpen ? "Hide" : "Show"}
+                    </Button>
+                  </CollapsibleTrigger>
                 </div>
-              ) : (
-                <div className="flex min-h-[200px] items-center justify-center border-2 border-dashed rounded-lg">
-                  <p className="text-muted-foreground">No workers currently busy</p>
-                </div>
-              )}
+                <CollapsibleContent className="space-y-6 pt-2">
+                  <div>
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-base font-semibold">Available Staff</h3>
+                      <span className="text-sm text-muted-foreground">{availableWorkers.length} available</span>
+                    </div>
+                    {availableWorkers.length > 0 ? (
+                      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                        {availableWorkers.map((worker) => (
+                          <WorkerStatusCard key={worker.id} worker={worker} />
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="flex min-h-[200px] items-center justify-center border-2 border-dashed rounded-lg">
+                        <p className="text-muted-foreground">No staff available</p>
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-base font-semibold">Busy Staff</h3>
+                      <span className="text-sm text-muted-foreground">{busyWorkers.length} working</span>
+                    </div>
+                    {busyWorkers.length > 0 ? (
+                      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                        {busyWorkers.map((worker) => (
+                          <WorkerStatusCard
+                            key={worker.id}
+                            worker={worker}
+                            currentTask={getWorkerCurrentTask(worker.id)}
+                          />
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="flex min-h-[200px] items-center justify-center border-2 border-dashed rounded-lg">
+                        <p className="text-muted-foreground">No staff currently busy</p>
+                      </div>
+                    )}
+                  </div>
+                </CollapsibleContent>
+              </Collapsible>
             </section>
 
             {openIssues.length > 0 && (

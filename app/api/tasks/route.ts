@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
 import { cookies } from "next/headers"
 import { databaseTaskToApp } from "@/lib/database-types"
+import { getWorkerShiftForDate, isWorkerOnShiftWithSchedule } from "@/lib/shift-utils"
 
 const PRIORITY_APP_TO_DB: Record<string, "low" | "medium" | "high" | "urgent"> = {
   GUEST_REQUEST: "medium",
@@ -99,6 +100,53 @@ export async function POST(request: Request) {
       photo_documentation_required,
       photo_categories,
     } = body
+
+    // Validate assigned user availability (prevent assigning tasks to off-duty users)
+    if (assigned_to_user_id) {
+      // Load the user and today's shift schedules
+      const { data: usersResult, error: usersError } = await supabase.from("users").select("*").eq("id", assigned_to_user_id).limit(1)
+      if (usersError) {
+        console.error("Failed to load assigned user:", usersError)
+        return NextResponse.json({ error: "Failed to validate assignee" }, { status: 400 })
+      }
+
+      const user = (usersResult && usersResult[0]) ?? null
+      if (!user) {
+        return NextResponse.json({ error: "Assigned user not found" }, { status: 400 })
+      }
+
+      // Load shift schedules for today for that worker
+      const todayStr = new Date().toISOString().split("T")[0]
+      const { data: schedulesResult, error: schedulesError } = await supabase
+        .from("shift_schedules")
+        .select("*")
+        .eq("worker_id", assigned_to_user_id)
+        .eq("schedule_date", todayStr)
+
+      if (schedulesError) {
+        console.error("Failed to load shift schedules:", schedulesError)
+        return NextResponse.json({ error: "Failed to validate assignee" }, { status: 400 })
+      }
+
+      const shiftSchedules = (schedulesResult ?? []) as any[]
+
+      const availability = isWorkerOnShiftWithSchedule(
+        {
+          id: user.id,
+          name: user.name,
+          shift_start: user.shift_start,
+          shift_end: user.shift_end,
+          has_break: user.has_break,
+          break_start: user.break_start,
+          break_end: user.break_end,
+        } as any,
+        shiftSchedules,
+      )
+
+      if (availability.status === "OFF_DUTY") {
+        return NextResponse.json({ error: "Cannot assign task to an off-duty staff member" }, { status: 400 })
+      }
+    }
 
     const assigned_at = toDualTimestamp()
     const normalizedPriority = normalizePriority(priority_level) ?? "low"
