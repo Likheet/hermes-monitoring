@@ -45,6 +45,7 @@ type DatabaseTaskSummary = Pick<
   | "actual_duration"
   | "worker_remarks"
   | "supervisor_remarks"
+  | "photo_requirements"
   | "requires_verification"
 >
 
@@ -167,6 +168,7 @@ export async function loadTasksFromSupabase(
           "actual_duration",
           "worker_remarks",
           "supervisor_remarks",
+          "photo_requirements",
           "requires_verification",
         ].join(","),
       )
@@ -208,7 +210,7 @@ export async function loadTasksFromSupabase(
         timer_validation_flag: false,
         audit_log: [],
         pause_history: [],
-        photo_requirements: [],
+        photo_requirements: row.photo_requirements ?? null,
       } as DatabaseTask),
     )
     setCachedValue("tasks", mapped)
