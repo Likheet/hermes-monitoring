@@ -10,6 +10,7 @@ import {
   getWorkersWithShiftStatusFromUsers,
   getWorkersWithShiftStatusFromUsersAndSchedules,
   isWorkerOnShiftFromUser,
+  isWorkerOnShiftWithSchedule,
   type WorkerAvailability,
 } from "@/lib/shift-utils"
 import type { Department } from "@/lib/types"
@@ -112,7 +113,7 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers, initialD
   const [showLocationSuggestions, setShowLocationSuggestions] = useState(false)
   const [acLocation, setAcLocation] = useState("")
   const [remarks, setRemarks] = useState(initialData?.remarks || "")
-  const [assignedTo, setAssignedTo] = useState(initialData?.assignedTo || "")
+  const [assignedTo, setAssignedTo] = useState<string>(initialData?.assignedTo ?? "")
   const [errors, setErrors] = useState<Record<string, string>>({})
 
   const [customTaskName, setCustomTaskName] = useState("")
@@ -124,6 +125,20 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers, initialD
   const [photoCategories, setPhotoCategories] = useState(task.photoCategories || [])
   //
   const [crossDeptCandidate, setCrossDeptCandidate] = useState<WorkerWithAvailability | null>(null)
+
+  const timezoneOffset = useMemo(() => new Date().getTimezoneOffset(), [])
+  const shiftOptions = useMemo(() => ({ timezoneOffsetMinutes: timezoneOffset }), [timezoneOffset])
+
+  // Controlled Select state to prevent DOM errors
+  const [selectOpen, setSelectOpen] = useState(false)
+  const [frozenStaff, setFrozenStaff] = useState<Record<Department, WorkerWithAvailability[]>>({
+    housekeeping: [],
+    maintenance: [],
+    front_desk: [],
+    admin: [],
+    "housekeeping-dept": [],
+    "maintenance-dept": [],
+  })
 
   const definitionIsRecurring = Boolean(task.isRecurring)
   const definitionRecurringFrequency = task.recurringFrequency ?? null
@@ -150,12 +165,61 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers, initialD
   type WorkerWithAvailability = ReturnType<typeof getWorkersWithShiftStatusFromUsers>[number]
 
   const workersWithShifts = useMemo(() => {
+    const now = new Date()
+    const currentTimeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`
+    const todayStr = now.toISOString().split('T')[0]
+    
+    console.log("=".repeat(80))
+    console.log("[TaskAssignment] ⏰ CURRENT TIME:", currentTimeStr, "DATE:", todayStr)
+    console.log("=".repeat(80))
+    
+    console.log("[TaskAssignment] 📋 RAW DATA:")
+    console.log("  - Workers count:", workers.length)
+    console.log("  - Has shiftSchedules?", !!shiftSchedules)
+    console.log("  - ShiftSchedules count:", shiftSchedules?.length || 0)
+    
+    if (shiftSchedules && shiftSchedules.length > 0) {
+      console.log("\n[TaskAssignment] 📅 SHIFT SCHEDULES (Today only):")
+      const todaySchedules = shiftSchedules.filter(s => s.schedule_date === todayStr)
+      console.log("  - Today's schedules:", todaySchedules.length)
+      todaySchedules.forEach(s => {
+        const worker = workers.find(w => w.id === s.worker_id)
+        console.log(`    • ${worker?.name || s.worker_id}:`, {
+          shift: `${s.shift_start} - ${s.shift_end}`,
+          is_override: s.is_override,
+          override_reason: s.override_reason || 'none',
+          schedule_date: s.schedule_date
+        })
+      })
+    }
+    
+    console.log("\n[TaskAssignment] 👷 WORKER PROFILES (Default Shifts):")
+    workers.forEach(w => {
+      console.log(`  • ${w.name}:`, {
+        department: w.department,
+        default_shift: `${w.shift_start} - ${w.shift_end}`,
+        has_break: w.has_break
+      })
+    })
+    
     const allWorkers = shiftSchedules
-      ? getWorkersWithShiftStatusFromUsersAndSchedules(workers, shiftSchedules)
-      : getWorkersWithShiftStatusFromUsers(workers)
+      ? getWorkersWithShiftStatusFromUsersAndSchedules(workers, shiftSchedules, shiftOptions)
+      : getWorkersWithShiftStatusFromUsers(workers, shiftOptions)
+    
+    console.log("\n[TaskAssignment] ✅ FINAL AVAILABILITY RESULTS:")
+    allWorkers.forEach(w => {
+      const statusIcon = w.availability.status === "OFF_DUTY" ? "❌" : "✅"
+      console.log(`  ${statusIcon} ${w.name}:`, {
+        status: w.availability.status,
+        shift_times: `${w.shift_start} - ${w.shift_end}`,
+        ...(w.availability.shiftStart && { calculated_shift: `${w.availability.shiftStart} - ${w.availability.shiftEnd}` })
+      })
+    })
+    console.log("=".repeat(80))
+    
     // Filter out workers from excluded departments
     return allWorkers.filter((worker) => !EXCLUDED_TASK_ASSIGNMENT_DEPARTMENTS.includes(worker.department as Department))
-  }, [workers, shiftSchedules])
+  }, [workers, shiftSchedules, shiftOptions])
 
   const staffIncludingCurrent = useMemo<WorkerWithAvailability[]>(() => {
     if (!currentUser) return workersWithShifts
@@ -163,14 +227,18 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers, initialD
     const alreadyIncluded = workersWithShifts.some((worker) => worker.id === currentUser.id)
     if (alreadyIncluded) return workersWithShifts
 
+    const currentUserAvailability = shiftSchedules
+      ? isWorkerOnShiftWithSchedule(currentUser, shiftSchedules, shiftOptions)
+      : isWorkerOnShiftFromUser(currentUser, shiftOptions)
+
     return [
       ...workersWithShifts,
       {
         ...currentUser,
-        availability: isWorkerOnShiftFromUser(currentUser),
+        availability: currentUserAvailability,
       },
     ]
-  }, [workersWithShifts, currentUser])
+  }, [workersWithShifts, currentUser, shiftSchedules])
 
   const sortedStaff = useMemo(() => {
     const orderByStatus = (status: WorkerAvailability["status"]) => (status === "OFF_DUTY" ? 1 : 0)
@@ -196,6 +264,16 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers, initialD
       { housekeeping: [], maintenance: [], front_desk: [], admin: [], "housekeeping-dept": [], "maintenance-dept": [] } as Record<Department, WorkerWithAvailability[]>,
     )
   }, [sortedStaff])
+
+  // Freeze staff list while Select is open to prevent DOM reconciliation errors
+  useEffect(() => {
+    if (!selectOpen) {
+      setFrozenStaff(staffGroupedByDepartment)
+    }
+  }, [selectOpen, staffGroupedByDepartment])
+
+  // Use frozen staff while Select is open, live staff when closed
+  const staffToRender = selectOpen ? frozenStaff : staffGroupedByDepartment
 
   const hasOnDutyStaff = useMemo(
     () => sortedStaff.some((worker) => worker.availability.status !== "OFF_DUTY"),
@@ -677,13 +755,18 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers, initialD
           <label className="block text-sm font-semibold text-foreground mb-2">Assign To</label>
           <div className="relative">
             <User className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
-            <Select value={assignedTo || undefined} onValueChange={handleAssigneeSelection}>
+            <Select 
+              value={assignedTo} 
+              onValueChange={handleAssigneeSelection}
+              open={selectOpen}
+              onOpenChange={setSelectOpen}
+            >
               <SelectTrigger aria-invalid={Boolean(errors.assignedTo)} className="pl-9">
                 <SelectValue placeholder="Select an assignee...">{selectedWorkerLabel}</SelectValue>
               </SelectTrigger>
               <SelectContent className="min-w-[18rem]">
                 {DEPARTMENT_ORDER.map((dept) => {
-                  const workersInDept = staffGroupedByDepartment[dept]
+                  const workersInDept = staffToRender[dept]
                   if (!workersInDept.length) return null
 
                   return (
@@ -698,7 +781,7 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers, initialD
                             disabled={!isOnDuty}
                             className={cn(!isOnDuty && "opacity-65 cursor-not-allowed")}
                           >
-                            <div className="flex w-full items-center justify-between">
+                            <div className="flex w-full items-center justify-between gap-2">
                               <div className="flex flex-col text-left">
                                 <span className="font-medium">{worker.name}</span>
                                 <span className="text-xs text-muted-foreground">
@@ -708,7 +791,7 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers, initialD
                               <Badge
                                 variant="outline"
                                 className={cn(
-                                  "text-xs",
+                                  "text-xs shrink-0",
                                   isOnDuty
                                     ? "border-emerald-200 bg-emerald-100 text-emerald-700"
                                     : "border-slate-200 bg-slate-100 text-slate-500",

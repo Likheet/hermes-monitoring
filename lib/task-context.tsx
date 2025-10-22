@@ -216,7 +216,7 @@ interface TaskContextType {
   resumeTask: (taskId: string, userId: string) => Promise<{ success: boolean; error?: string }>
   completeTask: (taskId: string, userId: string, categorizedPhotos: CategorizedPhotos, remark: string) => Promise<void>
   getTaskById: (taskId: string) => Task | undefined
-  createTask: (task: Omit<Task, "id" | "audit_log" | "pause_history">) => Promise<void>
+  createTask: (task: Omit<Task, "id" | "audit_log" | "pause_history">) => Promise<boolean>
   verifyTask: (
     taskId: string,
     userId: string,
@@ -934,41 +934,47 @@ export function TaskProvider({
     return tasks.find((t) => t.id === taskId)
   }
 
-  const createTask = async (taskData: Omit<Task, "id" | "audit_log" | "pause_history">) => {
-    await runWithGlobalLoading(async () => {
+  const createTask = (taskData: Omit<Task, "id" | "audit_log" | "pause_history">) => {
+    return runWithGlobalLoading(async () => {
       try {
+        const clientTimezoneOffset = typeof window !== "undefined" ? new Date().getTimezoneOffset() : null
         const response = await fetch("/api/tasks", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             ...taskData,
             assigned_at_client: taskData.assigned_at.client,
+            client_timezone_offset: clientTimezoneOffset,
           }),
         })
 
-        if (response.ok) {
-          const { task } = await response.json()
-          setTasks((prev) => [...prev, task])
-          console.log("[v0] Task created successfully via API:", task.id)
-
-          if (task.is_custom_task || task.custom_task_name) {
-            const adminUsers = users.filter((u) => u.role === "admin")
-            const notificationName = task.custom_task_name || task.task_type
-            adminUsers.forEach((admin) => {
-              createNotification(
-                admin.id,
-                "system",
-                "Custom Task Created",
-                `Front office created a custom task: "${notificationName}" at ${task.room_number || "N/A"}. Consider adding this as a permanent task type.`,
-                task.id,
-              )
-            })
-          }
-        } else {
+        if (!response.ok) {
           console.error("[v0] Failed to create task via API:", await response.text())
+          return false
         }
+
+        const { task } = await response.json()
+        setTasks((prev) => [...prev, task])
+        console.log("[v0] Task created successfully via API:", task.id)
+
+        if (task.is_custom_task || task.custom_task_name) {
+          const adminUsers = users.filter((u) => u.role === "admin")
+          const notificationName = task.custom_task_name || task.task_type
+          adminUsers.forEach((admin) => {
+            createNotification(
+              admin.id,
+              "system",
+              "Custom Task Created",
+              `Front office created a custom task: "${notificationName}" at ${task.room_number || "N/A"}. Consider adding this as a permanent task type.`,
+              task.id,
+            )
+          })
+        }
+
+        return true
       } catch (error) {
         console.error("[v0] Error creating task:", error)
+        return false
       }
     })
   }
@@ -1193,8 +1199,8 @@ export function TaskProvider({
               shift_start: shiftStart,
               shift_end: shiftEnd,
               has_break: hasBreak,
-              break_start: breakStart,
-              break_end: breakEnd,
+              break_start: hasBreak ? breakStart : undefined,
+              break_end: hasBreak ? breakEnd : undefined,
             }
           : user,
       )
@@ -1568,41 +1574,72 @@ export function TaskProvider({
   const saveShiftSchedule = (scheduleData: Omit<ShiftSchedule, "id" | "created_at">) => {
     console.log("[v0] Saving shift schedule:", scheduleData)
 
+    const buildSchedule = (base?: Partial<ShiftSchedule>): ShiftSchedule => {
+      const hasBreakFlag = (
+        (scheduleData.has_break ?? Boolean(scheduleData.break_start && scheduleData.break_end)) &&
+        Boolean(scheduleData.break_start && scheduleData.break_end)
+      )
+
+      return {
+        ...(base ?? {}),
+        ...scheduleData,
+        has_break: hasBreakFlag,
+        break_start: hasBreakFlag ? scheduleData.break_start : undefined,
+        break_end: hasBreakFlag ? scheduleData.break_end : undefined,
+        created_at: new Date().toISOString(),
+      } as ShiftSchedule
+    }
+
     const existingIndex = shiftSchedules.findIndex(
       (s) => s.worker_id === scheduleData.worker_id && s.schedule_date === scheduleData.schedule_date,
     )
 
     if (existingIndex >= 0) {
       console.log("[v0] Updating existing shift schedule")
-      const updatedSchedule = {
-        ...shiftSchedules[existingIndex],
-        ...scheduleData,
-        has_break: Boolean(scheduleData.break_start && scheduleData.break_end),
-        created_at: new Date().toISOString(),
+      const updatedSchedule = buildSchedule(shiftSchedules[existingIndex])
+
+      // Validate before updating state
+      if (!updatedSchedule.worker_id || !updatedSchedule.schedule_date || !updatedSchedule.shift_start || !updatedSchedule.shift_end) {
+        console.error("[v0] Invalid shift schedule data:", updatedSchedule)
+        return
       }
       setShiftSchedules((prev) => prev.map((s, i) => (i === existingIndex ? updatedSchedule : s)))
       runWithGlobalLoading(async () => {
-        await saveShiftScheduleToSupabase(updatedSchedule)
+        const success = await saveShiftScheduleToSupabase(updatedSchedule)
+        if (!success) {
+          console.error("[v0] Failed to save shift schedule to Supabase, reverting local state")
+          // Revert the local state if Supabase save fails
+          setShiftSchedules((prev) => prev.map((s, i) => (i === existingIndex ? shiftSchedules[existingIndex] : s)))
+        }
       }).catch((error) => {
         console.error("[v0] Error saving shift schedule:", error)
+        // Revert the local state on error
+        setShiftSchedules((prev) => prev.map((s, i) => (i === existingIndex ? shiftSchedules[existingIndex] : s)))
       })
     } else {
-      const newSchedule: ShiftSchedule = {
-        ...scheduleData,
-        has_break: Boolean(scheduleData.break_start && scheduleData.break_end),
-        id: generateUuid(),
-        created_at: new Date().toISOString(),
+      const newSchedule = buildSchedule({ id: generateUuid() })
+
+      // Validate before creating
+      if (!newSchedule.worker_id || !newSchedule.schedule_date || !newSchedule.shift_start || !newSchedule.shift_end) {
+        console.error("[v0] Invalid shift schedule data:", newSchedule)
+        return
       }
       console.log("[v0] Creating new shift schedule:", newSchedule.id)
       setShiftSchedules((prev) => [...prev, newSchedule])
       runWithGlobalLoading(async () => {
-        await saveShiftScheduleToSupabase(newSchedule)
+        const success = await saveShiftScheduleToSupabase(newSchedule)
+        if (!success) {
+          console.error("[v0] Failed to save new shift schedule to Supabase, reverting local state")
+          // Revert the local state if Supabase save fails
+          setShiftSchedules((prev) => prev.filter((s) => s.id !== newSchedule.id))
+        }
       }).catch((error) => {
         console.error("[v0] Error saving new shift schedule:", error)
+        // Revert the local state on error
+        setShiftSchedules((prev) => prev.filter((s) => s.id !== newSchedule.id))
       })
     }
   }
-
   const getShiftSchedules = (workerId: string, startDate: string, endDate: string) => {
     const filtered = shiftSchedules.filter(
       (s) => s.worker_id === workerId && s.schedule_date >= startDate && s.schedule_date <= endDate,
@@ -1684,3 +1721,6 @@ function useTasks() {
 }
 
 export { useTasks }
+
+
+

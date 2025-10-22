@@ -84,7 +84,10 @@ export function useRealtimeTasks(options: UseRealtimeTasksOptions = {}) {
         setConnectionStatus(status)
 
         if (err) {
-          console.error("Realtime subscription error:", err)
+          // Suppress "mismatch between server and client bindings" warning - non-critical
+          if (!err.message?.includes('mismatch between server and client bindings')) {
+            console.error("Realtime subscription error:", err)
+          }
           setIsConnected(false)
           attemptReconnectHandlerRef.current()
           return

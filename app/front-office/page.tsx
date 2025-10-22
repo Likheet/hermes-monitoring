@@ -47,6 +47,14 @@ import { EditTaskModal } from "@/components/edit-task-modal"
 import { FrontDeskActiveTaskModal } from "@/components/front-desk-active-task-modal"
 import type { Task, User } from "@/lib/types"
 
+type ShiftDraft = {
+  start: string
+  end: string
+  hasBreak: boolean
+  breakStart: string
+  breakEnd: string
+}
+
 const priorityColors = {
   GUEST_REQUEST: "bg-red-500 text-white",
   TIME_SENSITIVE: "bg-orange-500 text-white",
@@ -84,18 +92,7 @@ function FrontOfficeDashboard() {
   const workers = users.filter((u) => u.role === "worker" || u.role === "front_office")
   const [today] = useState(() => new Date())
 
-  const [editingShifts, setEditingShifts] = useState<
-    Record<
-      string,
-      {
-        start: string
-        end: string
-        hasBreak: boolean
-        breakStart: string
-        breakEnd: string
-      }
-    >
-  >(
+  const [editingShifts, setEditingShifts] = useState<Record<string, ShiftDraft>>(
     Object.fromEntries(
       workers.map((w) => {
         const todayShift = getWorkerShiftForDate(w, today, shiftSchedules)
@@ -112,8 +109,9 @@ function FrontOfficeDashboard() {
       }),
     ),
   )
+  const [dirtyWorkers, setDirtyWorkers] = useState<Record<string, boolean>>({})
 
-  const buildShiftTemplate = (worker: User) => {
+  const buildShiftTemplate = (worker: User): ShiftDraft => {
     const todayShift = getWorkerShiftForDate(worker, today, shiftSchedules)
     return {
       start: todayShift.shift_start || "09:00",
@@ -124,19 +122,34 @@ function FrontOfficeDashboard() {
     }
   }
 
+  const shiftsAreEqual = (a: ShiftDraft, b: ShiftDraft) =>
+    a.start === b.start &&
+    a.end === b.end &&
+    a.hasBreak === b.hasBreak &&
+    a.breakStart === b.breakStart &&
+    a.breakEnd === b.breakEnd
+
+  const markDirty = (workerId: string, dirty = true) => {
+    setDirtyWorkers((prev) => {
+      const alreadyDirty = !!prev[workerId]
+      if (dirty) {
+        if (alreadyDirty) return prev
+        return { ...prev, [workerId]: true }
+      }
+      if (!alreadyDirty) return prev
+      const next = { ...prev }
+      delete next[workerId]
+      return next
+    })
+  }
+
   const hasChanges = (workerId: string) => {
     const worker = workers.find((w) => w.id === workerId)
     if (!worker) return false
-    const edited = editingShifts[worker.id]
-    if (!edited) return false
+    if (dirtyWorkers[workerId]) return true
+    const edited = editingShifts[worker.id] ?? buildShiftTemplate(worker)
     const template = buildShiftTemplate(worker)
-    return (
-      edited.start !== template.start ||
-      edited.end !== template.end ||
-      edited.hasBreak !== template.hasBreak ||
-      edited.breakStart !== template.breakStart ||
-      edited.breakEnd !== template.breakEnd
-    )
+    return !shiftsAreEqual(edited, template)
   }
 
   useEffect(() => {
@@ -148,19 +161,11 @@ function FrontOfficeDashboard() {
       workers.forEach((worker) => {
         const template = buildShiftTemplate(worker)
         const current = next[worker.id]
-        if (!current || !hasChanges(worker.id)) {
-          const shouldUpdate =
-            !current ||
-            current.start !== template.start ||
-            current.end !== template.end ||
-            current.hasBreak !== template.hasBreak ||
-            current.breakStart !== template.breakStart ||
-            current.breakEnd !== template.breakEnd
+        const isDirty = !!dirtyWorkers[worker.id]
 
-          if (shouldUpdate) {
-            next[worker.id] = template
-            mutated = true
-          }
+        if (!current || (!isDirty && !shiftsAreEqual(current, template))) {
+          next[worker.id] = template
+          mutated = true
         }
       })
 
@@ -173,7 +178,22 @@ function FrontOfficeDashboard() {
 
       return mutated ? next : prev
     })
-  }, [workers, shiftSchedules, today])
+  }, [workers, shiftSchedules, dirtyWorkers, today])
+
+  useEffect(() => {
+    setDirtyWorkers((prev) => {
+      let mutated = false
+      const workerIds = new Set(workers.map((w) => w.id))
+      const next = { ...prev }
+      Object.keys(next).forEach((id) => {
+        if (!workerIds.has(id)) {
+          delete next[id]
+          mutated = true
+        }
+      })
+      return mutated ? next : prev
+    })
+  }, [workers])
 
   const [offDutyStatus, setOffDutyStatus] = useState<Record<string, boolean>>(
     Object.fromEntries(
@@ -306,23 +326,17 @@ function FrontOfficeDashboard() {
   }
 
   const handleSaveShift = (workerId: string) => {
-    const shift = editingShifts[workerId]
+    const worker = workers.find((w) => w.id === workerId)
+    if (!worker) return
 
-    if (!shift) {
-      const worker = workers.find((w) => w.id === workerId)
-      if (!worker) return
+    const shift = editingShifts[workerId] ?? buildShiftTemplate(worker)
 
-      const todayShift = getWorkerShiftForDate(worker, today, shiftSchedules)
-      setEditingShifts((prev) => ({
-        ...prev,
-        [workerId]: {
-          start: todayShift.shift_start || "09:00",
-          end: todayShift.shift_end || "18:00",
-          hasBreak: todayShift.has_break || false,
-          breakStart: todayShift.break_start || "12:00",
-          breakEnd: todayShift.break_end || "13:00",
-        },
-      }))
+    if (!shift.start || !shift.end) {
+      toast({
+        title: "Invalid Shift",
+        description: "Please enter both start and end times",
+        variant: "destructive",
+      })
       return
     }
 
@@ -339,6 +353,7 @@ function FrontOfficeDashboard() {
     }
 
     updateWorkerShift(workerId, shift.start, shift.end, user!.id, shift.hasBreak, shift.breakStart, shift.breakEnd)
+    markDirty(workerId, false)
 
     const todayDate = today.toISOString().split("T")[0]
     const isOffDuty = offDutyStatus[workerId] ?? false
@@ -355,6 +370,7 @@ function FrontOfficeDashboard() {
       override_reason: isOffDuty ? "leave" : "",
       notes: "",
     })
+
     toast({
       title: "Shift Updated",
       description: "Worker shift timing has been updated successfully",
@@ -368,16 +384,16 @@ function FrontOfficeDashboard() {
     if (!worker) return
 
     const todayDate = today.toISOString().split("T")[0]
-    const edited = editingShifts[workerId]
+    const shiftDraft = editingShifts[workerId] ?? buildShiftTemplate(worker)
 
     saveShiftSchedule({
       worker_id: workerId,
       schedule_date: todayDate,
-      shift_start: edited.start,
-      shift_end: edited.end,
-      has_break: edited.hasBreak,
-      break_start: edited.breakStart,
-      break_end: edited.breakEnd,
+      shift_start: shiftDraft.start,
+      shift_end: shiftDraft.end,
+      has_break: shiftDraft.hasBreak,
+      break_start: shiftDraft.hasBreak ? shiftDraft.breakStart : undefined,
+      break_end: shiftDraft.hasBreak ? shiftDraft.breakEnd : undefined,
       is_override: isOffDuty,
       override_reason: isOffDuty ? "leave" : "",
       notes: "",
@@ -388,7 +404,6 @@ function FrontOfficeDashboard() {
       description: `${worker.name} has been ${isOffDuty ? "marked as off duty" : "marked as on duty"} for today`,
     })
   }
-
   const getWorkingHoursDisplay = (
     start: string,
     end: string,
@@ -480,12 +495,14 @@ function FrontOfficeDashboard() {
                                     id={`start-${worker.id}`}
                                     type="time"
                                     value={edited.start}
-                                    onChange={(e) =>
+                                    onChange={(e) => {
+                                      const value = e.target.value
                                       setEditingShifts((prev) => ({
                                         ...prev,
-                                        [worker.id]: { ...prev[worker.id], start: e.target.value },
+                                        [worker.id]: { ...(prev[worker.id] ?? buildShiftTemplate(worker)), start: value },
                                       }))
-                                    }
+                                      markDirty(worker.id)
+                                    }}
                                     className="mt-1"
                                     disabled={isOffDuty}
                                   />
@@ -496,12 +513,14 @@ function FrontOfficeDashboard() {
                                     id={`end-${worker.id}`}
                                     type="time"
                                     value={edited.end}
-                                    onChange={(e) =>
+                                    onChange={(e) => {
+                                      const value = e.target.value
                                       setEditingShifts((prev) => ({
                                         ...prev,
-                                        [worker.id]: { ...prev[worker.id], end: e.target.value },
+                                        [worker.id]: { ...(prev[worker.id] ?? buildShiftTemplate(worker)), end: value },
                                       }))
-                                    }
+                                      markDirty(worker.id)
+                                    }}
                                     className="mt-1"
                                     disabled={isOffDuty}
                                   />
@@ -518,12 +537,22 @@ function FrontOfficeDashboard() {
                                 <Switch
                                   id={`break-${worker.id}`}
                                   checked={edited.hasBreak}
-                                  onCheckedChange={(checked) =>
+                                  onCheckedChange={(checked) => {
                                     setEditingShifts((prev) => ({
                                       ...prev,
-                                      [worker.id]: { ...prev[worker.id], hasBreak: checked },
+                                      [worker.id]: {
+                                        ...(prev[worker.id] ?? buildShiftTemplate(worker)),
+                                        hasBreak: checked,
+                                        breakStart: checked
+                                          ? (prev[worker.id]?.breakStart ?? buildShiftTemplate(worker).breakStart)
+                                          : buildShiftTemplate(worker).breakStart,
+                                        breakEnd: checked
+                                          ? (prev[worker.id]?.breakEnd ?? buildShiftTemplate(worker).breakEnd)
+                                          : buildShiftTemplate(worker).breakEnd,
+                                      },
                                     }))
-                                  }
+                                    markDirty(worker.id)
+                                  }}
                                   disabled={isOffDuty}
                                 />
                               </div>
@@ -538,12 +567,17 @@ function FrontOfficeDashboard() {
                                       id={`break-start-${worker.id}`}
                                       type="time"
                                       value={edited.breakStart}
-                                      onChange={(e) =>
+                                      onChange={(e) => {
+                                        const value = e.target.value
                                         setEditingShifts((prev) => ({
                                           ...prev,
-                                          [worker.id]: { ...prev[worker.id], breakStart: e.target.value },
+                                          [worker.id]: {
+                                            ...(prev[worker.id] ?? buildShiftTemplate(worker)),
+                                            breakStart: value,
+                                          },
                                         }))
-                                      }
+                                        markDirty(worker.id)
+                                      }}
                                       className="mt-1"
                                       disabled={isOffDuty}
                                     />
@@ -556,12 +590,17 @@ function FrontOfficeDashboard() {
                                       id={`break-end-${worker.id}`}
                                       type="time"
                                       value={edited.breakEnd}
-                                      onChange={(e) =>
+                                      onChange={(e) => {
+                                        const value = e.target.value
                                         setEditingShifts((prev) => ({
                                           ...prev,
-                                          [worker.id]: { ...prev[worker.id], breakEnd: e.target.value },
+                                          [worker.id]: {
+                                            ...(prev[worker.id] ?? buildShiftTemplate(worker)),
+                                            breakEnd: value,
+                                          },
                                         }))
-                                      }
+                                        markDirty(worker.id)
+                                      }}
                                       className="mt-1"
                                       disabled={isOffDuty}
                                     />
@@ -1135,3 +1174,5 @@ export default function FrontOfficePage() {
     </ProtectedRoute>
   )
 }
+
+

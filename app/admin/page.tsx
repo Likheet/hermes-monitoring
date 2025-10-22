@@ -875,7 +875,7 @@ function AdminDashboard() {
     const isCustomTask = data.isCustomTask && !!trimmedCustomName
     const taskName = isCustomTask ? trimmedCustomName! : data.taskName
 
-    createTask({
+    const success = await createTask({
       task_type: taskName,
       priority_level: priorityLevel,
       status: "PENDING",
@@ -915,6 +915,15 @@ function AdminDashboard() {
       requires_specific_time: data.requiresSpecificTime ?? false,
       recurring_time: data.recurringTime ?? null,
     })
+
+    if (!success) {
+      toast({
+        title: "Failed to Create Task",
+        description: "Could not assign the task. Please confirm the worker is on duty and try again.",
+        variant: "destructive",
+      })
+      return
+    }
 
     toast({
       title: "Task Created",

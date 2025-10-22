@@ -2,7 +2,7 @@ import { createClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
 import { cookies } from "next/headers"
 import { databaseTaskToApp } from "@/lib/database-types"
-import { getWorkerShiftForDate, isWorkerOnShiftWithSchedule } from "@/lib/shift-utils"
+import { formatDateKeyForTimezone, getWorkerShiftForDate, isWorkerOnShiftWithSchedule } from "@/lib/shift-utils"
 
 const PRIORITY_APP_TO_DB: Record<string, "low" | "medium" | "high" | "urgent"> = {
   GUEST_REQUEST: "medium",
@@ -99,7 +99,13 @@ export async function POST(request: Request) {
       room_number,
       photo_documentation_required,
       photo_categories,
+      client_timezone_offset,
     } = body
+
+    const timezoneOffset =
+      typeof client_timezone_offset === "number" && Number.isFinite(client_timezone_offset)
+        ? client_timezone_offset
+        : undefined
 
     // Validate assigned user availability (prevent assigning tasks to off-duty users)
     if (assigned_to_user_id) {
@@ -116,7 +122,7 @@ export async function POST(request: Request) {
       }
 
       // Load shift schedules for today for that worker
-      const todayStr = new Date().toISOString().split("T")[0]
+      const todayStr = formatDateKeyForTimezone(new Date(), timezoneOffset)
       const { data: schedulesResult, error: schedulesError } = await supabase
         .from("shift_schedules")
         .select("*")
@@ -141,6 +147,7 @@ export async function POST(request: Request) {
           break_end: user.break_end,
         } as any,
         shiftSchedules,
+        { timezoneOffsetMinutes: timezoneOffset },
       )
 
       if (availability.status === "OFF_DUTY") {

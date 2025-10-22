@@ -21,16 +21,76 @@ export interface WorkerAvailability {
   breakEnd?: string
 }
 
-export function isWorkerOnShiftFromUser(user: User): WorkerAvailability {
+export type ShiftTimeOptions = {
+  /**
+   * Offset from UTC in minutes, matching the value returned by Date#getTimezoneOffset().
+   * Negative values indicate locations ahead of UTC, positive values indicate locations behind.
+   */
+  timezoneOffsetMinutes?: number
+}
+
+function getDatePartsForTimezone(date: Date, timezoneOffsetMinutes?: number) {
+  if (typeof timezoneOffsetMinutes === "number" && Number.isFinite(timezoneOffsetMinutes)) {
+    const adjusted = new Date(date.getTime() - timezoneOffsetMinutes * 60_000)
+    return {
+      year: adjusted.getUTCFullYear(),
+      month: adjusted.getUTCMonth() + 1,
+      day: adjusted.getUTCDate(),
+      hours: adjusted.getUTCHours(),
+      minutes: adjusted.getUTCMinutes(),
+    }
+  }
+
+  return {
+    year: date.getFullYear(),
+    month: date.getMonth() + 1,
+    day: date.getDate(),
+    hours: date.getHours(),
+    minutes: date.getMinutes(),
+  }
+}
+
+function getCurrentMinutesForTimezone(date: Date, timezoneOffsetMinutes?: number) {
+  const { hours, minutes } = getDatePartsForTimezone(date, timezoneOffsetMinutes)
+  return hours * 60 + minutes
+}
+
+export function formatDateKeyForTimezone(date: Date, timezoneOffsetMinutes?: number) {
+  const { year, month, day } = getDatePartsForTimezone(date, timezoneOffsetMinutes)
+  const monthStr = month.toString().padStart(2, "0")
+  const dayStr = day.toString().padStart(2, "0")
+  return `${year}-${monthStr}-${dayStr}`
+}
+
+function formatTimeForLog(hours: number, minutes: number) {
+  return `${hours.toString().padStart(2, "0")}:${minutes.toString().padStart(2, "0")}`
+}
+
+export function isWorkerOnShiftFromUser(user: User, options?: ShiftTimeOptions): WorkerAvailability {
   if (!user.shift_start || !user.shift_end) {
+    console.warn(
+      "[ShiftUtils] Missing default shift times for worker, assuming on-duty:",
+      user.name,
+      { shift_start: user.shift_start, shift_end: user.shift_end },
+    )
     return {
       workerId: user.id,
-      status: "OFF_DUTY",
+      status: "ON_SHIFT",
+      shiftStart: user.shift_start,
+      shiftEnd: user.shift_end,
     }
   }
 
   const now = new Date()
-  const currentMinutes = now.getHours() * 60 + now.getMinutes()
+  const { hours: currentHours, minutes: currentMinutesPart } = getDatePartsForTimezone(
+    now,
+    options?.timezoneOffsetMinutes,
+  )
+  let currentMinutes = currentHours * 60 + currentMinutesPart
+
+  if (currentMinutes < 0) {
+    currentMinutes += 24 * 60
+  }
 
   const [startHour, startMinute] = user.shift_start.split(":").map(Number)
   const [endHour, endMinute] = user.shift_end.split(":").map(Number)
@@ -39,12 +99,13 @@ export function isWorkerOnShiftFromUser(user: User): WorkerAvailability {
   const shiftEndMinutes = endHour * 60 + endMinute
 
   console.log("[v0] Checking shift for", user.name, {
-    currentTime: `${now.getHours().toString().padStart(2, "0")}:${now.getMinutes().toString().padStart(2, "0")}`,
+    currentTime: formatTimeForLog(currentHours, currentMinutesPart),
     currentMinutes,
     shiftStart: user.shift_start,
     shiftStartMinutes,
     shiftEnd: user.shift_end,
     shiftEndMinutes,
+    timezoneOffset: options?.timezoneOffsetMinutes ?? null,
   })
 
   let isWithinShift = false
@@ -228,10 +289,11 @@ export function canAssignTask(
 
 export function getWorkersWithShiftStatusFromUsers(
   workers: User[],
+  options?: ShiftTimeOptions,
 ): Array<User & { availability: WorkerAvailability }> {
   return workers.map((worker) => ({
     ...worker,
-    availability: isWorkerOnShiftFromUser(worker),
+    availability: isWorkerOnShiftFromUser(worker, options),
   }))
 }
 
@@ -362,6 +424,7 @@ export function getWorkerShiftForDate(
     is_override: boolean
     override_reason?: string
   }>,
+  options?: ShiftTimeOptions,
 ): {
   shift_start: string
   shift_end: string
@@ -372,36 +435,65 @@ export function getWorkerShiftForDate(
   override_reason?: string
 } {
   // Format date as YYYY-MM-DD
-  const dateStr = date.toISOString().split("T")[0]
+  const dateStr = formatDateKeyForTimezone(date, options?.timezoneOffsetMinutes)
+
+  console.log("[v0] Getting shift for", worker.name, "on", dateStr, {
+    totalSchedules: shiftSchedules.length,
+    workerSchedules: shiftSchedules.filter(s => s.worker_id === worker.id).length,
+    defaultShift: `${worker.shift_start} - ${worker.shift_end}`,
+  })
 
   // Check if there's a schedule for this specific date
   const schedule = shiftSchedules.find((s) => s.worker_id === worker.id && s.schedule_date === dateStr)
-
   if (schedule) {
-    console.log("[v0] Found shift schedule for", worker.name, "on", dateStr, schedule)
+    const shiftStart = schedule.shift_start ?? worker.shift_start ?? "00:00"
+    const shiftEnd = schedule.shift_end ?? worker.shift_end ?? "23:59"
+    if (!schedule.shift_start || !schedule.shift_end) {
+      console.warn(
+        "[ShiftUtils] Schedule missing shift times, using fallback defaults:",
+        worker.name,
+        { date: dateStr, shiftStart, shiftEnd },
+      )
+    }
+
+    const hasBreak = Boolean(schedule.has_break && schedule.break_start && schedule.break_end)
     return {
-      shift_start: schedule.shift_start,
-      shift_end: schedule.shift_end,
-      has_break: schedule.has_break,
-      break_start: schedule.break_start,
-      break_end: schedule.break_end,
+      shift_start: shiftStart,
+      shift_end: shiftEnd,
+      has_break: hasBreak,
+      break_start: hasBreak ? schedule.break_start : undefined,
+      break_end: hasBreak ? schedule.break_end : undefined,
       is_override: schedule.is_override,
       override_reason: schedule.override_reason,
     }
   }
 
-  // Fall back to default shift from user profile
-  console.log("[v0] No schedule found, using default shift for", worker.name)
+  const defaultShiftStart = worker.shift_start ?? "00:00"
+  const defaultShiftEnd = worker.shift_end ?? "23:59"
+  if (!worker.shift_start || !worker.shift_end) {
+    console.warn(
+      "[ShiftUtils] Worker missing default shift times, assuming full-day availability:",
+      worker.name,
+      { shift_start: worker.shift_start, shift_end: worker.shift_end },
+    )
+  }
+
+  console.log(
+    "[v0] ? No schedule found for",
+    worker.name,
+    "- using default shift:",
+    `${defaultShiftStart} - ${defaultShiftEnd}`,
+  )
+  const hasBreak = Boolean(worker.has_break && worker.break_start && worker.break_end)
   return {
-    shift_start: worker.shift_start,
-    shift_end: worker.shift_end,
-    has_break: worker.has_break || false,
-    break_start: worker.break_start,
-    break_end: worker.break_end,
+    shift_start: defaultShiftStart,
+    shift_end: defaultShiftEnd,
+    has_break: hasBreak,
+    break_start: hasBreak ? worker.break_start : undefined,
+    break_end: hasBreak ? worker.break_end : undefined,
     is_override: false,
   }
 }
-
 export function isWorkerOnShiftWithSchedule(
   user: User,
   shiftSchedules: Array<{
@@ -415,13 +507,27 @@ export function isWorkerOnShiftWithSchedule(
     is_override: boolean
     override_reason?: string
   }>,
+  options?: ShiftTimeOptions,
 ): WorkerAvailability {
-  const today = new Date()
-  const todayShift = getWorkerShiftForDate(user, today, shiftSchedules)
+  const now = new Date()
+  const timezoneOffset = options?.timezoneOffsetMinutes
+  const todayShift = getWorkerShiftForDate(user, now, shiftSchedules, options)
+  const { hours: currentHours, minutes: currentMinutesPart } = getDatePartsForTimezone(now, timezoneOffset)
+  let currentMinutes = currentHours * 60 + currentMinutesPart
 
-  // If worker is marked as off duty (override), return OFF_DUTY
-  if (todayShift.is_override && todayShift.override_reason) {
-    console.log("[v0] Worker", user.name, "is off duty:", todayShift.override_reason)
+  if (currentMinutes < 0) {
+    currentMinutes += 24 * 60
+  }
+
+  console.log(`[ShiftUtils] ANALYZING ${user.name.toUpperCase()}:`)
+  console.log("  shift:", todayShift)
+  console.log("  currentTime:", formatTimeForLog(currentHours, currentMinutesPart))
+  console.log("  timezoneOffset:", timezoneOffset ?? null)
+  console.log("  scheduleCount:", shiftSchedules.filter((s) => s.worker_id === user.id).length)
+  console.log("  isOverride:", todayShift.is_override)
+
+  if (todayShift.is_override && todayShift.override_reason && (!todayShift.shift_start || !todayShift.shift_end)) {
+    console.log("  result: OFF_DUTY (override removed shift times)", todayShift.override_reason)
     return {
       workerId: user.id,
       status: "OFF_DUTY",
@@ -429,14 +535,18 @@ export function isWorkerOnShiftWithSchedule(
   }
 
   if (!todayShift.shift_start || !todayShift.shift_end) {
+    console.warn(
+      "[ShiftUtils] Missing shift times after normalization, assuming on-duty:",
+      user.name,
+      { shift_start: todayShift.shift_start, shift_end: todayShift.shift_end },
+    )
     return {
       workerId: user.id,
-      status: "OFF_DUTY",
+      status: "ON_SHIFT",
+      shiftStart: todayShift.shift_start,
+      shiftEnd: todayShift.shift_end,
     }
   }
-
-  const now = new Date()
-  const currentMinutes = now.getHours() * 60 + now.getMinutes()
 
   const [startHour, startMinute] = todayShift.shift_start.split(":").map(Number)
   const [endHour, endMinute] = todayShift.shift_end.split(":").map(Number)
@@ -444,31 +554,22 @@ export function isWorkerOnShiftWithSchedule(
   const shiftStartMinutes = startHour * 60 + startMinute
   const shiftEndMinutes = endHour * 60 + endMinute
 
-  console.log("[v0] Checking shift for", user.name, {
-    currentTime: `${now.getHours().toString().padStart(2, "0")}:${now.getMinutes().toString().padStart(2, "0")}`,
-    currentMinutes,
-    shiftStart: todayShift.shift_start,
-    shiftStartMinutes,
-    shiftEnd: todayShift.shift_end,
-    shiftEndMinutes,
-    fromSchedule: !!shiftSchedules.find(
-      (s) => s.worker_id === user.id && s.schedule_date === today.toISOString().split("T")[0],
-    ),
-  })
+  console.log("  timeCalc.currentMinutes:", currentMinutes)
+  console.log("  timeCalc.shiftStartMinutes:", shiftStartMinutes)
+  console.log("  timeCalc.shiftEndMinutes:", shiftEndMinutes)
 
   let isWithinShift = false
 
   if (shiftEndMinutes < shiftStartMinutes) {
-    // Shift crosses midnight
     isWithinShift = currentMinutes >= shiftStartMinutes || currentMinutes <= shiftEndMinutes
-    console.log("[v0] Shift crosses midnight, isWithinShift:", isWithinShift)
+    console.log("  shiftType: crosses-midnight", { "isWithinShift": isWithinShift })
   } else {
-    // Normal shift within same day
     isWithinShift = currentMinutes >= shiftStartMinutes && currentMinutes <= shiftEndMinutes
-    console.log("[v0] Normal shift, isWithinShift:", isWithinShift)
+    console.log("  shiftType: same-day", { "isWithinShift": isWithinShift })
   }
 
   if (!isWithinShift) {
+    console.log("  result: OFF_DUTY (outside shift hours)")
     return {
       workerId: user.id,
       status: "OFF_DUTY",
@@ -487,7 +588,7 @@ export function isWorkerOnShiftWithSchedule(
     const isOnBreak = currentMinutes >= breakStartMinutes && currentMinutes < breakEndMinutes
 
     if (isOnBreak) {
-      console.log("[v0] Worker is currently on break")
+      console.log("  result: ON_BREAK")
       return {
         workerId: user.id,
         status: "ON_BREAK",
@@ -501,19 +602,15 @@ export function isWorkerOnShiftWithSchedule(
 
   let minutesUntilEnd: number
   if (shiftEndMinutes < shiftStartMinutes && currentMinutes < shiftStartMinutes) {
-    // We're in the "after midnight" portion of the shift
     minutesUntilEnd = shiftEndMinutes - currentMinutes
   } else if (shiftEndMinutes < shiftStartMinutes && currentMinutes >= shiftStartMinutes) {
-    // We're in the "before midnight" portion of the shift
     minutesUntilEnd = 24 * 60 - currentMinutes + shiftEndMinutes
   } else {
-    // Normal shift calculation
     minutesUntilEnd = shiftEndMinutes - currentMinutes
   }
 
-  console.log("[v0] Minutes until shift end:", minutesUntilEnd)
+  console.log("  minutesUntilEnd:", minutesUntilEnd)
 
-  // Check if shift is ending soon (within 30 minutes)
   if (minutesUntilEnd <= 30 && minutesUntilEnd > 0) {
     return {
       workerId: user.id,
@@ -532,7 +629,6 @@ export function isWorkerOnShiftWithSchedule(
     shiftEnd: todayShift.shift_end,
   }
 }
-
 // Attendance tracking utilities
 export interface AttendanceRecord {
   date: string // YYYY-MM-DD
@@ -676,10 +772,13 @@ export function getWorkersWithShiftStatusFromUsersAndSchedules(
     is_override: boolean
     override_reason?: string
   }>,
+  options?: ShiftTimeOptions,
 ): Array<User & { availability: WorkerAvailability }> {
   return workers.map((worker) => ({
     ...worker,
-    availability: isWorkerOnShiftWithSchedule(worker, shiftSchedules),
+    availability: isWorkerOnShiftWithSchedule(worker, shiftSchedules, options),
   }))
 }
+
+
 

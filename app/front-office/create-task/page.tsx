@@ -95,7 +95,7 @@ function CreateTaskForm() {
     const isCustomTask = data.isCustomTask && !!trimmedCustomName
     const taskName = isCustomTask ? trimmedCustomName! : data.taskName
 
-    await createTask({
+    const success = await createTask({
       task_type: taskName,
       priority_level: priorityLevel,
       status: "PENDING",
@@ -136,7 +136,13 @@ function CreateTaskForm() {
       recurring_time: data.recurringTime ?? null,
     })
 
-    if (isCustomTask && trimmedCustomName) {
+    if (!success) {
+      toast({
+        title: "Failed to Assign Task",
+        description: "The task could not be created. Please verify the assignee's availability and try again.",
+        variant: "destructive",
+      })
+      return
     }
 
     const workerCurrentTask = tasks.find((t) => t.assigned_to_user_id === data.assignedTo && t.status === "IN_PROGRESS")
