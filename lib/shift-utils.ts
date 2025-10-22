@@ -779,6 +779,3 @@ export function getWorkersWithShiftStatusFromUsersAndSchedules(
     availability: isWorkerOnShiftWithSchedule(worker, shiftSchedules, options),
   }))
 }
-
-
-

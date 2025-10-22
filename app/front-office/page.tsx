@@ -1174,5 +1174,3 @@ export default function FrontOfficePage() {
     </ProtectedRoute>
   )
 }
-
-
