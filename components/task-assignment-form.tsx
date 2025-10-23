@@ -1,10 +1,36 @@
 "use client"
 
-import { useState, useMemo, useRef, useEffect } from "react"
+import { useState, useMemo, useRef, useEffect, useId } from "react"
+import { format } from "date-fns"
 import { X, MapPin, Clock, Camera, AlertCircle, AlertTriangle, User, Repeat } from "lucide-react"
-import type { TaskDefinition, TaskCategory, Priority, RecurringFrequency } from "@/lib/task-definitions"
-import { ALL_LOCATIONS, getACLocationsForRoom } from "@/lib/location-data"
-import { CATEGORY_COLORS, CATEGORY_LABELS } from "@/lib/task-definitions"
+import {
+  CATEGORY_COLORS,
+  CATEGORY_LABELS,
+  ROOM_SHIFTING_TASK_ID,
+  GUEST_CHECK_IN_TASK_ID,
+  type TaskDefinition,
+  type TaskCategory,
+  type Priority,
+  type RecurringFrequency,
+} from "@/lib/task-definitions"
+import { ALL_LOCATIONS, ALL_ROOMS, getACLocationsForRoom } from "@/lib/location-data"
+import { fetchActiveRoomInventory, type RoomInventoryItem } from "@/lib/room-inventory"
+
+const INITIAL_ROOM_INVENTORY: RoomInventoryItem[] = ALL_ROOMS.map((room) => ({
+  roomNumber: room.number,
+  status: "available",
+  block: room.block,
+  floor: room.floor,
+  type: room.type,
+}))
+
+const AVAILABLE_STATUS_KEYWORDS = ["available", "vacant", "ready", "clean", "housekeeping", "unassigned"] as const
+
+function isRoomStatusAvailable(status: string | undefined | null) {
+  if (!status) return false
+  const normalized = status.toLowerCase()
+  return AVAILABLE_STATUS_KEYWORDS.some((keyword) => normalized.includes(keyword))
+}
 import type { User as WorkerType } from "@/lib/types"
 import {
   getWorkersWithShiftStatusFromUsers,
@@ -96,6 +122,8 @@ export interface TaskAssignmentData {
   recurringFrequency?: RecurringFrequency | null
   requiresSpecificTime?: boolean
   recurringTime?: string | null
+  dueAt?: string | null
+  metadata?: Record<string, string | undefined>
 }
 
 export function TaskAssignmentForm({ task, onCancel, onSubmit, workers, initialData, currentUser, shiftSchedules }: TaskAssignmentFormProps) {
@@ -124,10 +152,104 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers, initialD
   const [photoDocumentationRequired, setPhotoDocumentationRequired] = useState(task.photoDocumentationRequired || false)
   const [photoCategories, setPhotoCategories] = useState(task.photoCategories || [])
   //
+  const [roomInventory, setRoomInventory] = useState<RoomInventoryItem[]>(INITIAL_ROOM_INVENTORY)
+  const [fromRoom, setFromRoom] = useState(
+    task.id === ROOM_SHIFTING_TASK_ID && initialData?.location ? initialData.location : "",
+  )
+  const [fromRoomInput, setFromRoomInput] = useState(
+    task.id === ROOM_SHIFTING_TASK_ID && initialData?.location ? initialData.location : "",
+  )
+  const [toRoom, setToRoom] = useState("")
+  const [toRoomInput, setToRoomInput] = useState("")
   const [crossDeptCandidate, setCrossDeptCandidate] = useState<WorkerWithAvailability | null>(null)
+
+  const isRoomShiftingTask = task.id === ROOM_SHIFTING_TASK_ID
+  const isCheckInTask = task.id === GUEST_CHECK_IN_TASK_ID
+  const shouldAutoPopulate = isRoomShiftingTask || isCheckInTask
+
+  const fromRoomListId = useId()
+  const toRoomListId = useId()
+  const checkInRoomListId = useId()
+
+  const roomMetaMap = useMemo(() => new Map(ALL_ROOMS.map((room) => [room.number, room])), [])
 
   const timezoneOffset = useMemo(() => new Date().getTimezoneOffset(), [])
   const shiftOptions = useMemo(() => ({ timezoneOffsetMinutes: timezoneOffset }), [timezoneOffset])
+
+  useEffect(() => {
+    if (!shouldAutoPopulate) return
+
+    let cancelled = false
+    fetchActiveRoomInventory()
+      .then((rooms) => {
+        if (!cancelled && rooms.length > 0) {
+          setRoomInventory(rooms)
+        }
+      })
+      .catch((error) => {
+        console.warn("[TaskAssignment] Failed to load room inventory, using fallback:", error)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [shouldAutoPopulate])
+
+  const inventoryMap = useMemo(
+    () => new Map(roomInventory.map((room) => [room.roomNumber, room])),
+    [roomInventory],
+  )
+
+  const availableDestinationRooms = useMemo(
+    () => roomInventory.filter((room) => isRoomStatusAvailable(room.status)),
+    [roomInventory],
+  )
+
+  const formatRoomOptionLabel = useMemo(
+    () => (roomNumber: string) => {
+      const room = inventoryMap.get(roomNumber)
+      const meta = roomMetaMap.get(roomNumber)
+
+      const segments: string[] = [`Room ${roomNumber}`]
+      const detailParts: string[] = []
+
+      const type = meta?.type ?? room?.type
+      const block = meta?.block ?? room?.block
+
+      if (type) {
+        detailParts.push(type)
+      }
+      if (block) {
+        detailParts.push(`Block ${block}`)
+      }
+
+      if (detailParts.length > 0) {
+        segments.push(`(${detailParts.join(" • ")})`)
+      }
+
+      const statusLabel = room?.status && room.status !== "unknown" ? room.status.replace(/_/g, " ") : null
+      if (statusLabel) {
+        segments.push(`– ${statusLabel}`)
+      }
+
+      return segments.join(" ")
+    },
+    [inventoryMap, roomMetaMap],
+  )
+
+  useEffect(() => {
+    if (!shouldAutoPopulate) return
+    if (priority !== "high") {
+      setPriority("high")
+    }
+  }, [shouldAutoPopulate, priority])
+
+  useEffect(() => {
+    if (!shouldAutoPopulate) return
+    if (selectedDepartment !== "housekeeping") {
+      setSelectedDepartment("housekeeping")
+    }
+  }, [shouldAutoPopulate, selectedDepartment])
 
   // Controlled Select state to prevent DOM errors
   const [selectOpen, setSelectOpen] = useState(false)
@@ -148,6 +270,13 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers, initialD
   const definitionRequiresSpecificTime = Boolean(task.requiresSpecificTime)
   const definitionRecurringTime =
     definitionRequiresSpecificTime && task.recurringTime ? task.recurringTime : null
+  const autoDueDisplay =
+    shouldAutoPopulate
+      ? (() => {
+          const dueDate = new Date(Date.now() + 30 * 60 * 1000)
+          return Number.isNaN(dueDate.getTime()) ? null : format(dueDate, "PPP p")
+        })()
+      : null
 
   const locationRef = useRef<HTMLDivElement>(null)
 
@@ -298,6 +427,19 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers, initialD
       return rest
     })
 
+  useEffect(() => {
+    if (!shouldAutoPopulate) return
+    if (assignedTo) return
+
+    const onDutyHousekeeping = sortedStaff.find(
+      (worker) => worker.department === "housekeeping" && worker.availability.status !== "OFF_DUTY",
+    )
+    if (onDutyHousekeeping) {
+      setAssignedTo(onDutyHousekeeping.id)
+      clearAssignedToError()
+    }
+  }, [shouldAutoPopulate, sortedStaff, assignedTo])
+
   const finalizeAssignment = (worker: WorkerWithAvailability) => {
     setAssignedTo(worker.id)
     clearAssignedToError()
@@ -394,7 +536,35 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers, initialD
       newErrors.customTaskName = "Task name is required for custom tasks"
     }
 
-    if (task.requiresRoom && !location) {
+    if (isRoomShiftingTask) {
+      if (!fromRoom) {
+        newErrors.fromRoom = "Select the current room"
+      } else if (!inventoryMap.has(fromRoom)) {
+        newErrors.fromRoom = "Select a valid room from the list"
+      }
+
+      if (!toRoom) {
+        newErrors.toRoom = "Select the destination room"
+      } else if (!inventoryMap.has(toRoom)) {
+        newErrors.toRoom = "Select a valid destination room"
+      } else if (!isRoomStatusAvailable(inventoryMap.get(toRoom)?.status)) {
+        newErrors.toRoom = "Destination room must be available"
+      }
+
+      if (fromRoom && toRoom && fromRoom === toRoom) {
+        newErrors.toRoom = "Destination room must be different from the current room"
+      }
+    }
+
+    if (isCheckInTask) {
+      if (!location) {
+        newErrors.checkInRoom = "Room number is required for check-in tasks"
+      } else if (!inventoryMap.has(location)) {
+        newErrors.checkInRoom = "Select a valid room from the list"
+      }
+    }
+
+    if (!isCheckInTask && task.requiresRoom && !location) {
       newErrors.location = "Room number or area is required"
     }
 
@@ -430,6 +600,48 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers, initialD
     }
 
     clearAssignedToError()
+    const resolvedLocation = isRoomShiftingTask
+      ? fromRoom
+      : isCheckInTask
+        ? location
+        : task.requiresRoom
+          ? location
+          : undefined
+
+    const dueAtValue = shouldAutoPopulate ? new Date(Date.now() + 30 * 60 * 1000).toISOString() : null
+
+    let dueDisplayNote: string | null = null
+    if (dueAtValue) {
+      const dueDate = new Date(dueAtValue)
+      if (!Number.isNaN(dueDate.getTime())) {
+        dueDisplayNote = format(dueDate, "PPP p")
+      }
+    }
+
+    const autoNotes: string[] = []
+    if (dueDisplayNote) {
+      autoNotes.push(`Due by ${dueDisplayNote}`)
+    }
+    if (isRoomShiftingTask && fromRoom && toRoom) {
+      autoNotes.push(`Shift guest from room ${fromRoom} to ${toRoom}`)
+    } else if (isCheckInTask && location) {
+      autoNotes.push(`Prepare room ${location} for guest check-in`)
+    }
+
+    const trimmedRemarks = remarks.trim()
+    const combinedRemarks = [autoNotes.length > 0 ? `Auto-notes: ${autoNotes.join(" | ")}` : null, trimmedRemarks || null]
+      .filter(Boolean)
+      .join("\n")
+
+    const metadata =
+      shouldAutoPopulate
+        ? {
+            ...(isRoomShiftingTask
+              ? { fromRoom: fromRoom || undefined, toRoom: toRoom || undefined }
+              : undefined),
+            ...(isCheckInTask ? { checkInRoom: location || undefined } : undefined),
+          }
+        : undefined
 
     const data: TaskAssignmentData = {
       taskId: task.id,
@@ -439,9 +651,9 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers, initialD
       department: selectedDepartment,
       priority,
       duration,
-      location: task.requiresRoom ? location : undefined,
+      location: resolvedLocation,
       acLocation: task.requiresACLocation ? acLocation : undefined,
-      remarks: remarks || undefined,
+      remarks: combinedRemarks || undefined,
       assignedTo,
       photoRequired: isOtherTask ? photoRequired : task.photoRequired,
       photoCount: isOtherTask ? photoCount : task.photoCount,
@@ -454,6 +666,8 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers, initialD
       requiresSpecificTime: !isOtherTask && definitionIsRecurring ? definitionRequiresSpecificTime : false,
       recurringTime:
         !isOtherTask && definitionIsRecurring && definitionRequiresSpecificTime ? definitionRecurringTime : null,
+      dueAt: dueAtValue,
+      metadata,
     }
 
     console.log("[v0] Task assignment data:", {
@@ -550,7 +764,7 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers, initialD
               onChange={(e) => setCustomCategory(e.target.value as TaskCategory)}
               className="w-full px-4 py-3 border-2 border-border rounded-lg focus:border-ring focus:outline-none bg-background text-foreground"
             >
-              <option value="GUEST_REQUEST">Guest Issue</option>
+              <option value="GUEST_REQUEST">Guest</option>
               <option value="ROOM_CLEANING">Room Cleaning</option>
               <option value="COMMON_AREA">Common Area</option>
               <option value="MAINTENANCE">Maintenance</option>
@@ -661,6 +875,169 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers, initialD
             </p>
           )}
         </div>
+
+        {/* Auto Due Time */}
+        {shouldAutoPopulate && autoDueDisplay && (
+          <div>
+            <label className="block text-sm font-semibold text-foreground mb-2">Due Time</label>
+            <div className="relative">
+              <Clock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+              <input
+                value={autoDueDisplay}
+                readOnly
+                className="w-full pl-11 pr-4 py-3 border-2 border-border rounded-lg bg-muted text-sm sm:text-base text-foreground"
+              />
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">Automatically set to 30 minutes from assignment.</p>
+          </div>
+        )}
+
+        {/* Room Shifting Fields */}
+        {isRoomShiftingTask && (
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label className="block text-sm font-semibold text-foreground mb-2">
+                From Room <span className="text-destructive">*</span>
+              </label>
+              <div className="relative">
+                <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+                <input
+                  type="text"
+                  list={fromRoomListId}
+                  value={fromRoomInput}
+                  onChange={(e) => {
+                    const value = e.target.value.trim()
+                    setFromRoomInput(value)
+                    if (inventoryMap.has(value)) {
+                      setFromRoom(value)
+                      setLocation(value)
+                    } else {
+                      setFromRoom("")
+                      setLocation("")
+                    }
+                  }}
+                  onBlur={(e) => {
+                    const value = e.target.value.trim()
+                    if (!inventoryMap.has(value)) {
+                      setFromRoom("")
+                      setLocation("")
+                    } else {
+                      setFromRoom(value)
+                      setLocation(value)
+                    }
+                  }}
+                  placeholder="Search current room..."
+                  className={`w-full pl-11 pr-4 py-3 border-2 rounded-lg focus:border-ring focus:outline-none bg-background text-foreground ${
+                    errors.fromRoom ? "border-destructive" : "border-border"
+                  }`}
+                />
+                <datalist id={fromRoomListId}>
+                  {roomInventory.map((room) => (
+                    <option key={`from-${room.roomNumber}`} value={room.roomNumber} label={formatRoomOptionLabel(room.roomNumber)} />
+                  ))}
+                </datalist>
+              </div>
+              {errors.fromRoom && (
+                <p className="mt-1 text-xs sm:text-sm text-destructive flex items-center gap-1">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  <span>{errors.fromRoom}</span>
+                </p>
+              )}
+            </div>
+
+            <div>
+              <label className="block text-sm font-semibold text-foreground mb-2">
+                To Room <span className="text-destructive">*</span>
+              </label>
+              <div className="relative">
+                <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+                <input
+                  type="text"
+                  list={toRoomListId}
+                  value={toRoomInput}
+                  onChange={(e) => {
+                    const value = e.target.value.trim()
+                    setToRoomInput(value)
+                    const room = inventoryMap.get(value)
+                    if (room && isRoomStatusAvailable(room.status)) {
+                      setToRoom(value)
+                    } else {
+                      setToRoom("")
+                    }
+                  }}
+                  onBlur={(e) => {
+                    const value = e.target.value.trim()
+                    const room = inventoryMap.get(value)
+                    if (room && isRoomStatusAvailable(room.status)) {
+                      setToRoom(value)
+                    } else {
+                      setToRoom("")
+                    }
+                  }}
+                  placeholder="Choose destination room..."
+                  className={`w-full pl-11 pr-4 py-3 border-2 rounded-lg focus:border-ring focus:outline-none bg-background text-foreground ${
+                    errors.toRoom ? "border-destructive" : "border-border"
+                  }`}
+                />
+                <datalist id={toRoomListId}>
+                  {availableDestinationRooms.map((room) => (
+                    <option key={`to-${room.roomNumber}`} value={room.roomNumber} label={formatRoomOptionLabel(room.roomNumber)} />
+                  ))}
+                </datalist>
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Only rooms marked as available are shown in the destination list.
+              </p>
+              {errors.toRoom && (
+                <p className="mt-1 text-xs sm:text-sm text-destructive flex items-center gap-1">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  <span>{errors.toRoom}</span>
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Check-in Room Selection */}
+        {isCheckInTask && (
+          <div>
+            <label className="block text-sm font-semibold text-foreground mb-2">
+              Room Number <span className="text-destructive">*</span>
+            </label>
+            <div className="relative">
+              <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+              <input
+                type="text"
+                list={checkInRoomListId}
+                value={locationInput}
+                onChange={(e) => {
+                  const value = e.target.value.trim()
+                  setLocationInput(value)
+                  setLocation(value)
+                }}
+                onBlur={(e) => {
+                  const value = e.target.value.trim()
+                  setLocation(value)
+                }}
+                placeholder="Assign guest room..."
+                className={`w-full pl-11 pr-4 py-3 border-2 rounded-lg focus:border-ring focus:outline-none bg-background text-foreground ${
+                  errors.checkInRoom ? "border-destructive" : "border-border"
+                }`}
+              />
+              <datalist id={checkInRoomListId}>
+                {roomInventory.map((room) => (
+                  <option key={`check-in-${room.roomNumber}`} value={room.roomNumber} label={formatRoomOptionLabel(room.roomNumber)} />
+                ))}
+              </datalist>
+            </div>
+            {errors.checkInRoom && (
+              <p className="mt-1 text-xs sm:text-sm text-destructive flex items-center gap-1">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{errors.checkInRoom}</span>
+              </p>
+            )}
+          </div>
+        )}
 
         {/* Location (Autocomplete) - Only if required */}
         {task.requiresRoom && (
@@ -901,3 +1278,5 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers, initialD
   </>
   )
 }
+
+

@@ -39,6 +39,9 @@ export interface TaskDefinition {
   recurringFrequency?: RecurringFrequency
 }
 
+export const ROOM_SHIFTING_TASK_ID = "housekeeping-room-shifting"
+export const GUEST_CHECK_IN_TASK_ID = "housekeeping-check-in"
+
 export const TASK_DEFINITIONS: TaskDefinition[] = [
   // GUEST REQUESTS (19 tasks)
   {
@@ -361,6 +364,32 @@ export const TASK_DEFINITIONS: TaskDefinition[] = [
     ],
     keywords: ["vacant", "deep", "cleaning", "empty room"],
     requiresRoom: true,
+  },
+  {
+    id: ROOM_SHIFTING_TASK_ID,
+    name: "Room Shifting",
+    category: "ROOM_CLEANING",
+    department: "housekeeping",
+    duration: 30,
+    priority: "high",
+    photoRequired: false,
+    photoCount: 0,
+    photoDocumentationRequired: false,
+    keywords: ["room shift", "transfer", "move guest", "room change", "housekeeping transfer"],
+    requiresRoom: false,
+  },
+  {
+    id: GUEST_CHECK_IN_TASK_ID,
+    name: "Guest Check-in Preparation",
+    category: "ROOM_CLEANING",
+    department: "housekeeping",
+    duration: 20,
+    priority: "high",
+    photoRequired: false,
+    photoCount: 0,
+    photoDocumentationRequired: false,
+    keywords: ["check-in", "arrival", "guest welcome", "room prep", "housekeeping"],
+    requiresRoom: false,
   },
 
   // COMMON AREA CLEANING (17 areas)
@@ -785,7 +814,7 @@ export const TASK_DEFINITIONS: TaskDefinition[] = [
 
 // Helper function for category labels
 export const CATEGORY_LABELS: Record<TaskCategory, string> = {
-  GUEST_REQUEST: "Guest Issue",
+  GUEST_REQUEST: "Guest",
   ROOM_CLEANING: "Room Cleaning",
   COMMON_AREA: "Common Area",
   PREVENTIVE_MAINTENANCE: "Maintenance",

@@ -91,10 +91,79 @@ export function RoomTaskModal({ roomNumber, tasks, onClose, onTaskComplete }: Ro
     }
   }
 
+const MAX_CANVAS_WIDTH = 1280
+const MAX_CANVAS_HEIGHT = 960
+const TARGET_UPLOAD_BYTES = 600 * 1024 // Soft target used during compression only
+const JPEG_QUALITY_STEPS = [0.8, 0.7, 0.6, 0.5, 0.4, 0.3]
+
+async function readImage(file: File): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      const img = new Image()
+      img.onload = () => resolve(img)
+      img.onerror = () => reject(new Error("Unable to load image"))
+      img.src = typeof reader.result === "string" ? reader.result : ""
+    }
+    reader.onerror = () => reject(new Error("Failed to read file"))
+    reader.readAsDataURL(file)
+  })
+}
+
+function canvasToBlob(canvas: HTMLCanvasElement, quality: number): Promise<Blob | null> {
+  return new Promise((resolve) => {
+    canvas.toBlob((blob) => resolve(blob), "image/jpeg", quality)
+  })
+}
+
+async function compressImage(file: File): Promise<File> {
+  if (!file.type.startsWith("image/")) {
+    return file
+  }
+
+  try {
+    const image = await readImage(file)
+    const scale = Math.min(1, MAX_CANVAS_WIDTH / image.width, MAX_CANVAS_HEIGHT / image.height)
+    const canvas = document.createElement("canvas")
+    canvas.width = Math.round(image.width * scale)
+    canvas.height = Math.round(image.height * scale)
+
+    const ctx = canvas.getContext("2d", { willReadFrequently: false })
+    if (!ctx) {
+      return file
+    }
+    ctx.drawImage(image, 0, 0, canvas.width, canvas.height)
+
+    let bestBlob: Blob | null = null
+
+    for (const quality of JPEG_QUALITY_STEPS) {
+      const blob = await canvasToBlob(canvas, quality)
+      if (!blob) continue
+      bestBlob = blob
+      if (blob.size <= TARGET_UPLOAD_BYTES) {
+        break
+      }
+    }
+
+    if (!bestBlob) {
+      return file
+    }
+
+    const extension = file.name.toLowerCase().endsWith(".jpg") || file.name.toLowerCase().endsWith(".jpeg") ? file.name : `${file.name.split(".")[0] || "photo"}.jpg`
+
+    return new File([bestBlob], extension, { type: "image/jpeg", lastModified: Date.now() })
+  } catch (error) {
+    console.warn("[photos] Falling back to original file due to compression error:", error)
+    return file
+  }
+}
+
   const uploadPhoto = async (taskId: string, file: File, category: "room_photos" | "proof_photos") => {
     try {
+      const optimizedFile = await compressImage(file)
+
       const formData = new FormData()
-      formData.append("file", file)
+      formData.append("file", optimizedFile, optimizedFile.name)
       formData.append("taskId", taskId)
 
       const response = await fetch("/api/upload-photo", {

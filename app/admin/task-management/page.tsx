@@ -52,6 +52,7 @@ function TaskManagementPage() {
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedCategory, setSelectedCategory] = useState<TaskCategory | "ALL">("ALL")
   const [customTaskDefs, setCustomTaskDefs] = useState<CustomTaskDefinition[]>([])
+  const [allTaskDefs, setAllTaskDefs] = useState<any[]>([])
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
   const [editingTask, setEditingTask] = useState<any>(null)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
@@ -79,7 +80,22 @@ function TaskManagementPage() {
   const [newTaskForm, setNewTaskForm] = useState(createDefaultNewTaskForm)
 
   useEffect(() => {
-    setCustomTaskDefs(getCustomTaskDefinitions())
+    const loadTaskDefinitions = async () => {
+      try {
+        const customDefs = await getCustomTaskDefinitions()
+        setCustomTaskDefs(customDefs)
+        
+        const allDefs = await getAllTaskDefinitions()
+        setAllTaskDefs(allDefs)
+      } catch (error) {
+        console.error("Error loading task definitions:", error)
+        // Fallback to empty arrays
+        setCustomTaskDefs([])
+        setAllTaskDefs([])
+      }
+    }
+    
+    loadTaskDefinitions()
   }, [])
 
   const customTasks = tasks.filter(
@@ -93,9 +109,7 @@ function TaskManagementPage() {
 
   const getUserName = (userId: string) => users.find((u) => u.id === userId)?.name || "Front Office"
 
-  const allTaskDefinitions = getAllTaskDefinitions()
-
-  const filteredTasks = allTaskDefinitions.filter((task) => {
+  const filteredTasks = allTaskDefs.filter((task) => {
     const matchesSearch =
       task.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       task.keywords.some((k) => k.toLowerCase().includes(searchQuery.toLowerCase()))
@@ -103,7 +117,7 @@ function TaskManagementPage() {
     return matchesSearch && matchesCategory
   })
 
-  const handleAddCustomTask = () => {
+  const handleAddCustomTask = async () => {
     if (!newTaskForm.name.trim()) {
       toast({
         title: "Error",
@@ -154,7 +168,7 @@ function TaskManagementPage() {
       .map((k) => k.trim())
       .filter((k) => k.length > 0)
 
-    const newTask = saveCustomTaskDefinition({
+    const newTask = await saveCustomTaskDefinition({
       name: newTaskForm.name,
       category: newTaskForm.category,
       department: newTaskForm.department,
@@ -183,7 +197,16 @@ function TaskManagementPage() {
       }
     }
 
-    setCustomTaskDefs(getCustomTaskDefinitions())
+    // Reload task definitions after adding a new one
+    try {
+      const customDefs = await getCustomTaskDefinitions()
+      setCustomTaskDefs(customDefs)
+      
+      const allDefs = await getAllTaskDefinitions()
+      setAllTaskDefs(allDefs)
+    } catch (error) {
+      console.error("Error reloading task definitions:", error)
+    }
     setIsAddDialogOpen(false)
     setNewTaskForm(createDefaultNewTaskForm())
 
@@ -232,13 +255,23 @@ function TaskManagementPage() {
     })
   }
 
-  const handleRemoveTask = (taskId: string) => {
+  const handleRemoveTask = async (taskId: string) => {
     const task = customTaskDefs.find((t) => t.id === taskId)
     if (!task) return
 
     if (confirm(`Are you sure you want to remove "${task.name}" from the task library?`)) {
-      deleteCustomTaskDefinition(taskId)
-      setCustomTaskDefs(getCustomTaskDefinitions())
+      await deleteCustomTaskDefinition(taskId)
+      
+      // Reload task definitions after deleting one
+      try {
+        const customDefs = await getCustomTaskDefinitions()
+        setCustomTaskDefs(customDefs)
+        
+        const allDefs = await getAllTaskDefinitions()
+        setAllTaskDefs(allDefs)
+      } catch (error) {
+        console.error("Error reloading task definitions:", error)
+      }
 
       toast({
         title: "Removed",
@@ -565,7 +598,7 @@ function TaskManagementPage() {
               )}
             </TabsTrigger>
             <TabsTrigger value="library">
-              Task Library ({allTaskDefinitions.length})
+              Task Library ({allTaskDefs.length})
               {customTaskDefs.length > 0 && (
                 <Badge variant="outline" className="ml-2">
                   {customTaskDefs.length} custom
@@ -813,8 +846,17 @@ function TaskManagementPage() {
             task={editingTask}
             open={isEditDialogOpen}
             onOpenChange={setIsEditDialogOpen}
-            onSuccess={() => {
-              setCustomTaskDefs(getCustomTaskDefinitions())
+            onSuccess={async () => {
+              try {
+                const customDefs = await getCustomTaskDefinitions()
+                setCustomTaskDefs(customDefs)
+                
+                const allDefs = await getAllTaskDefinitions()
+                setAllTaskDefs(allDefs)
+              } catch (error) {
+                console.error("Error reloading task definitions:", error)
+              }
+              
               setEditingTask(null)
             }}
           />

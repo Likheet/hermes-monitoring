@@ -33,9 +33,14 @@ export function TaskSearch({ onSelectTask }: TaskSearchProps) {
   const searchRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    const loadTasks = () => {
-      const tasks = getAllTaskDefinitions()
-      setAllTasks(tasks)
+    const loadTasks = async () => {
+      try {
+        const tasks = await getAllTaskDefinitions()
+        setAllTasks(tasks)
+      } catch (error) {
+        console.error("Error loading task definitions:", error)
+        setAllTasks(TASK_DEFINITIONS) // Fallback to built-in tasks
+      }
     }
 
     loadTasks()

@@ -170,6 +170,17 @@ export async function loadTasksFromSupabase(
           "supervisor_remarks",
           "photo_requirements",
           "requires_verification",
+          // Custom task fields
+          "is_custom_task",
+          "custom_task_name",
+          "custom_task_category",
+          "custom_task_priority",
+          "custom_task_photo_required",
+          "custom_task_photo_count",
+          "custom_task_is_recurring",
+          "custom_task_recurring_frequency",
+          "custom_task_requires_specific_time",
+          "custom_task_recurring_time",
         ].join(","),
       )
       .order("updated_at", { ascending: false })
@@ -211,6 +222,17 @@ export async function loadTasksFromSupabase(
         audit_log: [],
         pause_history: [],
         photo_requirements: row.photo_requirements ?? null,
+        // Custom task fields
+        is_custom_task: row.is_custom_task ?? false,
+        custom_task_name: row.custom_task_name ?? null,
+        custom_task_category: row.custom_task_category ?? null,
+        custom_task_priority: row.custom_task_priority ?? null,
+        custom_task_photo_required: row.custom_task_photo_required ?? null,
+        custom_task_photo_count: row.custom_task_photo_count ?? null,
+        custom_task_is_recurring: row.custom_task_is_recurring ?? null,
+        custom_task_recurring_frequency: row.custom_task_recurring_frequency ?? null,
+        custom_task_requires_specific_time: row.custom_task_requires_specific_time ?? null,
+        custom_task_recurring_time: row.custom_task_recurring_time ?? null,
       } as DatabaseTask),
     )
     setCachedValue("tasks", mapped)

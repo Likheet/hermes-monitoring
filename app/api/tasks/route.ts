@@ -100,6 +100,17 @@ export async function POST(request: Request) {
       photo_documentation_required,
       photo_categories,
       client_timezone_offset,
+      // Custom task fields
+      is_custom_task,
+      custom_task_name,
+      custom_task_category,
+      custom_task_priority,
+      custom_task_photo_required,
+      custom_task_photo_count,
+      custom_task_is_recurring,
+      custom_task_recurring_frequency,
+      custom_task_requires_specific_time,
+      custom_task_recurring_time,
     } = body
 
     const timezoneOffset =
@@ -189,6 +200,17 @@ export async function POST(request: Request) {
       categorized_photos: categorizedPhotosPayload,
       worker_remarks: "",
       supervisor_remarks: "",
+      // Custom task fields
+      is_custom_task: Boolean(is_custom_task),
+      custom_task_name: custom_task_name ?? null,
+      custom_task_category: custom_task_category ?? null,
+      custom_task_priority: custom_task_priority ?? null,
+      custom_task_photo_required: custom_task_photo_required ?? null,
+      custom_task_photo_count: custom_task_photo_count ?? null,
+      custom_task_is_recurring: custom_task_is_recurring ?? null,
+      custom_task_recurring_frequency: custom_task_recurring_frequency ?? null,
+      custom_task_requires_specific_time: custom_task_requires_specific_time ?? null,
+      custom_task_recurring_time: custom_task_recurring_time ?? null,
     })
 
     if (taskError) {

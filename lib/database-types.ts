@@ -60,6 +60,17 @@ export interface DatabaseTask {
   audit_log: Json
   pause_history: Json
   photo_requirements: Json
+  // Custom task fields
+  is_custom_task: boolean
+  custom_task_name: string | null
+  custom_task_category: string | null
+  custom_task_priority: string | null
+  custom_task_photo_required: boolean | null
+  custom_task_photo_count: number | null
+  custom_task_is_recurring: boolean | null
+  custom_task_recurring_frequency: string | null
+  custom_task_requires_specific_time: boolean | null
+  custom_task_recurring_time: string | null
 }
 
 export interface DatabaseShiftSchedule {
@@ -461,12 +472,12 @@ export function databaseTaskToApp(dbTask: DatabaseTask): Task {
     room_number: dbTask.room_number ?? "",
     pause_history: pauseHistory,
     audit_log: auditLog,
-    is_custom_task: false,
-    custom_task_name: null,
-    custom_task_category: null,
-    custom_task_priority: null,
-    custom_task_photo_required: null,
-    custom_task_photo_count: null,
+    is_custom_task: dbTask.is_custom_task ?? false,
+    custom_task_name: dbTask.custom_task_name ?? null,
+    custom_task_category: dbTask.custom_task_category ?? null,
+    custom_task_priority: dbTask.custom_task_priority ?? null,
+    custom_task_photo_required: dbTask.custom_task_photo_required ?? null,
+    custom_task_photo_count: dbTask.custom_task_photo_count ?? null,
     custom_task_processed: false,
     rejection_acknowledged: false,
     rejection_acknowledged_at: null,
@@ -577,6 +588,17 @@ export function appTaskToDatabase(task: Task): Omit<DatabaseTask, "created_at" |
     audit_log: (task.audit_log as unknown) as Json,
     pause_history: (task.pause_history as unknown) as Json,
     photo_requirements: photoRequirements,
+    // Custom task fields
+    is_custom_task: task.is_custom_task ?? false,
+    custom_task_name: task.custom_task_name ?? null,
+    custom_task_category: task.custom_task_category ?? null,
+    custom_task_priority: task.custom_task_priority ?? null,
+    custom_task_photo_required: task.custom_task_photo_required ?? null,
+    custom_task_photo_count: task.custom_task_photo_count ?? null,
+    custom_task_is_recurring: task.custom_task_is_recurring ?? null,
+    custom_task_recurring_frequency: task.custom_task_recurring_frequency ?? null,
+    custom_task_requires_specific_time: task.custom_task_requires_specific_time ?? null,
+    custom_task_recurring_time: task.custom_task_recurring_time ?? null,
   }
 }
 
