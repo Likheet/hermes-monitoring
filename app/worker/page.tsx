@@ -147,6 +147,13 @@ function WorkerDashboard() {
   const myCompletedMaintenanceTasksForDisplay = myCompletedMaintenanceTasks.filter((task) =>
     maintenanceTaskIdsForDisplay.has(task.id),
   )
+  const canAccessMaintenance = isMaintenanceUser || myMaintenanceAssignments.length > 0
+
+  useEffect(() => {
+    if (!canAccessMaintenance && activeTab === "scheduled") {
+      setActiveTab("home")
+    }
+  }, [canAccessMaintenance, activeTab])
 
   const getMaintenanceTaskLabel = (task: MaintenanceTask) =>
     TASK_TYPE_LABELS[task.task_type] ?? task.task_type.replace(/_/g, " ")
@@ -821,7 +828,7 @@ function WorkerDashboard() {
               </Card>
             </div>
 
-            {isMaintenanceUser && myCompletedMaintenanceTasksForDisplay.length > 0 && (
+            {canAccessMaintenance && myCompletedMaintenanceTasksForDisplay.length > 0 && (
               <section>
                 <h2 className="text-base md:text-lg font-semibold mb-3">✅ Recently Completed Tasks</h2>
                 <p className="text-sm text-muted-foreground mb-3">
@@ -891,6 +898,17 @@ function WorkerDashboard() {
         )
 
       case "scheduled":
+        if (!canAccessMaintenance) {
+          return (
+            <main className="container mx-auto px-4 py-6 space-y-4">
+              <Card>
+                <CardContent className="p-6 text-center text-muted-foreground">
+                  Scheduled maintenance is only available when you have maintenance tasks assigned.
+                </CardContent>
+              </Card>
+            </main>
+          )
+        }
         return (
           <main className="container mx-auto px-4 py-6">
             <MaintenanceCalendar
@@ -914,7 +932,7 @@ function WorkerDashboard() {
               </Alert>
             )}
 
-            {isMaintenanceUser && currentMaintenanceTask && currentMaintenanceTask.room_number && (
+            {canAccessMaintenance && currentMaintenanceTask && currentMaintenanceTask.room_number && (
               <Card
                 className="cursor-pointer border-2 border-accent bg-accent/20 shadow-lg transition-all hover:shadow-xl hover:border-accent/80"
                 onClick={() => handleNavigateToMaintenanceTask(currentMaintenanceTask)}
@@ -968,7 +986,7 @@ function WorkerDashboard() {
             )}
 
             {/* Progress card showing task completion */}
-            {isMaintenanceUser && maintenanceTasksForDisplay.length > 0 && (
+            {canAccessMaintenance && maintenanceTasksForDisplay.length > 0 && (
               <Card className="bg-primary/5 border-primary/20">
                 <CardContent className="p-6">
                   <div className="flex items-center justify-between mb-3">
@@ -992,7 +1010,7 @@ function WorkerDashboard() {
               </Card>
             )}
 
-            {isMaintenanceUser && Object.keys(activeMaintenanceByRoom).length > 0 && (
+            {canAccessMaintenance && Object.keys(activeMaintenanceByRoom).length > 0 && (
               <section>
                 <h2 className="text-base md:text-lg font-semibold mb-3 text-black">🔧 Active Maintenance Tasks</h2>
                 <div className="space-y-3">

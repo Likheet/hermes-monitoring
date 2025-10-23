@@ -3,6 +3,7 @@ import { NextResponse } from "next/server"
 import { cookies } from "next/headers"
 import { databaseTaskToApp } from "@/lib/database-types"
 import { formatDateKeyForTimezone, getWorkerShiftForDate, isWorkerOnShiftWithSchedule } from "@/lib/shift-utils"
+import type { SupabaseClient } from "@supabase/supabase-js"
 
 const PRIORITY_APP_TO_DB: Record<string, "low" | "medium" | "high" | "urgent"> = {
   GUEST_REQUEST: "medium",
@@ -75,6 +76,139 @@ export async function GET(request: Request) {
     console.error("Tasks GET error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
+}
+
+interface CreateTaskDirectParams {
+  supabase: SupabaseClient
+  sessionUserId: string
+  task_type: string
+  normalizedPriority: "low" | "medium" | "high" | "urgent"
+  assigned_to_user_id: string | null | undefined
+  assigned_at: { client: string; server: string }
+  expected_duration_minutes: unknown
+  photo_documentation_required: unknown
+  photo_required: unknown
+  photoRequirementsPayload: unknown
+  room_number: string | null | undefined
+  categorizedPhotosPayload: Record<string, unknown>
+  is_custom_task: unknown
+  custom_task_name: unknown
+  custom_task_category: unknown
+  custom_task_priority: unknown
+  custom_task_photo_required: unknown
+  custom_task_photo_count: unknown
+  custom_task_is_recurring: unknown
+  custom_task_recurring_frequency: unknown
+  custom_task_requires_specific_time: unknown
+  custom_task_recurring_time: unknown
+}
+
+async function createTaskDirectly({
+  supabase,
+  sessionUserId,
+  task_type,
+  normalizedPriority,
+  assigned_to_user_id,
+  assigned_at,
+  expected_duration_minutes,
+  photo_documentation_required,
+  photo_required,
+  photoRequirementsPayload,
+  room_number,
+  categorizedPhotosPayload,
+  is_custom_task,
+  custom_task_name,
+  custom_task_category,
+  custom_task_priority,
+  custom_task_photo_required,
+  custom_task_photo_count,
+  custom_task_is_recurring,
+  custom_task_recurring_frequency,
+  custom_task_requires_specific_time,
+  custom_task_recurring_time,
+}: CreateTaskDirectParams) {
+  const nowIso = new Date().toISOString()
+  const statusValue = assigned_to_user_id ? "assigned" : "pending"
+
+  const auditLogEntry = {
+    timestamp: {
+      client: nowIso,
+      server: nowIso,
+    },
+    user_id: sessionUserId,
+    action: "TASK_CREATED",
+    old_status: null,
+    new_status: statusValue.toUpperCase(),
+    details: `Task created with type ${task_type}`,
+  }
+
+  const assignedTimestamp =
+    assigned_at && typeof assigned_at === "object"
+      ? assigned_at
+      : { client: nowIso, server: nowIso }
+
+  const parsedDuration =
+    typeof expected_duration_minutes === "number"
+      ? expected_duration_minutes
+      : Number(expected_duration_minutes)
+  const estimatedDuration =
+    Number.isFinite(parsedDuration) && !Number.isNaN(parsedDuration) ? Math.max(Math.round(parsedDuration), 0) : null
+
+  const categorizedPayload =
+    categorizedPhotosPayload && typeof categorizedPhotosPayload === "object"
+      ? categorizedPhotosPayload
+      : { room_photos: [], proof_photos: [] }
+
+  const photoRequirements =
+    typeof photoRequirementsPayload === "object" && photoRequirementsPayload !== null
+      ? photoRequirementsPayload
+      : []
+
+  const { data, error } = await supabase
+    .from("tasks")
+    .insert({
+      task_type,
+      room_number: room_number ?? null,
+      status: statusValue,
+      priority_level: normalizedPriority,
+      assigned_to_user_id: assigned_to_user_id ?? null,
+      assigned_by_user_id: sessionUserId,
+      assigned_at: assignedTimestamp,
+      estimated_duration: estimatedDuration,
+      requires_verification: Boolean(photo_documentation_required || photo_required),
+      photo_requirements: photoRequirements,
+      categorized_photos: categorizedPayload,
+      worker_remarks: "",
+      supervisor_remarks: "",
+      audit_log: [auditLogEntry],
+      department: null,
+      is_custom_task: Boolean(is_custom_task),
+      custom_task_name: custom_task_name ?? null,
+      custom_task_category: custom_task_category ?? null,
+      custom_task_priority: custom_task_priority ?? null,
+      custom_task_photo_required:
+        typeof custom_task_photo_required === "boolean" ? custom_task_photo_required : null,
+      custom_task_photo_count:
+        typeof custom_task_photo_count === "number" ? custom_task_photo_count : Number(custom_task_photo_count) || null,
+      custom_task_is_recurring:
+        typeof custom_task_is_recurring === "boolean" ? custom_task_is_recurring : null,
+      custom_task_recurring_frequency: custom_task_recurring_frequency ?? null,
+      custom_task_requires_specific_time:
+        typeof custom_task_requires_specific_time === "boolean"
+          ? custom_task_requires_specific_time
+          : null,
+      custom_task_recurring_time: custom_task_recurring_time ?? null,
+      created_at: nowIso,
+      updated_at: nowIso,
+    })
+    .select()
+    .single()
+
+  if (error) {
+    throw error
+  }
+
+  return data
 }
 
 // POST create new task
@@ -186,7 +320,7 @@ export async function POST(request: Request) {
             },
           }
         : []
-    const { data: task, error: taskError } = await supabase.rpc("create_task_with_autopause", {
+    const rpcPayload = {
       task_type,
       priority_level_db: normalizedPriority,
       priority_level_app: priority_level ?? null,
@@ -211,9 +345,52 @@ export async function POST(request: Request) {
       custom_task_recurring_frequency: custom_task_recurring_frequency ?? null,
       custom_task_requires_specific_time: custom_task_requires_specific_time ?? null,
       custom_task_recurring_time: custom_task_recurring_time ?? null,
-    })
+    } as const
+
+    const { data: task, error: taskError } = await supabase.rpc("create_task_with_autopause", rpcPayload)
 
     if (taskError) {
+      const missingFunction =
+        typeof taskError.message === "string" && taskError.message.includes("create_task_with_autopause")
+
+      if (missingFunction) {
+        try {
+          const fallbackTask = await createTaskDirectly({
+            supabase,
+            sessionUserId,
+            task_type,
+            normalizedPriority,
+            assigned_to_user_id,
+            assigned_at,
+            expected_duration_minutes,
+            photo_documentation_required,
+            photo_required,
+            photoRequirementsPayload,
+            room_number,
+            categorizedPhotosPayload,
+            is_custom_task,
+            custom_task_name,
+            custom_task_category,
+            custom_task_priority,
+            custom_task_photo_required,
+            custom_task_photo_count,
+            custom_task_is_recurring,
+            custom_task_recurring_frequency,
+            custom_task_requires_specific_time,
+            custom_task_recurring_time,
+          })
+
+          const appTask = databaseTaskToApp(fallbackTask)
+          return NextResponse.json({ task: appTask }, { status: 201 })
+        } catch (fallbackError) {
+          console.error("Task creation fallback error:", fallbackError)
+          return NextResponse.json(
+            { error: "Task RPC missing and direct insert failed. Please contact an administrator." },
+            { status: 500 },
+          )
+        }
+      }
+
       console.error("Task creation error:", taskError)
       return NextResponse.json({ error: taskError.message }, { status: 400 })
     }

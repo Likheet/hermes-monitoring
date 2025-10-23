@@ -4,6 +4,7 @@ import { Home, ListTodo, FileText, User, Calendar } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { triggerHaptic } from "@/lib/haptics"
 import { useAuth } from "@/lib/auth-context"
+import { useTasks } from "@/lib/task-context"
 
 interface BottomNavProps {
   activeTab?: string
@@ -12,10 +13,13 @@ interface BottomNavProps {
 
 export function BottomNav({ activeTab, onTabChange }: BottomNavProps) {
   const { user } = useAuth()
+  const { maintenanceTasks } = useTasks()
 
   const isMaintenance = user?.department === "maintenance"
+  const hasAssignedMaintenanceTasks = maintenanceTasks.some((task) => task.assigned_to === user?.id)
+  const canAccessScheduled = isMaintenance || hasAssignedMaintenanceTasks
 
-  const navItems = isMaintenance
+  const navItems = canAccessScheduled
     ? [
         { id: "home", icon: Home, label: "Home" },
         { id: "scheduled", icon: Calendar, label: "Scheduled" },
