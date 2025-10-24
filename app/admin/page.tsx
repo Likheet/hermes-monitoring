@@ -209,7 +209,7 @@ function AdminDashboard() {
       if (todayShift.is_override) return 2
       const availability = isWorkerOnShiftFromUser(worker)
       if (availability.status === "OFF_DUTY") return 2
-      if (availability.status === "ON_BREAK") return 1
+      if (availability.status === "SHIFT_BREAK") return 1
       if (!todayShift.shift_start || !todayShift.shift_end) return 1
       return 0
     }

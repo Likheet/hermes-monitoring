@@ -77,10 +77,23 @@ export interface DatabaseShiftSchedule {
   id: string
   worker_id: string
   schedule_date: string
-  shift_start: string
-  shift_end: string
+  // Legacy single shift fields (for backward compatibility)
+  shift_start: string | null
+  shift_end: string | null
   break_start: string | null
   break_end: string | null
+  // Dual shift fields
+  shift_1_start: string | null
+  shift_1_end: string | null
+  shift_1_break_start: string | null
+  shift_1_break_end: string | null
+  shift_2_start: string | null
+  shift_2_end: string | null
+  shift_2_break_start: string | null
+  shift_2_break_end: string | null
+  shift_2_has_break?: boolean
+  has_shift_2: boolean
+  is_dual_shift: boolean
   is_override: boolean
   override_reason: string | null
   notes: string | null
@@ -133,6 +146,13 @@ const DEFAULT_SHIFT = {
   breakStart: undefined as string | undefined,
   breakEnd: undefined as string | undefined,
   hasBreak: false,
+  isDualShift: false,
+  hasShift2: false,
+  shift2Start: undefined as string | undefined,
+  shift2End: undefined as string | undefined,
+  shift2HasBreak: false,
+  shift2BreakStart: undefined as string | undefined,
+  shift2BreakEnd: undefined as string | undefined,
 }
 
 const STATUS_DB_TO_APP: Record<DatabaseTask["status"], TaskStatus> = {
@@ -227,11 +247,86 @@ function parseShiftTiming(raw: string | null) {
 
   if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
     try {
-      const parsed = JSON.parse(trimmed)
-      const start = typeof parsed.start === "string" ? parsed.start : DEFAULT_SHIFT.start
-      const end = typeof parsed.end === "string" ? parsed.end : DEFAULT_SHIFT.end
-      const breakStart = typeof parsed.breakStart === "string" ? parsed.breakStart : DEFAULT_SHIFT.breakStart
-      const breakEnd = typeof parsed.breakEnd === "string" ? parsed.breakEnd : DEFAULT_SHIFT.breakEnd
+      const parsed = JSON.parse(trimmed) ?? {}
+      const shift1Source =
+        parsed && typeof parsed.shift1 === "object" && parsed.shift1 !== null ? parsed.shift1 : parsed
+      const shift2Source =
+        parsed && typeof parsed.shift2 === "object" && parsed.shift2 !== null ? parsed.shift2 : parsed
+
+      const start =
+        typeof shift1Source.start === "string"
+          ? shift1Source.start
+          : typeof parsed.start === "string"
+          ? parsed.start
+          : DEFAULT_SHIFT.start
+      const end =
+        typeof shift1Source.end === "string"
+          ? shift1Source.end
+          : typeof parsed.end === "string"
+          ? parsed.end
+          : DEFAULT_SHIFT.end
+      const breakStart =
+        typeof shift1Source.breakStart === "string"
+          ? shift1Source.breakStart
+          : typeof shift1Source.break_start === "string"
+          ? shift1Source.break_start
+          : typeof parsed.breakStart === "string"
+          ? parsed.breakStart
+          : typeof parsed.break_start === "string"
+          ? parsed.break_start
+          : DEFAULT_SHIFT.breakStart
+      const breakEnd =
+        typeof shift1Source.breakEnd === "string"
+          ? shift1Source.breakEnd
+          : typeof shift1Source.break_end === "string"
+          ? shift1Source.break_end
+          : typeof parsed.breakEnd === "string"
+          ? parsed.breakEnd
+          : typeof parsed.break_end === "string"
+          ? parsed.break_end
+          : DEFAULT_SHIFT.breakEnd
+
+      const shift2Start =
+        typeof shift2Source.start === "string"
+          ? shift2Source.start
+          : typeof parsed.shift2Start === "string"
+          ? parsed.shift2Start
+          : typeof parsed.shift_2_start === "string"
+          ? parsed.shift_2_start
+          : DEFAULT_SHIFT.shift2Start
+      const shift2End =
+        typeof shift2Source.end === "string"
+          ? shift2Source.end
+          : typeof parsed.shift2End === "string"
+          ? parsed.shift2End
+          : typeof parsed.shift_2_end === "string"
+          ? parsed.shift_2_end
+          : DEFAULT_SHIFT.shift2End
+      const shift2BreakStart =
+        typeof shift2Source.breakStart === "string"
+          ? shift2Source.breakStart
+          : typeof shift2Source.break_start === "string"
+          ? shift2Source.break_start
+          : typeof parsed.shift2BreakStart === "string"
+          ? parsed.shift2BreakStart
+          : typeof parsed.shift_2_break_start === "string"
+          ? parsed.shift_2_break_start
+          : DEFAULT_SHIFT.shift2BreakStart
+      const shift2BreakEnd =
+        typeof shift2Source.breakEnd === "string"
+          ? shift2Source.breakEnd
+          : typeof shift2Source.break_end === "string"
+          ? shift2Source.break_end
+          : typeof parsed.shift2BreakEnd === "string"
+          ? parsed.shift2BreakEnd
+          : typeof parsed.shift_2_break_end === "string"
+          ? parsed.shift_2_break_end
+          : DEFAULT_SHIFT.shift2BreakEnd
+
+      const hasShift2 =
+        Boolean(parsed.hasShift2 ?? parsed.has_shift_2) || Boolean(shift2Start && shift2End)
+      const isDualShift = Boolean(parsed.isDualShift ?? parsed.is_dual_shift ?? hasShift2)
+      const shift2HasBreak = Boolean(shift2BreakStart && shift2BreakEnd)
 
       return {
         start,
@@ -239,6 +334,13 @@ function parseShiftTiming(raw: string | null) {
         breakStart,
         breakEnd,
         hasBreak: Boolean(breakStart && breakEnd),
+        isDualShift,
+        hasShift2,
+        shift2Start: shift2Start ?? undefined,
+        shift2End: shift2End ?? undefined,
+        shift2HasBreak,
+        shift2BreakStart: shift2BreakStart ?? undefined,
+        shift2BreakEnd: shift2BreakEnd ?? undefined,
       }
     } catch (error) {
       console.warn("shift_timing JSON parse failed, falling back to range parsing:", error)
@@ -248,10 +350,9 @@ function parseShiftTiming(raw: string | null) {
   const match = trimmed.match(/(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})/)
   if (match) {
     return {
+      ...DEFAULT_SHIFT,
       start: match[1],
       end: match[2],
-      breakStart: DEFAULT_SHIFT.breakStart,
-      breakEnd: DEFAULT_SHIFT.breakEnd,
       hasBreak: false,
     }
   }
@@ -429,6 +530,13 @@ export function databaseUserToApp(dbUser: DatabaseUser): User {
     has_break: shift.hasBreak,
     break_start: shift.breakStart,
     break_end: shift.breakEnd,
+    is_dual_shift: shift.isDualShift,
+    has_shift_2: shift.hasShift2,
+    shift_2_start: shift.shift2Start,
+    shift_2_end: shift.shift2End,
+    shift_2_has_break: shift.shift2HasBreak,
+    shift_2_break_start: shift.shift2BreakStart,
+    shift_2_break_end: shift.shift2BreakEnd,
     is_available: true,
   }
 }
@@ -486,19 +594,42 @@ export function databaseTaskToApp(dbTask: DatabaseTask): Task {
 }
 
 export function databaseShiftScheduleToApp(dbSchedule: DatabaseShiftSchedule): ShiftSchedule {
+  // For dual shifts, prioritize shift_1 fields, fall back to legacy fields
+  const shiftStart = dbSchedule.shift_1_start || dbSchedule.shift_start
+  const shiftEnd = dbSchedule.shift_1_end || dbSchedule.shift_end
+  const breakStart = dbSchedule.shift_1_break_start || dbSchedule.break_start
+  const breakEnd = dbSchedule.shift_1_break_end || dbSchedule.break_end
+  const shift1HasBreak = Boolean(breakStart && breakEnd)
+  const shift2HasBreak = Boolean(dbSchedule.shift_2_break_start && dbSchedule.shift_2_break_end)
+  const hasShift2 =
+    dbSchedule.has_shift_2 || Boolean(dbSchedule.shift_2_start && dbSchedule.shift_2_end)
+  const isDualShift = dbSchedule.is_dual_shift || hasShift2
+
   return {
     id: dbSchedule.id,
     worker_id: dbSchedule.worker_id,
     schedule_date: dbSchedule.schedule_date,
-    shift_start: dbSchedule.shift_start,
-    shift_end: dbSchedule.shift_end,
-    has_break: Boolean(dbSchedule.break_start && dbSchedule.break_end),
-    break_start: dbSchedule.break_start ?? undefined,
-    break_end: dbSchedule.break_end ?? undefined,
+    shift_start: shiftStart ?? "09:00",
+    shift_end: shiftEnd ?? "17:00",
+    has_break: shift1HasBreak,
+    break_start: shift1HasBreak ? breakStart ?? undefined : undefined,
+    break_end: shift1HasBreak ? breakEnd ?? undefined : undefined,
+    shift_1_start: shiftStart ?? undefined,
+    shift_1_end: shiftEnd ?? undefined,
+    shift_1_break_start: shift1HasBreak ? breakStart ?? undefined : undefined,
+    shift_1_break_end: shift1HasBreak ? breakEnd ?? undefined : undefined,
     is_override: dbSchedule.is_override,
     override_reason: dbSchedule.override_reason ?? undefined,
     notes: dbSchedule.notes ?? undefined,
     created_at: dbSchedule.created_at,
+    // Dual shift specific fields
+    has_shift_2: hasShift2,
+    is_dual_shift: isDualShift,
+    shift_2_start: dbSchedule.shift_2_start ?? undefined,
+    shift_2_end: dbSchedule.shift_2_end ?? undefined,
+    shift_2_has_break: shift2HasBreak,
+    shift_2_break_start: shift2HasBreak ? dbSchedule.shift_2_break_start ?? undefined : undefined,
+    shift_2_break_end: shift2HasBreak ? dbSchedule.shift_2_break_end ?? undefined : undefined,
   }
 }
 
@@ -518,10 +649,25 @@ export function appUserToDatabase(
 
   // Convert shift object to JSON string
   const shiftTiming = JSON.stringify({
-    start: user.shift_start,
-    end: user.shift_end,
-    breakStart: user.break_start,
-    breakEnd: user.break_end,
+    shift1: {
+      start: user.shift_start,
+      end: user.shift_end,
+      hasBreak: user.has_break,
+      breakStart: user.break_start ?? null,
+      breakEnd: user.break_end ?? null,
+    },
+    shift2:
+      user.has_shift_2 || user.is_dual_shift
+        ? {
+            start: user.shift_2_start ?? null,
+            end: user.shift_2_end ?? null,
+            hasBreak: user.shift_2_has_break ?? false,
+            breakStart: user.shift_2_break_start ?? null,
+            breakEnd: user.shift_2_break_end ?? null,
+          }
+        : null,
+    isDualShift: Boolean(user.is_dual_shift ?? user.has_shift_2),
+    hasShift2: Boolean(user.has_shift_2),
   })
 
   const department = user.department === "front_desk" ? null : user.department
@@ -603,16 +749,42 @@ export function appTaskToDatabase(task: Task): Omit<DatabaseTask, "created_at" |
 }
 
 export function appShiftScheduleToDatabase(schedule: ShiftSchedule): Omit<DatabaseShiftSchedule, "created_at"> {
+  const shift1Start = schedule.shift_1_start ?? schedule.shift_start ?? null
+  const shift1End = schedule.shift_1_end ?? schedule.shift_end ?? null
+  const shift1BreakStart = schedule.shift_1_break_start ?? schedule.break_start ?? null
+  const shift1BreakEnd = schedule.shift_1_break_end ?? schedule.break_end ?? null
+  const shift1HasBreak = Boolean(shift1BreakStart && shift1BreakEnd)
+
+  const shift2Start = schedule.shift_2_start ?? null
+  const shift2End = schedule.shift_2_end ?? null
+  const shift2BreakStart = schedule.shift_2_break_start ?? null
+  const shift2BreakEnd = schedule.shift_2_break_end ?? null
+  const shift2HasBreak = Boolean(shift2BreakStart && shift2BreakEnd)
+
+  const hasShift2 = Boolean(schedule.has_shift_2 ?? (shift2Start && shift2End))
+  const isDualShift = Boolean(schedule.is_dual_shift ?? hasShift2)
+
   return {
     id: schedule.id,
     worker_id: schedule.worker_id,
     schedule_date: schedule.schedule_date,
-    shift_start: schedule.shift_start,
-    shift_end: schedule.shift_end,
-    break_start: schedule.break_start || null,
-    break_end: schedule.break_end || null,
+    shift_start: shift1Start,
+    shift_end: shift1End,
+    break_start: shift1HasBreak ? shift1BreakStart : null,
+    break_end: shift1HasBreak ? shift1BreakEnd : null,
+    shift_1_start: shift1Start,
+    shift_1_end: shift1End,
+    shift_1_break_start: shift1HasBreak ? shift1BreakStart : null,
+    shift_1_break_end: shift1HasBreak ? shift1BreakEnd : null,
+    shift_2_start: hasShift2 ? shift2Start : null,
+    shift_2_end: hasShift2 ? shift2End : null,
+    shift_2_break_start: shift2HasBreak ? shift2BreakStart : null,
+    shift_2_break_end: shift2HasBreak ? shift2BreakEnd : null,
+    has_shift_2: hasShift2,
+    is_dual_shift: isDualShift,
     is_override: schedule.is_override || false,
     override_reason: schedule.override_reason || null,
-    notes: schedule.notes || null,
+    notes:
+      typeof schedule.notes === "string" && schedule.notes.trim().length > 0 ? schedule.notes.trim() : null,
   }
 }

@@ -1,6 +1,7 @@
 // Shift management utilities
 
 import type { User } from "./types"
+import { calculateWorkingHours } from "./date-utils"
 
 export interface Shift {
   id: string
@@ -11,14 +12,23 @@ export interface Shift {
   effective_from: string // Date string
 }
 
+export type WorkerShiftStatus = "AVAILABLE" | "SHIFT_BREAK" | "OFF_DUTY"
+export type WorkerBreakType = "INTRA_SHIFT" | "INTER_SHIFT"
+
 export interface WorkerAvailability {
   workerId: string
-  status: "ON_SHIFT" | "OFF_DUTY" | "ENDING_SOON" | "ON_BREAK"
-  minutesUntilEnd?: number
+  status: WorkerShiftStatus
+  currentShift?: 1 | 2
+  nextShiftNumber?: 1 | 2
+  minutesUntilStateChange?: number
+  minutesUntilNextShift?: number
   shiftStart?: string
   shiftEnd?: string
   breakStart?: string
   breakEnd?: string
+  breakType?: WorkerBreakType
+  nextShiftStart?: string
+  isEndingSoon?: boolean
 }
 
 export type ShiftTimeOptions = {
@@ -66,123 +76,419 @@ function formatTimeForLog(hours: number, minutes: number) {
   return `${hours.toString().padStart(2, "0")}:${minutes.toString().padStart(2, "0")}`
 }
 
-export function isWorkerOnShiftFromUser(user: User, options?: ShiftTimeOptions): WorkerAvailability {
-  if (!user.shift_start || !user.shift_end) {
-    console.warn(
-      "[ShiftUtils] Missing default shift times for worker, assuming on-duty:",
-      user.name,
-      { shift_start: user.shift_start, shift_end: user.shift_end },
-    )
-    return {
-      workerId: user.id,
-      status: "ON_SHIFT",
-      shiftStart: user.shift_start,
-      shiftEnd: user.shift_end,
+const MAX_SINGLE_SHIFT_BREAK_MINUTES = 120
+const MAX_DUAL_SHIFT_BREAK_MINUTES = 240
+const MIN_INTER_SHIFT_BREAK_MINUTES = 1
+const MAX_INTER_SHIFT_BREAK_MINUTES = 1440
+
+type ShiftSegmentType = "WORK" | "BREAK"
+
+interface ShiftSegment {
+  type: ShiftSegmentType
+  shiftNumber?: 1 | 2
+  breakType?: WorkerBreakType
+  startMinutes: number
+  endMinutes: number
+  startTime: string
+  endTime: string
+  shiftStartTime?: string
+  shiftEndTime?: string
+}
+
+interface ShiftEvaluationConfig {
+  workerId: string
+  shift1Start: string
+  shift1End: string
+  shift1BreakStart?: string
+  shift1BreakEnd?: string
+  shift2Start?: string
+  shift2End?: string
+  shift2BreakStart?: string
+  shift2BreakEnd?: string
+  timezoneOffsetMinutes?: number
+}
+
+function isMinuteInRange(minute: number, start: number, end: number) {
+  if (start === end) return false
+  if (end > start) {
+    return minute >= start && minute < end
+  }
+  return minute >= start || minute < end
+}
+
+function minutesUntilRangeEnd(minute: number, start: number, end: number) {
+  if (!isMinuteInRange(minute, start, end)) {
+    return 0
+  }
+
+  if (end > start) {
+    return end - minute
+  }
+
+  if (minute >= start) {
+    return 24 * 60 - minute + end
+  }
+
+  return end - minute
+}
+
+function minutesUntilRangeStart(minute: number, start: number, end: number) {
+  if (isMinuteInRange(minute, start, end)) {
+    return 0
+  }
+
+  let diff = start - minute
+  if (diff <= 0) {
+    diff += 24 * 60
+  }
+
+  return diff
+}
+
+function segmentDuration(start: number, end: number) {
+  if (start === end) {
+    return 0
+  }
+  if (end > start) {
+    return end - start
+  }
+  return 24 * 60 - start + end
+}
+
+function differenceInMinutes(startTime: string, endTime: string) {
+  const start = timeToMinutes(startTime)
+  const end = timeToMinutes(endTime)
+  if (end >= start) {
+    return end - start
+  }
+  return end + 24 * 60 - start
+}
+
+function expandMinutesRange(start: number, end: number): Array<{ start: number; end: number }> {
+  if (start === end) {
+    return []
+  }
+
+  if (end > start) {
+    return [{ start, end }]
+  }
+
+  return [
+    { start, end: 24 * 60 },
+    { start: 0, end },
+  ]
+}
+
+function segmentsOverlap(segA: { start: number; end: number }, segB: { start: number; end: number }) {
+  return Math.max(segA.start, segB.start) < Math.min(segA.end, segB.end)
+}
+
+function buildShiftSegments(config: {
+  shift1Start?: string
+  shift1End?: string
+  shift1BreakStart?: string
+  shift1BreakEnd?: string
+  shift2Start?: string
+  shift2End?: string
+  shift2BreakStart?: string
+  shift2BreakEnd?: string
+}): { work: ShiftSegment[]; breaks: ShiftSegment[] } {
+  const work: ShiftSegment[] = []
+  const breaks: ShiftSegment[] = []
+
+  if (config.shift1Start && config.shift1End) {
+    const shift1StartMinutes = timeToMinutes(config.shift1Start)
+    const shift1EndMinutes = timeToMinutes(config.shift1End)
+
+    if (config.shift1BreakStart && config.shift1BreakEnd) {
+      const breakStartMinutes = timeToMinutes(config.shift1BreakStart)
+      const breakEndMinutes = timeToMinutes(config.shift1BreakEnd)
+
+      work.push({
+        type: "WORK",
+        shiftNumber: 1,
+        startMinutes: shift1StartMinutes,
+        endMinutes: breakStartMinutes,
+        startTime: config.shift1Start,
+        endTime: config.shift1BreakStart,
+        shiftStartTime: config.shift1Start,
+        shiftEndTime: config.shift1End,
+      })
+
+      breaks.push({
+        type: "BREAK",
+        shiftNumber: 1,
+        breakType: "INTRA_SHIFT",
+        startMinutes: breakStartMinutes,
+        endMinutes: breakEndMinutes,
+        startTime: config.shift1BreakStart,
+        endTime: config.shift1BreakEnd,
+        shiftStartTime: config.shift1Start,
+        shiftEndTime: config.shift1End,
+      })
+
+      work.push({
+        type: "WORK",
+        shiftNumber: 1,
+        startMinutes: breakEndMinutes,
+        endMinutes: shift1EndMinutes,
+        startTime: config.shift1BreakEnd,
+        endTime: config.shift1End,
+        shiftStartTime: config.shift1Start,
+        shiftEndTime: config.shift1End,
+      })
+    } else {
+      work.push({
+        type: "WORK",
+        shiftNumber: 1,
+        startMinutes: shift1StartMinutes,
+        endMinutes: shift1EndMinutes,
+        startTime: config.shift1Start,
+        endTime: config.shift1End,
+        shiftStartTime: config.shift1Start,
+        shiftEndTime: config.shift1End,
+      })
     }
   }
 
-  const now = new Date()
-  const { hours: currentHours, minutes: currentMinutesPart } = getDatePartsForTimezone(
-    now,
-    options?.timezoneOffsetMinutes,
-  )
-  let currentMinutes = currentHours * 60 + currentMinutesPart
+  if (config.shift2Start && config.shift2End) {
+    const shift2StartMinutes = timeToMinutes(config.shift2Start)
+    const shift2EndMinutes = timeToMinutes(config.shift2End)
 
+    if (config.shift1End) {
+      const shift1EndMinutes = timeToMinutes(config.shift1End)
+      if (shift1EndMinutes !== shift2StartMinutes) {
+        breaks.push({
+          type: "BREAK",
+          shiftNumber: 2,
+          breakType: "INTER_SHIFT",
+          startMinutes: shift1EndMinutes,
+          endMinutes: shift2StartMinutes,
+          startTime: config.shift1End,
+          endTime: config.shift2Start,
+          shiftStartTime: config.shift2Start,
+          shiftEndTime: config.shift2End,
+        })
+      }
+    }
+
+    if (config.shift2BreakStart && config.shift2BreakEnd) {
+      const breakStartMinutes = timeToMinutes(config.shift2BreakStart)
+      const breakEndMinutes = timeToMinutes(config.shift2BreakEnd)
+
+      work.push({
+        type: "WORK",
+        shiftNumber: 2,
+        startMinutes: shift2StartMinutes,
+        endMinutes: breakStartMinutes,
+        startTime: config.shift2Start,
+        endTime: config.shift2BreakStart,
+        shiftStartTime: config.shift2Start,
+        shiftEndTime: config.shift2End,
+      })
+
+      breaks.push({
+        type: "BREAK",
+        shiftNumber: 2,
+        breakType: "INTRA_SHIFT",
+        startMinutes: breakStartMinutes,
+        endMinutes: breakEndMinutes,
+        startTime: config.shift2BreakStart,
+        endTime: config.shift2BreakEnd,
+        shiftStartTime: config.shift2Start,
+        shiftEndTime: config.shift2End,
+      })
+
+      work.push({
+        type: "WORK",
+        shiftNumber: 2,
+        startMinutes: breakEndMinutes,
+        endMinutes: shift2EndMinutes,
+        startTime: config.shift2BreakEnd,
+        endTime: config.shift2End,
+        shiftStartTime: config.shift2Start,
+        shiftEndTime: config.shift2End,
+      })
+    } else {
+      work.push({
+        type: "WORK",
+        shiftNumber: 2,
+        startMinutes: shift2StartMinutes,
+        endMinutes: shift2EndMinutes,
+        startTime: config.shift2Start,
+        endTime: config.shift2End,
+        shiftStartTime: config.shift2Start,
+        shiftEndTime: config.shift2End,
+      })
+    }
+  }
+
+  return { work, breaks }
+}
+
+function findNextSegment(
+  segments: ShiftSegment[],
+  currentMinutes: number,
+  includeActive: boolean = false,
+): { segment?: ShiftSegment; minutes?: number } {
+  let bestSegment: ShiftSegment | undefined
+  let bestMinutes = Number.POSITIVE_INFINITY
+
+  for (const segment of segments) {
+    const isActive = isMinuteInRange(currentMinutes, segment.startMinutes, segment.endMinutes)
+    if (isActive) {
+      if (includeActive) {
+        return { segment, minutes: 0 }
+      }
+      continue
+    }
+
+    const minutesUntil = minutesUntilRangeStart(currentMinutes, segment.startMinutes, segment.endMinutes)
+    if (minutesUntil > 0 && minutesUntil < bestMinutes) {
+      bestMinutes = minutesUntil
+      bestSegment = segment
+    }
+  }
+
+  if (!bestSegment || !Number.isFinite(bestMinutes)) {
+    return {}
+  }
+
+  return { segment: bestSegment, minutes: bestMinutes }
+}
+
+function evaluateWorkerAvailability(config: ShiftEvaluationConfig): WorkerAvailability {
+  const now = new Date()
+  const { hours, minutes } = getDatePartsForTimezone(now, config.timezoneOffsetMinutes)
+  let currentMinutes = hours * 60 + minutes
   if (currentMinutes < 0) {
     currentMinutes += 24 * 60
   }
 
-  const [startHour, startMinute] = user.shift_start.split(":").map(Number)
-  const [endHour, endMinute] = user.shift_end.split(":").map(Number)
-
-  const shiftStartMinutes = startHour * 60 + startMinute
-  const shiftEndMinutes = endHour * 60 + endMinute
-
-  console.log("[v0] Checking shift for", user.name, {
-    currentTime: formatTimeForLog(currentHours, currentMinutesPart),
-    currentMinutes,
-    shiftStart: user.shift_start,
-    shiftStartMinutes,
-    shiftEnd: user.shift_end,
-    shiftEndMinutes,
-    timezoneOffset: options?.timezoneOffsetMinutes ?? null,
+  const { work, breaks } = buildShiftSegments({
+    shift1Start: config.shift1Start,
+    shift1End: config.shift1End,
+    shift1BreakStart: config.shift1BreakStart,
+    shift1BreakEnd: config.shift1BreakEnd,
+    shift2Start: config.shift2Start,
+    shift2End: config.shift2End,
+    shift2BreakStart: config.shift2BreakStart,
+    shift2BreakEnd: config.shift2BreakEnd,
   })
 
-  let isWithinShift = false
-
-  if (shiftEndMinutes < shiftStartMinutes) {
-    // Shift crosses midnight
-    isWithinShift = currentMinutes >= shiftStartMinutes || currentMinutes <= shiftEndMinutes
-    console.log("[v0] Shift crosses midnight, isWithinShift:", isWithinShift)
-  } else {
-    // Normal shift within same day
-    isWithinShift = currentMinutes >= shiftStartMinutes && currentMinutes <= shiftEndMinutes
-    console.log("[v0] Normal shift, isWithinShift:", isWithinShift)
+  const availability: WorkerAvailability = {
+    workerId: config.workerId,
+    status: "OFF_DUTY",
   }
 
-  if (!isWithinShift) {
-    return {
-      workerId: user.id,
-      status: "OFF_DUTY",
-      shiftStart: user.shift_start,
-      shiftEnd: user.shift_end,
+  if (!config.shift1Start || !config.shift1End) {
+    console.warn(
+      "[ShiftUtils] Missing primary shift times, assuming worker is available",
+      config.workerId,
+      { shift1Start: config.shift1Start, shift1End: config.shift1End },
+    )
+    availability.status = "AVAILABLE"
+    availability.shiftStart = config.shift1Start
+    availability.shiftEnd = config.shift1End
+    return availability
+  }
+
+  const activeWork = work.find((segment) => isMinuteInRange(currentMinutes, segment.startMinutes, segment.endMinutes))
+  const activeBreak = breaks.find((segment) =>
+    isMinuteInRange(currentMinutes, segment.startMinutes, segment.endMinutes),
+  )
+
+  if (activeWork) {
+    const minutesUntilChange = minutesUntilRangeEnd(
+      currentMinutes,
+      activeWork.startMinutes,
+      activeWork.endMinutes,
+    )
+    const minutesUntilShiftEnds = minutesUntilRangeEnd(
+      currentMinutes,
+      activeWork.startMinutes,
+      timeToMinutes(activeWork.shiftEndTime ?? activeWork.endTime),
+    )
+    const isEndingSoon = minutesUntilChange > 0 && minutesUntilChange <= 30
+
+    availability.status = "AVAILABLE"
+    availability.currentShift = activeWork.shiftNumber
+    availability.shiftStart = activeWork.shiftStartTime ?? activeWork.startTime
+    availability.shiftEnd = activeWork.shiftEndTime ?? activeWork.endTime
+    availability.minutesUntilStateChange = minutesUntilChange
+    availability.isEndingSoon = isEndingSoon
+
+    // If there is another work segment later today, expose next shift info
+    const nextSegment = findNextSegment(work, currentMinutes)
+    if (nextSegment.segment && nextSegment.minutes !== undefined) {
+      availability.nextShiftNumber = nextSegment.segment.shiftNumber
+      availability.nextShiftStart = nextSegment.segment.startTime
+      availability.minutesUntilNextShift = nextSegment.minutes
     }
+
+    if (minutesUntilShiftEnds > minutesUntilChange) {
+      availability.minutesUntilNextShift = availability.minutesUntilNextShift ?? minutesUntilShiftEnds
+    }
+
+    return availability
   }
 
-  if (user.has_break && user.break_start && user.break_end) {
-    const [breakStartHour, breakStartMin] = user.break_start.split(":").map(Number)
-    const [breakEndHour, breakEndMin] = user.break_end.split(":").map(Number)
+  if (activeBreak) {
+    const minutesUntilChange = minutesUntilRangeEnd(
+      currentMinutes,
+      activeBreak.startMinutes,
+      activeBreak.endMinutes,
+    )
+    availability.status = "SHIFT_BREAK"
+    availability.breakStart = activeBreak.startTime
+    availability.breakEnd = activeBreak.endTime
+    availability.breakType = activeBreak.breakType
+    availability.currentShift = activeBreak.shiftNumber
+    availability.minutesUntilStateChange = minutesUntilChange
 
-    const breakStartMinutes = breakStartHour * 60 + breakStartMin
-    const breakEndMinutes = breakEndHour * 60 + breakEndMin
-
-    const isOnBreak = currentMinutes >= breakStartMinutes && currentMinutes < breakEndMinutes
-
-    if (isOnBreak) {
-      console.log("[v0] Worker is currently on break")
-      return {
-        workerId: user.id,
-        status: "ON_BREAK",
-        shiftStart: user.shift_start,
-        shiftEnd: user.shift_end,
-        breakStart: user.break_start,
-        breakEnd: user.break_end,
+    if (activeBreak.breakType === "INTER_SHIFT") {
+      availability.nextShiftNumber =  activeBreak.shiftNumber
+      availability.nextShiftStart = activeBreak.endTime
+      availability.minutesUntilNextShift = minutesUntilChange
+    } else {
+      const nextWork = findNextSegment(work, currentMinutes)
+      if (nextWork.segment && nextWork.minutes !== undefined) {
+        availability.nextShiftNumber = nextWork.segment.shiftNumber
+        availability.nextShiftStart = nextWork.segment.startTime
+        availability.minutesUntilNextShift = nextWork.minutes
       }
     }
+
+    return availability
   }
 
-  let minutesUntilEnd: number
-  if (shiftEndMinutes < shiftStartMinutes && currentMinutes < shiftStartMinutes) {
-    // We're in the "after midnight" portion of the shift
-    minutesUntilEnd = shiftEndMinutes - currentMinutes
-  } else if (shiftEndMinutes < shiftStartMinutes && currentMinutes >= shiftStartMinutes) {
-    // We're in the "before midnight" portion of the shift
-    minutesUntilEnd = 24 * 60 - currentMinutes + shiftEndMinutes
-  } else {
-    // Normal shift calculation
-    minutesUntilEnd = shiftEndMinutes - currentMinutes
+  const upcoming = findNextSegment(work, currentMinutes)
+  if (upcoming.segment && upcoming.minutes !== undefined) {
+    availability.nextShiftNumber = upcoming.segment.shiftNumber
+    availability.nextShiftStart = upcoming.segment.startTime
+    availability.minutesUntilNextShift = upcoming.minutes
   }
 
-  console.log("[v0] Minutes until shift end:", minutesUntilEnd)
+  return availability
+}
 
-  // Check if shift is ending soon (within 30 minutes)
-  if (minutesUntilEnd <= 30 && minutesUntilEnd > 0) {
-    return {
-      workerId: user.id,
-      status: "ENDING_SOON",
-      minutesUntilEnd,
-      shiftStart: user.shift_start,
-      shiftEnd: user.shift_end,
-    }
-  }
-
-  return {
+export function isWorkerOnShiftFromUser(user: User, options?: ShiftTimeOptions): WorkerAvailability {
+  return evaluateWorkerAvailability({
     workerId: user.id,
-    status: "ON_SHIFT",
-    minutesUntilEnd,
-    shiftStart: user.shift_start,
-    shiftEnd: user.shift_end,
-  }
+    shift1Start: user.shift_start,
+    shift1End: user.shift_end,
+    shift1BreakStart: user.has_break ? user.break_start : undefined,
+    shift1BreakEnd: user.has_break ? user.break_end : undefined,
+    shift2Start:
+      user.is_dual_shift || user.has_shift_2 ? user.shift_2_start : undefined,
+    shift2End:
+      user.is_dual_shift || user.has_shift_2 ? user.shift_2_end : undefined,
+    shift2BreakStart:
+      user.shift_2_has_break ? user.shift_2_break_start : undefined,
+    shift2BreakEnd:
+      user.shift_2_has_break ? user.shift_2_break_end : undefined,
+    timezoneOffsetMinutes: options?.timezoneOffsetMinutes,
+  })
 }
 
 // Check if worker is currently on shift (legacy function for backward compatibility)
@@ -191,51 +497,57 @@ export function isWorkerOnShift(shifts: Shift[], workerId: string): WorkerAvaila
   const currentDay = now.getDay() // 0=Sunday, 1=Monday, etc.
   const currentMinutes = now.getHours() * 60 + now.getMinutes()
 
-  // Find active shift for this worker
-  const activeShift = shifts.find((shift) => {
+  // Identify today's shift entries for this worker
+  const todaysShifts = shifts.filter((shift) => {
     if (shift.worker_id !== workerId) return false
     if (!shift.days_of_week.includes(currentDay)) return false
 
     const effectiveDate = new Date(shift.effective_from)
-    if (effectiveDate > now) return false
-
-    const shiftStartMinutes = timeToMinutes(shift.shift_start)
-    const shiftEndMinutes = timeToMinutes(shift.shift_end)
-
-    if (shiftEndMinutes < shiftStartMinutes) {
-      // Shift crosses midnight
-      return currentMinutes >= shiftStartMinutes || currentMinutes <= shiftEndMinutes
-    } else {
-      // Normal shift within same day
-      return currentMinutes >= shiftStartMinutes && currentMinutes <= shiftEndMinutes
-    }
+    return effectiveDate <= now
   })
 
+  // Prefer the shift that is currently active
+  const activeShift = todaysShifts.find((shift) => {
+    const shiftStartMinutes = timeToMinutes(shift.shift_start)
+    const shiftEndMinutes = timeToMinutes(shift.shift_end)
+    return isMinuteInRange(currentMinutes, shiftStartMinutes, shiftEndMinutes)
+  })
+
+  if (activeShift) {
+    return evaluateWorkerAvailability({
+      workerId,
+      shift1Start: activeShift.shift_start,
+      shift1End: activeShift.shift_end,
+    })
+  }
+
   if (!activeShift) {
-    return {
-      workerId,
-      status: "OFF_DUTY",
+    // If there is an upcoming shift later today, surface the next start time
+    const nextShift = todaysShifts
+      .map((shift) => ({
+        shift,
+        minutesUntil: minutesUntilRangeStart(
+          currentMinutes,
+          timeToMinutes(shift.shift_start),
+          timeToMinutes(shift.shift_end),
+        ),
+      }))
+      .sort((a, b) => a.minutesUntil - b.minutesUntil)[0]
+
+    if (nextShift && Number.isFinite(nextShift.minutesUntil)) {
+      return {
+        workerId,
+        status: "OFF_DUTY",
+        nextShiftNumber: 1,
+        nextShiftStart: nextShift.shift.shift_start,
+        minutesUntilNextShift: nextShift.minutesUntil,
+      }
     }
+
+    return { workerId, status: "OFF_DUTY" }
   }
 
-  const shiftEndMinutes = timeToMinutes(activeShift.shift_end)
-  const minutesUntilEnd =
-    shiftEndMinutes < currentMinutes ? 24 * 60 - currentMinutes + shiftEndMinutes : shiftEndMinutes - currentMinutes
-
-  // Check if shift is ending soon (within 30 minutes)
-  if (minutesUntilEnd <= 30 && minutesUntilEnd > 0) {
-    return {
-      workerId,
-      status: "ENDING_SOON",
-      minutesUntilEnd,
-    }
-  }
-
-  return {
-    workerId,
-    status: "ON_SHIFT",
-    minutesUntilEnd,
-  }
+  return { workerId, status: "OFF_DUTY" }
 }
 
 export function canAssignTaskToUser(user: User, expectedDuration: number): { canAssign: boolean; reason?: string } {
@@ -248,11 +560,19 @@ export function canAssignTaskToUser(user: User, expectedDuration: number): { can
     }
   }
 
-  if (availability.status === "ENDING_SOON" && availability.minutesUntilEnd) {
-    if (expectedDuration > availability.minutesUntilEnd) {
+  if (availability.status === "SHIFT_BREAK") {
+    return {
+      canAssign: false,
+      reason: "Worker is currently on a scheduled break",
+    }
+  }
+
+  const minutesRemaining = availability.minutesUntilStateChange
+  if (availability.status === "AVAILABLE" && typeof minutesRemaining === "number" && minutesRemaining > 0) {
+    if (expectedDuration > minutesRemaining) {
       return {
         canAssign: false,
-        reason: `Task duration (${expectedDuration}min) exceeds remaining shift time (${availability.minutesUntilEnd}min)`,
+        reason: `Task duration (${expectedDuration}min) exceeds the remaining available time before status change (${minutesRemaining}min)`,
       }
     }
   }
@@ -275,11 +595,19 @@ export function canAssignTask(
     }
   }
 
-  if (availability.status === "ENDING_SOON" && availability.minutesUntilEnd) {
-    if (expectedDuration > availability.minutesUntilEnd) {
+  if (availability.status === "SHIFT_BREAK") {
+    return {
+      canAssign: false,
+      reason: "Worker is currently on a scheduled break",
+    }
+  }
+
+  const minutesRemaining = availability.minutesUntilStateChange
+  if (availability.status === "AVAILABLE" && typeof minutesRemaining === "number" && minutesRemaining > 0) {
+    if (expectedDuration > minutesRemaining) {
       return {
         canAssign: false,
-        reason: `Task duration (${expectedDuration}min) exceeds remaining shift time (${availability.minutesUntilEnd}min)`,
+        reason: `Task duration (${expectedDuration}min) exceeds the remaining available time before status change (${minutesRemaining}min)`,
       }
     }
   }
@@ -310,13 +638,21 @@ export function getWorkersWithShiftStatus(
 
 export function needsHandoverFromUser(user: User): boolean {
   const availability = isWorkerOnShiftFromUser(user)
-  return availability.status === "ENDING_SOON"
+  return (
+    availability.status === "AVAILABLE" &&
+    typeof availability.minutesUntilStateChange === "number" &&
+    availability.minutesUntilStateChange <= 30
+  )
 }
 
 // Check if worker needs to handover tasks (30min before shift end) (legacy function)
 export function needsHandover(shifts: Shift[], workerId: string): boolean {
   const availability = isWorkerOnShift(shifts, workerId)
-  return availability.status === "ENDING_SOON"
+  return (
+    availability.status === "AVAILABLE" &&
+    typeof availability.minutesUntilStateChange === "number" &&
+    availability.minutesUntilStateChange <= 30
+  )
 }
 
 // Parse time string to minutes since midnight
@@ -361,6 +697,7 @@ export function validateBreakTimes(
   shiftEnd: string,
   breakStart: string,
   breakEnd: string,
+  isDualShift: boolean = false,
 ): { valid: boolean; error?: string } {
   const shiftStartMinutes = timeToMinutes(shiftStart)
   const shiftEndMinutes = timeToMinutes(shiftEnd)
@@ -397,16 +734,188 @@ export function validateBreakTimes(
     }
   }
 
-  // Check if break duration is reasonable (not more than 2 hours)
-  const breakDuration = breakEndMinutes - breakStartMinutes
-  if (breakDuration > 120) {
+  // Check if break duration is reasonable (more flexible for dual shifts)
+  const breakDuration = segmentDuration(breakStartMinutes, breakEndMinutes)
+  const maxBreakDuration = isDualShift ? MAX_DUAL_SHIFT_BREAK_MINUTES : MAX_SINGLE_SHIFT_BREAK_MINUTES
+  if (breakDuration > maxBreakDuration) {
     return {
       valid: false,
-      error: "Break duration cannot exceed 2 hours",
+      error: `Break duration cannot exceed ${maxBreakDuration / 60} hours`,
     }
   }
 
   return { valid: true }
+}
+
+// Validate dual shift times
+export function validateDualShiftTimes(
+  shift1Start: string,
+  shift1End: string,
+  shift1BreakStart?: string,
+  shift1BreakEnd?: string,
+  shift2Start?: string,
+  shift2End?: string,
+  shift2BreakStart?: string,
+  shift2BreakEnd?: string,
+): { valid: boolean; error?: string } {
+  // Validate shift 1
+  const shift1Validation = validateShiftTimes(shift1Start, shift1End)
+  if (!shift1Validation.valid) {
+    return shift1Validation
+  }
+
+  // Validate shift 1 break if present
+  if (shift1BreakStart && shift1BreakEnd) {
+    const break1Validation = validateBreakTimes(shift1Start, shift1End, shift1BreakStart, shift1BreakEnd, true)
+    if (!break1Validation.valid) {
+      return break1Validation
+    }
+  }
+
+  // Validate shift 2 if present
+  if (shift2Start && shift2End) {
+    const shift2Validation = validateShiftTimes(shift2Start, shift2End)
+    if (!shift2Validation.valid) {
+      return shift2Validation
+    }
+
+    // Validate shift 2 break if present
+    if (shift2BreakStart && shift2BreakEnd) {
+      const break2Validation = validateBreakTimes(shift2Start, shift2End, shift2BreakStart, shift2BreakEnd, true)
+      if (!break2Validation.valid) {
+        return break2Validation
+      }
+    }
+
+    // Check for overlap between shift 1 and shift 2
+    const overlapValidation = validateShiftOverlap(shift1Start, shift1End, shift2Start, shift2End)
+    if (!overlapValidation.valid) {
+      return overlapValidation
+    }
+
+    const interShiftBreakMinutes = differenceInMinutes(shift1End, shift2Start)
+    if (interShiftBreakMinutes < MIN_INTER_SHIFT_BREAK_MINUTES) {
+      return {
+        valid: false,
+        error: "Second shift must start after the first shift ends",
+      }
+    }
+
+    if (interShiftBreakMinutes > MAX_INTER_SHIFT_BREAK_MINUTES) {
+      return {
+        valid: false,
+        error: `Break between shifts cannot exceed ${Math.floor(MAX_INTER_SHIFT_BREAK_MINUTES / 60)} hours`,
+      }
+    }
+  }
+
+  return { valid: true }
+}
+
+// Validate shift times (basic validation)
+function validateShiftTimes(
+  shiftStart: string,
+  shiftEnd: string,
+): { valid: boolean; error?: string } {
+  const startMinutes = timeToMinutes(shiftStart)
+  const endMinutes = timeToMinutes(shiftEnd)
+
+  // Check if shift duration is reasonable (1-12 hours)
+  let duration = endMinutes - startMinutes
+  if (duration < 0) {
+    duration += 24 * 60 // Handle overnight shifts
+  }
+
+  if (duration < 60 || duration > 720) {
+    return {
+      valid: false,
+      error: "Shift duration must be between 1 and 12 hours",
+    }
+  }
+
+  return { valid: true }
+}
+
+// Validate shift overlap
+function validateShiftOverlap(
+  shift1Start: string,
+  shift1End: string,
+  shift2Start: string,
+  shift2End: string,
+): { valid: boolean; error?: string } {
+  const start1Minutes = timeToMinutes(shift1Start)
+  const end1Minutes = timeToMinutes(shift1End)
+  const start2Minutes = timeToMinutes(shift2Start)
+  const end2Minutes = timeToMinutes(shift2End)
+
+  const shift1Segments = expandMinutesRange(start1Minutes, end1Minutes)
+  const shift2Segments = expandMinutesRange(start2Minutes, end2Minutes)
+
+  const hasOverlap = shift1Segments.some((seg1) =>
+    shift2Segments.some((seg2) => segmentsOverlap(seg1, seg2)),
+  )
+
+  if (hasOverlap) {
+    return {
+      valid: false,
+      error: "Shift 1 and Shift 2 cannot overlap",
+    }
+  }
+
+  return { valid: true }
+}
+
+// Calculate total working hours for dual shifts
+export function calculateDualShiftWorkingHours(
+  shift1Start: string,
+  shift1End: string,
+  shift1HasBreak: boolean,
+  shift1BreakStart?: string,
+  shift1BreakEnd?: string,
+  shift2Start?: string,
+  shift2End?: string,
+  shift2HasBreak?: boolean,
+  shift2BreakStart?: string,
+  shift2BreakEnd?: string,
+): {
+  totalHours: number;
+  breakHours: number;
+  workingHours: number;
+  formatted: string;
+  shift1Hours?: number;
+  shift2Hours?: number;
+} {
+  // Calculate shift 1 hours
+  const shift1Result = calculateWorkingHours(shift1Start, shift1End, shift1HasBreak, shift1BreakStart, shift1BreakEnd)
+  
+  let totalHours = shift1Result.totalHours
+  let breakHours = shift1Result.breakHours
+  let workingHours = shift1Result.workingHours
+  let shift2Hours: number | undefined
+
+  // Calculate shift 2 hours if present
+  if (shift2Start && shift2End) {
+    const shift2Result = calculateWorkingHours(
+      shift2Start,
+      shift2End,
+      Boolean(shift2HasBreak),
+      shift2BreakStart,
+      shift2BreakEnd,
+    )
+    totalHours += shift2Result.totalHours
+    breakHours += shift2Result.breakHours
+    workingHours += shift2Result.workingHours
+    shift2Hours = shift2Result.workingHours
+  }
+
+  return {
+    totalHours,
+    breakHours,
+    workingHours,
+    formatted: `${workingHours.toFixed(1)} hours total (${breakHours.toFixed(1)}h break)`,
+    shift1Hours: shift1Result.workingHours,
+    shift2Hours,
+  }
 }
 
 // Get worker's shift for a specific date, checking schedules first
@@ -423,6 +932,17 @@ export function getWorkerShiftForDate(
     break_end?: string
     is_override: boolean
     override_reason?: string
+    // Dual shift fields
+    has_shift_2?: boolean
+    is_dual_shift?: boolean
+    shift_1_start?: string
+    shift_1_end?: string
+    shift_1_break_start?: string
+    shift_1_break_end?: string
+    shift_2_start?: string
+    shift_2_end?: string
+    shift_2_break_start?: string
+    shift_2_break_end?: string
   }>,
   options?: ShiftTimeOptions,
 ): {
@@ -433,6 +953,18 @@ export function getWorkerShiftForDate(
   break_end?: string
   is_override: boolean
   override_reason?: string
+  // Dual shift info
+  has_shift_2?: boolean
+  is_dual_shift?: boolean
+  shift_1_start?: string
+  shift_1_end?: string
+  shift_1_break_start?: string
+  shift_1_break_end?: string
+  shift_2_start?: string
+  shift_2_end?: string
+  shift_2_has_break?: boolean
+  shift_2_break_start?: string
+  shift_2_break_end?: string
 } {
   // Format date as YYYY-MM-DD
   const dateStr = formatDateKeyForTimezone(date, options?.timezoneOffsetMinutes)
@@ -446,25 +978,54 @@ export function getWorkerShiftForDate(
   // Check if there's a schedule for this specific date
   const schedule = shiftSchedules.find((s) => s.worker_id === worker.id && s.schedule_date === dateStr)
   if (schedule) {
-    const shiftStart = schedule.shift_start ?? worker.shift_start ?? "00:00"
-    const shiftEnd = schedule.shift_end ?? worker.shift_end ?? "23:59"
-    if (!schedule.shift_start || !schedule.shift_end) {
+    const shift1Start = schedule.shift_1_start ?? schedule.shift_start ?? worker.shift_start ?? "00:00"
+    const shift1End = schedule.shift_1_end ?? schedule.shift_end ?? worker.shift_end ?? "23:59"
+    if (!shift1Start || !shift1End) {
       console.warn(
         "[ShiftUtils] Schedule missing shift times, using fallback defaults:",
         worker.name,
-        { date: dateStr, shiftStart, shiftEnd },
+        { date: dateStr, shiftStart: shift1Start, shiftEnd: shift1End },
       )
     }
 
-    const hasBreak = Boolean(schedule.has_break && schedule.break_start && schedule.break_end)
+    const shift1BreakStart = schedule.shift_1_break_start ?? schedule.break_start
+    const shift1BreakEnd = schedule.shift_1_break_end ?? schedule.break_end
+    const shift1HasBreak = Boolean(shift1BreakStart && shift1BreakEnd)
+    let shift2Start = schedule.shift_2_start ?? undefined
+    let shift2End = schedule.shift_2_end ?? undefined
+    let shift2HasBreak = Boolean(schedule.shift_2_break_start && schedule.shift_2_break_end)
+    let finalHasShift2 =
+      schedule.has_shift_2 || schedule.is_dual_shift || Boolean(shift2Start && shift2End)
+
+    // If dual-shift columns are missing but a break exists, derive shift segments.
+    if (!finalHasShift2 && schedule.break_start && schedule.break_end && shift1End !== schedule.break_start) {
+      finalHasShift2 = true
+      shift2Start = schedule.break_end ?? undefined
+      shift2End = schedule.shift_end ?? shift1End
+      shift2HasBreak = false
+    }
+
     return {
-      shift_start: shiftStart,
-      shift_end: shiftEnd,
-      has_break: hasBreak,
-      break_start: hasBreak ? schedule.break_start : undefined,
-      break_end: hasBreak ? schedule.break_end : undefined,
+      shift_start: shift1Start,
+      shift_end: shift1HasBreak && finalHasShift2 && schedule.break_start ? schedule.shift_end ?? shift1End : shift1End,
+      has_break: shift1HasBreak,
+      break_start: shift1HasBreak ? shift1BreakStart : undefined,
+      break_end: shift1HasBreak ? shift1BreakEnd : undefined,
+      shift_1_start: shift1Start,
+      shift_1_end:
+        shift1HasBreak && finalHasShift2 && schedule.break_start ? schedule.break_start : shift1End,
+      shift_1_break_start: shift1HasBreak ? shift1BreakStart : undefined,
+      shift_1_break_end: shift1HasBreak ? shift1BreakEnd : undefined,
       is_override: schedule.is_override,
       override_reason: schedule.override_reason,
+      // Dual shift information
+      has_shift_2: finalHasShift2,
+      is_dual_shift: schedule.is_dual_shift,
+      shift_2_start: finalHasShift2 ? shift2Start : undefined,
+      shift_2_end: finalHasShift2 ? shift2End : undefined,
+      shift_2_has_break: shift2HasBreak,
+      shift_2_break_start: shift2HasBreak ? schedule.shift_2_break_start : undefined,
+      shift_2_break_end: shift2HasBreak ? schedule.shift_2_break_end : undefined,
     }
   }
 
@@ -485,13 +1046,28 @@ export function getWorkerShiftForDate(
     `${defaultShiftStart} - ${defaultShiftEnd}`,
   )
   const hasBreak = Boolean(worker.has_break && worker.break_start && worker.break_end)
+  const workerHasShift2 = Boolean(worker.is_dual_shift || worker.has_shift_2)
+  const shift2HasBreak = Boolean(worker.shift_2_has_break && worker.shift_2_break_start && worker.shift_2_break_end)
+
   return {
     shift_start: defaultShiftStart,
     shift_end: defaultShiftEnd,
     has_break: hasBreak,
     break_start: hasBreak ? worker.break_start : undefined,
     break_end: hasBreak ? worker.break_end : undefined,
+    shift_1_start: defaultShiftStart,
+    shift_1_end: defaultShiftEnd,
+    shift_1_break_start: hasBreak ? worker.break_start : undefined,
+    shift_1_break_end: hasBreak ? worker.break_end : undefined,
     is_override: false,
+    // Dual shift defaults
+    has_shift_2: workerHasShift2,
+    is_dual_shift: Boolean(worker.is_dual_shift),
+    shift_2_start: workerHasShift2 ? worker.shift_2_start : undefined,
+    shift_2_end: workerHasShift2 ? worker.shift_2_end : undefined,
+    shift_2_has_break: shift2HasBreak,
+    shift_2_break_start: shift2HasBreak ? worker.shift_2_break_start : undefined,
+    shift_2_break_end: shift2HasBreak ? worker.shift_2_break_end : undefined,
   }
 }
 export function isWorkerOnShiftWithSchedule(
@@ -506,128 +1082,60 @@ export function isWorkerOnShiftWithSchedule(
     break_end?: string
     is_override: boolean
     override_reason?: string
+    has_shift_2?: boolean
+    is_dual_shift?: boolean
+    shift_1_start?: string
+    shift_1_end?: string
+    shift_1_break_start?: string
+    shift_1_break_end?: string
+    shift_2_start?: string
+    shift_2_end?: string
+    shift_2_break_start?: string
+    shift_2_break_end?: string
   }>,
   options?: ShiftTimeOptions,
 ): WorkerAvailability {
   const now = new Date()
   const timezoneOffset = options?.timezoneOffsetMinutes
   const todayShift = getWorkerShiftForDate(user, now, shiftSchedules, options)
-  const { hours: currentHours, minutes: currentMinutesPart } = getDatePartsForTimezone(now, timezoneOffset)
-  let currentMinutes = currentHours * 60 + currentMinutesPart
+  const hasActiveShift =
+    Boolean(todayShift.shift_start && todayShift.shift_end) ||
+    Boolean(todayShift.shift_2_start && todayShift.shift_2_end)
 
-  if (currentMinutes < 0) {
-    currentMinutes += 24 * 60
+  if (todayShift.is_override && !hasActiveShift) {
+    return { workerId: user.id, status: "OFF_DUTY" }
   }
 
-  console.log(`[ShiftUtils] ANALYZING ${user.name.toUpperCase()}:`)
-  console.log("  shift:", todayShift)
-  console.log("  currentTime:", formatTimeForLog(currentHours, currentMinutesPart))
-  console.log("  timezoneOffset:", timezoneOffset ?? null)
-  console.log("  scheduleCount:", shiftSchedules.filter((s) => s.worker_id === user.id).length)
-  console.log("  isOverride:", todayShift.is_override)
+  const shift1Start = todayShift.shift_1_start ?? todayShift.shift_start
+  const shift1End = todayShift.shift_1_end ?? todayShift.shift_end
 
-  if (todayShift.is_override && todayShift.override_reason && (!todayShift.shift_start || !todayShift.shift_end)) {
-    console.log("  result: OFF_DUTY (override removed shift times)", todayShift.override_reason)
-    return {
-      workerId: user.id,
-      status: "OFF_DUTY",
-    }
-  }
+  const shift1BreakStart =
+    todayShift.shift_1_break_start ??
+    (todayShift.has_break ? todayShift.break_start : undefined)
+  const shift1BreakEnd =
+    todayShift.shift_1_break_end ??
+    (todayShift.has_break ? todayShift.break_end : undefined)
 
-  if (!todayShift.shift_start || !todayShift.shift_end) {
-    console.warn(
-      "[ShiftUtils] Missing shift times after normalization, assuming on-duty:",
-      user.name,
-      { shift_start: todayShift.shift_start, shift_end: todayShift.shift_end },
-    )
-    return {
-      workerId: user.id,
-      status: "ON_SHIFT",
-      shiftStart: todayShift.shift_start,
-      shiftEnd: todayShift.shift_end,
-    }
-  }
+  const hasShift2 =
+    todayShift.has_shift_2 ||
+    todayShift.is_dual_shift ||
+    Boolean(todayShift.shift_2_start && todayShift.shift_2_end)
 
-  const [startHour, startMinute] = todayShift.shift_start.split(":").map(Number)
-  const [endHour, endMinute] = todayShift.shift_end.split(":").map(Number)
+  const shift2BreakStart = todayShift.shift_2_break_start
+  const shift2BreakEnd = todayShift.shift_2_break_end
 
-  const shiftStartMinutes = startHour * 60 + startMinute
-  const shiftEndMinutes = endHour * 60 + endMinute
-
-  console.log("  timeCalc.currentMinutes:", currentMinutes)
-  console.log("  timeCalc.shiftStartMinutes:", shiftStartMinutes)
-  console.log("  timeCalc.shiftEndMinutes:", shiftEndMinutes)
-
-  let isWithinShift = false
-
-  if (shiftEndMinutes < shiftStartMinutes) {
-    isWithinShift = currentMinutes >= shiftStartMinutes || currentMinutes <= shiftEndMinutes
-    console.log("  shiftType: crosses-midnight", { "isWithinShift": isWithinShift })
-  } else {
-    isWithinShift = currentMinutes >= shiftStartMinutes && currentMinutes <= shiftEndMinutes
-    console.log("  shiftType: same-day", { "isWithinShift": isWithinShift })
-  }
-
-  if (!isWithinShift) {
-    console.log("  result: OFF_DUTY (outside shift hours)")
-    return {
-      workerId: user.id,
-      status: "OFF_DUTY",
-      shiftStart: todayShift.shift_start,
-      shiftEnd: todayShift.shift_end,
-    }
-  }
-
-  if (todayShift.has_break && todayShift.break_start && todayShift.break_end) {
-    const [breakStartHour, breakStartMin] = todayShift.break_start.split(":").map(Number)
-    const [breakEndHour, breakEndMin] = todayShift.break_end.split(":").map(Number)
-
-    const breakStartMinutes = breakStartHour * 60 + breakStartMin
-    const breakEndMinutes = breakEndHour * 60 + breakEndMin
-
-    const isOnBreak = currentMinutes >= breakStartMinutes && currentMinutes < breakEndMinutes
-
-    if (isOnBreak) {
-      console.log("  result: ON_BREAK")
-      return {
-        workerId: user.id,
-        status: "ON_BREAK",
-        shiftStart: todayShift.shift_start,
-        shiftEnd: todayShift.shift_end,
-        breakStart: todayShift.break_start,
-        breakEnd: todayShift.break_end,
-      }
-    }
-  }
-
-  let minutesUntilEnd: number
-  if (shiftEndMinutes < shiftStartMinutes && currentMinutes < shiftStartMinutes) {
-    minutesUntilEnd = shiftEndMinutes - currentMinutes
-  } else if (shiftEndMinutes < shiftStartMinutes && currentMinutes >= shiftStartMinutes) {
-    minutesUntilEnd = 24 * 60 - currentMinutes + shiftEndMinutes
-  } else {
-    minutesUntilEnd = shiftEndMinutes - currentMinutes
-  }
-
-  console.log("  minutesUntilEnd:", minutesUntilEnd)
-
-  if (minutesUntilEnd <= 30 && minutesUntilEnd > 0) {
-    return {
-      workerId: user.id,
-      status: "ENDING_SOON",
-      minutesUntilEnd,
-      shiftStart: todayShift.shift_start,
-      shiftEnd: todayShift.shift_end,
-    }
-  }
-
-  return {
+  return evaluateWorkerAvailability({
     workerId: user.id,
-    status: "ON_SHIFT",
-    minutesUntilEnd,
-    shiftStart: todayShift.shift_start,
-    shiftEnd: todayShift.shift_end,
-  }
+    shift1Start: shift1Start ?? user.shift_start,
+    shift1End: shift1End ?? user.shift_end,
+    shift1BreakStart,
+    shift1BreakEnd,
+    shift2Start: hasShift2 ? todayShift.shift_2_start : undefined,
+    shift2End: hasShift2 ? todayShift.shift_2_end : undefined,
+    shift2BreakStart: hasShift2 ? shift2BreakStart : undefined,
+    shift2BreakEnd: hasShift2 ? shift2BreakEnd : undefined,
+    timezoneOffsetMinutes: timezoneOffset,
+  })
 }
 // Attendance tracking utilities
 export interface AttendanceRecord {

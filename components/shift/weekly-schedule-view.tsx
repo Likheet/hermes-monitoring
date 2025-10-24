@@ -19,8 +19,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Calendar, Coffee, Save, Umbrella, Plane, ChevronLeft, ChevronRight } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import type { User } from "@/lib/types"
-import { calculateWorkingHours } from "@/lib/date-utils"
+import { calculateWorkingHours, calculateDualShiftWorkingHours } from "@/lib/date-utils"
 import { useTasks } from "@/lib/task-context"
+import { validateDualShiftTimes } from "@/lib/shift-utils"
 import { cn } from "@/lib/utils"
 
 interface WeeklyScheduleViewProps {
@@ -30,9 +31,9 @@ interface WeeklyScheduleViewProps {
 interface DaySchedule {
   shift_start: string
   shift_end: string
-  has_break: boolean
-  break_start: string
-  break_end: string
+  has_second_shift: boolean
+  second_shift_start: string
+  second_shift_end: string
   is_override: boolean
   override_reason: string
   notes: string
@@ -48,6 +49,11 @@ const OVERRIDE_REASONS = [
   { value: "sick", label: "Sick Leave", icon: Umbrella },
   { value: "emergency", label: "Emergency", icon: Umbrella },
 ]
+
+const timeToMinutes = (time: string) => {
+  const [hours, minutes] = time.split(":").map(Number)
+  return hours * 60 + minutes
+}
 
 export function WeeklyScheduleView({ workers }: WeeklyScheduleViewProps) {
   const { toast } = useToast()
@@ -106,23 +112,46 @@ export function WeeklyScheduleView({ workers }: WeeklyScheduleViewProps) {
         const savedSchedule = savedSchedules[0]
 
         if (savedSchedule) {
+          const hasSecondShift = Boolean(
+            savedSchedule.is_dual_shift ||
+              savedSchedule.has_shift_2 ||
+              (savedSchedule.shift_2_start && savedSchedule.shift_2_end),
+          )
+          const primaryEnd =
+            savedSchedule.shift_1_end ||
+            (hasSecondShift && savedSchedule.break_start ? savedSchedule.break_start : undefined) ||
+            savedSchedule.shift_end ||
+            "18:00"
+          const secondShiftStart = hasSecondShift
+            ? savedSchedule.shift_2_start || savedSchedule.break_end || "18:00"
+            : ""
+          const secondShiftEnd = hasSecondShift
+            ? savedSchedule.shift_2_end || savedSchedule.shift_end || "21:00"
+            : ""
+
           workerSchedule[day] = {
-            shift_start: savedSchedule.shift_start,
-            shift_end: savedSchedule.shift_end,
-            has_break: savedSchedule.has_break,
-            break_start: savedSchedule.break_start || "12:00",
-            break_end: savedSchedule.break_end || "13:00",
+            shift_start: savedSchedule.shift_1_start || savedSchedule.shift_start || "09:00",
+            shift_end: primaryEnd,
+            has_second_shift: hasSecondShift,
+            second_shift_start: hasSecondShift ? secondShiftStart : "",
+            second_shift_end: hasSecondShift ? secondShiftEnd : "",
             is_override: savedSchedule.is_override,
             override_reason: savedSchedule.override_reason || "",
             notes: savedSchedule.notes || "",
           }
         } else {
+          const hasSecondShift = Boolean(
+            worker.is_dual_shift || worker.has_shift_2 || (worker.shift_2_start && worker.shift_2_end),
+          )
+          const defaultShiftEnd =
+            worker.shift_end ||
+            (hasSecondShift && worker.shift_2_start ? worker.shift_2_start : "18:00")
           workerSchedule[day] = {
-            shift_start: worker.shift_start,
-            shift_end: worker.shift_end,
-            has_break: worker.has_break,
-            break_start: worker.break_start || "12:00",
-            break_end: worker.break_end || "13:00",
+            shift_start: worker.shift_start || "09:00",
+            shift_end: defaultShiftEnd,
+            has_second_shift: hasSecondShift,
+            second_shift_start: hasSecondShift ? worker.shift_2_start || "" : "",
+            second_shift_end: hasSecondShift ? worker.shift_2_end || "" : "",
             is_override: false,
             override_reason: "",
             notes: "",
@@ -161,14 +190,74 @@ export function WeeklyScheduleView({ workers }: WeeklyScheduleViewProps) {
     const date = weekDates[dayIndex]
 
     try {
+      if (!schedule.shift_start || !schedule.shift_end) {
+        toast({
+          title: "Missing shift times",
+          description: "Please provide both start and end times for the first shift.",
+          variant: "destructive",
+        })
+        return
+      }
+
+      const hasSecondShiftWindow =
+        schedule.has_second_shift && Boolean(schedule.second_shift_start && schedule.second_shift_end)
+
+      if (schedule.has_second_shift && !hasSecondShiftWindow) {
+        toast({
+          title: "Second shift required",
+          description: "Please provide both start and end times for the second shift or disable it.",
+          variant: "destructive",
+        })
+        return
+      }
+
+      const validation = validateDualShiftTimes(
+        schedule.shift_start,
+        schedule.shift_end,
+        undefined,
+        undefined,
+        hasSecondShiftWindow ? schedule.second_shift_start : undefined,
+        hasSecondShiftWindow ? schedule.second_shift_end : undefined,
+        undefined,
+        undefined,
+      )
+
+      if (!validation.valid) {
+        toast({
+          title: "Invalid shift configuration",
+          description: validation.error,
+          variant: "destructive",
+        })
+        return
+      }
+
+      const hasInterShiftBreak =
+        hasSecondShiftWindow &&
+        timeToMinutes(schedule.second_shift_start) > timeToMinutes(schedule.shift_end)
+
+      const breakStart = hasInterShiftBreak ? schedule.shift_end : undefined
+      const breakEnd = hasInterShiftBreak ? schedule.second_shift_start : undefined
+      const finalShiftEnd = hasSecondShiftWindow ? schedule.second_shift_end : schedule.shift_end
+
       saveShiftSchedule({
         worker_id: workerId,
         schedule_date: date,
         shift_start: schedule.shift_start,
-        shift_end: schedule.shift_end,
-        has_break: schedule.has_break,
-        break_start: schedule.break_start,
-        break_end: schedule.break_end,
+        shift_end: finalShiftEnd,
+        has_break: Boolean(breakStart && breakEnd),
+        break_start: breakStart,
+        break_end: breakEnd,
+        shift_1_start: schedule.shift_start,
+        shift_1_end: schedule.shift_end,
+        shift_1_break_start: breakStart,
+        shift_1_break_end: breakEnd,
+        shift_2_start: hasSecondShiftWindow ? schedule.second_shift_start : undefined,
+        shift_2_end: hasSecondShiftWindow ? schedule.second_shift_end : undefined,
+        shift_2_break_start: undefined,
+        shift_2_break_end: undefined,
+        has_shift_2: hasSecondShiftWindow,
+        is_dual_shift: hasSecondShiftWindow,
+        shift_2_has_break: false,
         is_override: schedule.is_override,
         override_reason: schedule.override_reason,
         notes: schedule.notes,
@@ -280,13 +369,34 @@ export function WeeklyScheduleView({ workers }: WeeklyScheduleViewProps) {
                       const isPast = isPastDate(date)
                       const isTodayDate = isToday(date)
 
-                      const workingHours = calculateWorkingHours(
-                        schedule.shift_start,
-                        schedule.shift_end,
-                        schedule.has_break,
-                        schedule.break_start,
-                        schedule.break_end,
-                      )
+                      const hasSecondShift =
+                        schedule.has_second_shift &&
+                        Boolean(schedule.second_shift_start && schedule.second_shift_end)
+
+                      const hasInterShiftBreak =
+                        hasSecondShift &&
+                        timeToMinutes(schedule.second_shift_start) > timeToMinutes(schedule.shift_end)
+
+                      const workingHours = hasSecondShift
+                        ? calculateDualShiftWorkingHours(
+                            schedule.shift_start,
+                            schedule.shift_end,
+                            false,
+                            undefined,
+                            undefined,
+                            schedule.second_shift_start,
+                            schedule.second_shift_end,
+                            false,
+                            undefined,
+                            undefined,
+                          )
+                        : calculateWorkingHours(
+                            schedule.shift_start,
+                            schedule.shift_end,
+                            false,
+                            undefined,
+                            undefined,
+                          )
 
                       return (
                         <td key={day} className="p-2">
@@ -313,10 +423,15 @@ export function WeeklyScheduleView({ workers }: WeeklyScheduleViewProps) {
                                     <div className="text-xs font-semibold">
                                       {schedule.shift_start} - {schedule.shift_end}
                                     </div>
-                                    {schedule.has_break && (
+                                    {hasSecondShift && (
+                                      <div className="text-xs font-semibold">
+                                        Shift 2: {schedule.second_shift_start} - {schedule.second_shift_end}
+                                      </div>
+                                    )}
+                                    {hasInterShiftBreak && (
                                       <div className="flex items-center gap-1 text-xs text-muted-foreground">
                                         <Coffee className="h-3 w-3" />
-                                        {schedule.break_start}-{schedule.break_end}
+                                        {schedule.shift_end}-{schedule.second_shift_start}
                                       </div>
                                     )}
                                     <div className="text-xs text-muted-foreground">{workingHours.formatted}</div>
@@ -394,34 +509,42 @@ export function WeeklyScheduleView({ workers }: WeeklyScheduleViewProps) {
                                     </div>
 
                                     <div className="flex items-center justify-between">
-                                      <Label>Has Break</Label>
+                                      <Label>Enable Second Shift</Label>
                                       <Switch
-                                        checked={schedule.has_break}
+                                        checked={schedule.has_second_shift}
                                         onCheckedChange={(checked) =>
-                                          updateSchedule(worker.id, day, { has_break: checked })
+                                          updateSchedule(worker.id, day, {
+                                            has_second_shift: checked,
+                                            second_shift_start: checked
+                                              ? schedule.second_shift_start || schedule.shift_end
+                                              : "",
+                                            second_shift_end: checked
+                                              ? schedule.second_shift_end || schedule.shift_end
+                                              : "",
+                                          })
                                         }
                                       />
                                     </div>
 
-                                    {schedule.has_break && (
+                                    {schedule.has_second_shift && (
                                       <div className="grid grid-cols-2 gap-3">
                                         <div>
-                                          <Label>Break Start</Label>
+                                          <Label>Second Shift Start</Label>
                                           <Input
                                             type="time"
-                                            value={schedule.break_start}
+                                            value={schedule.second_shift_start}
                                             onChange={(e) =>
-                                              updateSchedule(worker.id, day, { break_start: e.target.value })
+                                              updateSchedule(worker.id, day, { second_shift_start: e.target.value })
                                             }
                                           />
                                         </div>
                                         <div>
-                                          <Label>Break End</Label>
+                                          <Label>Second Shift End</Label>
                                           <Input
                                             type="time"
-                                            value={schedule.break_end}
+                                            value={schedule.second_shift_end}
                                             onChange={(e) =>
-                                              updateSchedule(worker.id, day, { break_end: e.target.value })
+                                              updateSchedule(worker.id, day, { second_shift_end: e.target.value })
                                             }
                                           />
                                         </div>

@@ -18,6 +18,8 @@ import {
   appTaskToDatabase,
   databaseUserToApp,
   appUserToDatabase,
+  databaseShiftScheduleToApp,
+  appShiftScheduleToDatabase,
   type DatabaseTask,
   type DatabaseUser,
   type DatabaseMaintenanceSchedule,
@@ -341,44 +343,123 @@ export async function loadShiftSchedulesFromSupabase(
 
   try {
     const supabase = supabaseOverride ?? createClient()
-    const { data, error } = await supabase
-      .from("shift_schedules")
-      .select(
-        [
-          "id",
-          "worker_id",
-          "schedule_date",
-          "shift_start",
-          "shift_end",
-          "break_start",
-          "break_end",
-          "is_override",
-          "override_reason",
-          "notes",
-          "created_at",
-        ].join(","),
+    
+    // Add diagnostic log to check database connection and schema
+    console.log("[v0] DEBUG: Checking shift_schedules schema...")
+    
+    const baseColumns = [
+      "id",
+      "worker_id",
+      "schedule_date",
+      "shift_start",
+      "shift_end",
+      "break_start",
+      "break_end",
+      "shift_1_start",
+      "shift_1_end",
+      "shift_1_break_start",
+      "shift_1_break_end",
+      "shift_2_start",
+      "shift_2_end",
+      "shift_2_break_start",
+      "shift_2_break_end",
+      "has_shift_2",
+      "is_dual_shift",
+      "is_override",
+      "override_reason",
+      "notes",
+      "created_at",
+    ] as const
+
+    const legacyColumns = [
+      "id",
+      "worker_id",
+      "schedule_date",
+      "shift_start",
+      "shift_end",
+      "break_start",
+      "break_end",
+      "is_override",
+      "override_reason",
+      "notes",
+      "created_at",
+    ] as const
+
+    const executeQuery = async (columns: readonly string[]) =>
+      supabase
+        .from("shift_schedules")
+        .select(columns.join(","))
+        .order("schedule_date", { ascending: true })
+
+    let { data, error } = await executeQuery(baseColumns)
+
+    if (error && error.code === "42703") {
+      console.warn(
+        "[v0] shift_schedules dual-shift columns missing in Supabase; falling back to legacy schema.",
       )
-      .order("schedule_date", { ascending: true })
+      console.log("[v0] DEBUG: Schema error details:", {
+        errorCode: error.code,
+        errorMessage: error.message,
+        details: error.details
+      })
+      const legacyResult = await executeQuery(legacyColumns)
+      data = legacyResult.data
+      error = legacyResult.error
+    }
 
     if (error) {
       console.error("[v0] Error loading shift schedules from Supabase:", error)
       throw new Error(`Failed to load shift schedules: ${error.message}`)
     }
 
-    const mapped = ((data ?? []) as DatabaseShiftSchedule[]).map((dbSchedule) => ({
-      id: dbSchedule.id,
-      worker_id: dbSchedule.worker_id,
-      schedule_date: dbSchedule.schedule_date,
-      shift_start: dbSchedule.shift_start,
-      shift_end: dbSchedule.shift_end,
-      has_break: Boolean(dbSchedule.break_start && dbSchedule.break_end),
-      break_start: dbSchedule.break_start ?? undefined,
-      break_end: dbSchedule.break_end ?? undefined,
-      is_override: dbSchedule.is_override ?? false,
-      override_reason: dbSchedule.override_reason ?? undefined,
-      notes: dbSchedule.notes ?? undefined,
-      created_at: dbSchedule.created_at,
-    }))
+    const mapped = ((data ?? []) as Partial<DatabaseShiftSchedule>[]).map((dbSchedule) => {
+      // When dual-shift columns are missing, the select query returns legacy shape.
+      const enriched: DatabaseShiftSchedule = {
+        id: dbSchedule.id ?? "",
+        worker_id: dbSchedule.worker_id ?? "",
+        schedule_date: dbSchedule.schedule_date ?? "",
+        shift_start: dbSchedule.shift_start ?? null,
+        shift_end: dbSchedule.shift_end ?? null,
+        break_start: dbSchedule.break_start ?? null,
+        break_end: dbSchedule.break_end ?? null,
+        shift_1_start: "shift_1_start" in dbSchedule ? dbSchedule.shift_1_start ?? null : dbSchedule.shift_start ?? null,
+        shift_1_end: "shift_1_end" in dbSchedule ? dbSchedule.shift_1_end ?? null : dbSchedule.shift_end ?? null,
+        shift_1_break_start:
+          "shift_1_break_start" in dbSchedule ? dbSchedule.shift_1_break_start ?? null : dbSchedule.break_start ?? null,
+        shift_1_break_end:
+          "shift_1_break_end" in dbSchedule ? dbSchedule.shift_1_break_end ?? null : dbSchedule.break_end ?? null,
+        shift_2_start: "shift_2_start" in dbSchedule ? dbSchedule.shift_2_start ?? null : null,
+        shift_2_end: "shift_2_end" in dbSchedule ? dbSchedule.shift_2_end ?? null : null,
+        shift_2_break_start: "shift_2_break_start" in dbSchedule ? dbSchedule.shift_2_break_start ?? null : null,
+        shift_2_break_end: "shift_2_break_end" in dbSchedule ? dbSchedule.shift_2_break_end ?? null : null,
+        has_shift_2: "has_shift_2" in dbSchedule ? Boolean(dbSchedule.has_shift_2) : false,
+        shift_2_has_break: "shift_2_has_break" in dbSchedule ? Boolean(dbSchedule.shift_2_has_break) : false,
+        is_dual_shift: "is_dual_shift" in dbSchedule ? Boolean(dbSchedule.is_dual_shift) : false,
+        is_override: Boolean(dbSchedule.is_override),
+        override_reason: dbSchedule.override_reason ?? null,
+        notes: dbSchedule.notes ?? null,
+        created_at: dbSchedule.created_at ?? new Date().toISOString(),
+      }
+
+      // If dual shift columns are missing but a long break exists, infer settings.
+      if (
+        !enriched.is_dual_shift &&
+        !enriched.has_shift_2 &&
+        enriched.shift_start &&
+        enriched.shift_end &&
+        enriched.break_start &&
+        enriched.break_end
+      ) {
+        enriched.shift_1_start = enriched.shift_start
+        enriched.shift_1_end = enriched.break_start
+        enriched.shift_2_start = enriched.break_end
+        enriched.shift_2_end = enriched.shift_end
+        enriched.has_shift_2 = true
+        enriched.is_dual_shift = true
+      }
+
+      return databaseShiftScheduleToApp(enriched)
+    })
 
     setCachedValue("shift_schedules", mapped)
     console.log(`[v0] Loaded ${mapped.length} shift schedules from Supabase`)
@@ -392,24 +473,28 @@ export async function loadShiftSchedulesFromSupabase(
 export async function saveShiftScheduleToSupabase(schedule: ShiftSchedule): Promise<boolean> {
   try {
     const supabase = createClient()
+    const dbSchedule = appShiftScheduleToDatabase(schedule)
+    let { error } = await supabase.from("shift_schedules").upsert(dbSchedule)
 
-    const dbSchedule = {
-      id: schedule.id,
-      worker_id: schedule.worker_id,
-      schedule_date: schedule.schedule_date,
-      shift_start: schedule.shift_start,
-      shift_end: schedule.shift_end,
-      break_start: schedule.break_start || null,
-      break_end: schedule.break_end || null,
-      is_override: schedule.is_override || false,
-      override_reason: schedule.override_reason || null,
-      notes:
-        typeof schedule.notes === "string" && schedule.notes.trim().length > 0
-          ? schedule.notes.trim()
-          : null,
+    if (error && error.code === "42703") {
+      console.warn(
+        "[v0] shift_schedules dual-shift columns missing in Supabase; retrying save with legacy schema.",
+      )
+      const legacyPayload = {
+        id: dbSchedule.id,
+        worker_id: dbSchedule.worker_id,
+        schedule_date: dbSchedule.schedule_date,
+        shift_start: dbSchedule.shift_start,
+        shift_end: dbSchedule.shift_end,
+        break_start: dbSchedule.break_start,
+        break_end: dbSchedule.break_end,
+        is_override: dbSchedule.is_override,
+        override_reason: dbSchedule.override_reason,
+        notes: dbSchedule.notes,
+      }
+      const fallback = await supabase.from("shift_schedules").upsert(legacyPayload)
+      error = fallback.error
     }
-
-    const { error } = await supabase.from("shift_schedules").upsert(dbSchedule)
 
     if (error) {
       console.error("[v0] Error saving shift schedule to Supabase:", error)

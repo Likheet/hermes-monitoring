@@ -289,7 +289,7 @@ export function FrontDeskActiveTaskModal({ task, open, onOpenChange }: FrontDesk
           }
         }}
       >
-        <DialogContent className="sm:max-w-3xl overflow-hidden p-0">
+        <DialogContent className="sm:max-w-3xl max-h-[90vh] flex flex-col p-0">
           <DialogHeader className="border-b bg-muted/30 px-4 py-4 sm:px-6 sm:py-5">
             <DialogTitle className="flex flex-col gap-2">
               <span className="text-xl font-semibold sm:text-2xl">{activeTask.task_type}</span>
@@ -309,7 +309,7 @@ export function FrontDeskActiveTaskModal({ task, open, onOpenChange }: FrontDesk
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-6 overflow-y-auto px-4 py-6 sm:px-6">
+          <div className="flex-1 space-y-6 overflow-y-auto px-4 py-6 sm:px-6">
             <section className="grid gap-4 sm:grid-cols-2">
               <Card className="border-primary/20">
                 <CardHeader className="flex flex-row items-center justify-between pb-3">

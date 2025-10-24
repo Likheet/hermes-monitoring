@@ -39,8 +39,14 @@ import { RejectedTaskCard } from "@/components/rejected-task-card"
 import { IssueCard } from "@/components/issue-card"
 import { FrontOfficeBottomNav } from "@/components/mobile/front-office-bottom-nav"
 import { useToast } from "@/hooks/use-toast"
-import { formatShiftRange, formatFullTimestamp, calculateWorkingHours } from "@/lib/date-utils"
-import { validateBreakTimes, getWorkerShiftForDate } from "@/lib/shift-utils"
+import {
+  formatShiftRange,
+  formatFullTimestamp,
+  calculateWorkingHours,
+  calculateDualShiftWorkingHours,
+  formatShiftTime,
+} from "@/lib/date-utils"
+import { validateDualShiftTimes, getWorkerShiftForDate } from "@/lib/shift-utils"
 import { WeeklyScheduleView } from "@/components/shift/weekly-schedule-view"
 import { ReassignTaskModal } from "@/components/reassign-task-modal"
 import { EditTaskModal } from "@/components/edit-task-modal"
@@ -48,11 +54,11 @@ import { FrontDeskActiveTaskModal } from "@/components/front-desk-active-task-mo
 import type { Task, User } from "@/lib/types"
 
 type ShiftDraft = {
-  start: string
-  end: string
-  hasBreak: boolean
-  breakStart: string
-  breakEnd: string
+  shift1Start: string
+  shift1End: string
+  hasSecondShift: boolean
+  shift2Start: string
+  shift2End: string
 }
 
 const priorityColors = {
@@ -92,42 +98,60 @@ function FrontOfficeDashboard() {
   const workers = users.filter((u) => u.role === "worker" || u.role === "front_office")
   const [today] = useState(() => new Date())
 
-  const [editingShifts, setEditingShifts] = useState<Record<string, ShiftDraft>>(
-    Object.fromEntries(
-      workers.map((w) => {
-        const todayShift = getWorkerShiftForDate(w, today, shiftSchedules)
-        return [
-          w.id,
-          {
-            start: todayShift.shift_start || "09:00",
-            end: todayShift.shift_end || "18:00",
-            hasBreak: todayShift.has_break || false,
-            breakStart: todayShift.break_start || "12:00",
-            breakEnd: todayShift.break_end || "13:00",
-          },
-        ]
-      }),
-    ),
-  )
-  const [dirtyWorkers, setDirtyWorkers] = useState<Record<string, boolean>>({})
+  const normalizeShiftDraft = (draft: ShiftDraft): ShiftDraft => {
+    if (!draft.hasSecondShift) {
+      return {
+        shift1Start: draft.shift1Start,
+        shift1End: draft.shift1End,
+        hasSecondShift: false,
+        shift2Start: "",
+        shift2End: "",
+      }
+    }
 
-  const buildShiftTemplate = (worker: User): ShiftDraft => {
-    const todayShift = getWorkerShiftForDate(worker, today, shiftSchedules)
     return {
-      start: todayShift.shift_start || "09:00",
-      end: todayShift.shift_end || "18:00",
-      hasBreak: todayShift.has_break || false,
-      breakStart: todayShift.break_start || "12:00",
-      breakEnd: todayShift.break_end || "13:00",
+      shift1Start: draft.shift1Start,
+      shift1End: draft.shift1End,
+      hasSecondShift: true,
+      shift2Start: draft.shift2Start,
+      shift2End: draft.shift2End,
     }
   }
 
+  const createShiftDraft = (worker: User): ShiftDraft => {
+    const todayShift = getWorkerShiftForDate(worker, today, shiftSchedules)
+    const hasSecondShift = Boolean(
+      (todayShift.is_dual_shift || todayShift.has_shift_2) && todayShift.shift_2_start && todayShift.shift_2_end,
+    )
+    const shift1Start = todayShift.shift_1_start || todayShift.shift_start || "09:00"
+    const shift1End =
+      todayShift.shift_1_end ||
+      (hasSecondShift ? todayShift.shift_2_start || todayShift.break_start || "14:00" : todayShift.shift_end || "17:00")
+    const shift2Start = hasSecondShift ? todayShift.shift_2_start || todayShift.break_end || shift1End : ""
+    const shift2End = hasSecondShift ? todayShift.shift_2_end || todayShift.shift_end || shift1End : ""
+
+    return normalizeShiftDraft({
+      shift1Start,
+      shift1End,
+      hasSecondShift,
+      shift2Start,
+      shift2End,
+    })
+  }
+
+  const [editingShifts, setEditingShifts] = useState<Record<string, ShiftDraft>>(
+    Object.fromEntries(workers.map((w) => [w.id, createShiftDraft(w)])),
+  )
+  const [dirtyWorkers, setDirtyWorkers] = useState<Record<string, boolean>>({})
+
+  const buildShiftTemplate = (worker: User): ShiftDraft => createShiftDraft(worker)
+
   const shiftsAreEqual = (a: ShiftDraft, b: ShiftDraft) =>
-    a.start === b.start &&
-    a.end === b.end &&
-    a.hasBreak === b.hasBreak &&
-    a.breakStart === b.breakStart &&
-    a.breakEnd === b.breakEnd
+    a.shift1Start === b.shift1Start &&
+    a.shift1End === b.shift1End &&
+    a.hasSecondShift === b.hasSecondShift &&
+    a.shift2Start === b.shift2Start &&
+    a.shift2End === b.shift2End
 
   const markDirty = (workerId: string, dirty = true) => {
     setDirtyWorkers((prev) => {
@@ -331,28 +355,50 @@ function FrontOfficeDashboard() {
 
     const shift = editingShifts[workerId] ?? buildShiftTemplate(worker)
 
-    if (!shift.start || !shift.end) {
+    const shift2Start = shift.hasSecondShift && shift.shift2Start ? shift.shift2Start : undefined
+    const shift2End = shift.hasSecondShift && shift.shift2End ? shift.shift2End : undefined
+
+    if (shift.hasSecondShift && (!shift2Start || !shift2End)) {
       toast({
-        title: "Invalid Shift",
-        description: "Please enter both start and end times",
+        title: "Second Shift Required",
+        description: "Please provide both start and end times for the second shift.",
         variant: "destructive",
       })
       return
     }
 
-    if (shift.hasBreak) {
-      const validation = validateBreakTimes(shift.start, shift.end, shift.breakStart, shift.breakEnd)
-      if (!validation.valid) {
-        toast({
-          title: "Invalid Break Times",
-          description: validation.error,
-          variant: "destructive",
-        })
-        return
-      }
+    const validation = validateDualShiftTimes(
+      shift.shift1Start,
+      shift.shift1End,
+      undefined,
+      undefined,
+      shift2Start,
+      shift2End,
+      undefined,
+      undefined,
+    )
+
+    if (!validation.valid) {
+      toast({
+        title: "Invalid Shift Configuration",
+        description: validation.error,
+        variant: "destructive",
+      })
+      return
     }
 
-    updateWorkerShift(workerId, shift.start, shift.end, user!.id, shift.hasBreak, shift.breakStart, shift.breakEnd)
+    const breakStart = shift2Start ? shift.shift1End : undefined
+    const breakEnd = shift2Start ? shift2Start : undefined
+
+    updateWorkerShift(
+      workerId,
+      shift.shift1Start,
+      shift2End ?? shift.shift1End,
+      user!.id,
+      Boolean(breakStart && breakEnd),
+      breakStart,
+      breakEnd,
+    )
     markDirty(workerId, false)
 
     const todayDate = today.toISOString().split("T")[0]
@@ -361,11 +407,22 @@ function FrontOfficeDashboard() {
     saveShiftSchedule({
       worker_id: workerId,
       schedule_date: todayDate,
-      shift_start: shift.start,
-      shift_end: shift.end,
-      has_break: shift.hasBreak,
-      break_start: shift.hasBreak ? shift.breakStart : undefined,
-      break_end: shift.hasBreak ? shift.breakEnd : undefined,
+      shift_start: shift.shift1Start,
+      shift_end: shift2End ?? shift.shift1End,
+      has_break: Boolean(breakStart && breakEnd),
+      break_start: breakStart,
+      break_end: breakEnd,
+      shift_1_start: shift.shift1Start,
+      shift_1_end: shift.shift1End,
+      shift_1_break_start: breakStart,
+      shift_1_break_end: breakEnd,
+      shift_2_start: shift2Start,
+      shift_2_end: shift2End,
+      shift_2_break_start: undefined,
+      shift_2_break_end: undefined,
+      has_shift_2: Boolean(shift2Start && shift2End),
+      is_dual_shift: Boolean(shift2Start && shift2End),
+      shift_2_has_break: false,
       is_override: isOffDuty,
       override_reason: isOffDuty ? "leave" : "",
       notes: "",
@@ -385,15 +442,30 @@ function FrontOfficeDashboard() {
 
     const todayDate = today.toISOString().split("T")[0]
     const shiftDraft = editingShifts[workerId] ?? buildShiftTemplate(worker)
+    const shift2Start = shiftDraft.hasSecondShift && shiftDraft.shift2Start ? shiftDraft.shift2Start : undefined
+    const shift2End = shiftDraft.hasSecondShift && shiftDraft.shift2End ? shiftDraft.shift2End : undefined
+    const breakStart = shift2Start ? shiftDraft.shift1End : undefined
+    const breakEnd = shift2Start ? shift2Start : undefined
 
     saveShiftSchedule({
       worker_id: workerId,
       schedule_date: todayDate,
-      shift_start: shiftDraft.start,
-      shift_end: shiftDraft.end,
-      has_break: shiftDraft.hasBreak,
-      break_start: shiftDraft.hasBreak ? shiftDraft.breakStart : undefined,
-      break_end: shiftDraft.hasBreak ? shiftDraft.breakEnd : undefined,
+      shift_start: shiftDraft.shift1Start,
+      shift_end: shift2End ?? shiftDraft.shift1End,
+      has_break: Boolean(breakStart && breakEnd),
+      break_start: breakStart,
+      break_end: breakEnd,
+      shift_1_start: shiftDraft.shift1Start,
+      shift_1_end: shiftDraft.shift1End,
+      shift_1_break_start: breakStart,
+      shift_1_break_end: breakEnd,
+      shift_2_start: shift2Start,
+      shift_2_end: shift2End,
+      shift_2_break_start: undefined,
+      shift_2_break_end: undefined,
+      has_shift_2: Boolean(shift2Start && shift2End),
+      is_dual_shift: Boolean(shift2Start && shift2End),
+      shift_2_has_break: false,
       is_override: isOffDuty,
       override_reason: isOffDuty ? "leave" : "",
       notes: "",
@@ -404,15 +476,40 @@ function FrontOfficeDashboard() {
       description: `${worker.name} has been ${isOffDuty ? "marked as off duty" : "marked as on duty"} for today`,
     })
   }
-  const getWorkingHoursDisplay = (
-    start: string,
-    end: string,
-    hasBreak: boolean,
-    breakStart: string,
-    breakEnd: string,
-  ) => {
-    const result = calculateWorkingHours(start, end, hasBreak, breakStart, breakEnd)
-    return result.formatted
+  const getWorkingHoursDisplay = (shift: ShiftDraft) => {
+    if (!shift.shift1Start || !shift.shift1End) return "—"
+
+    if (shift.hasSecondShift && shift.shift2Start && shift.shift2End) {
+      return calculateDualShiftWorkingHours(
+        shift.shift1Start,
+        shift.shift1End,
+        false,
+        undefined,
+        undefined,
+        shift.shift2Start,
+        shift.shift2End,
+        false,
+        undefined,
+        undefined,
+      ).formatted
+    }
+
+    return calculateWorkingHours(shift.shift1Start, shift.shift1End, false, undefined, undefined).formatted
+  }
+
+  const getShiftSummaryLines = (shift: ShiftDraft) => {
+    if (shift.hasSecondShift && shift.shift2Start && shift.shift2End) {
+      return [
+        `Shift 1: ${formatShiftRange(shift.shift1Start, shift.shift1End)}`,
+        `Shift 2: ${formatShiftRange(shift.shift2Start, shift.shift2End)}`,
+      ]
+    }
+
+    if (shift.shift1Start && shift.shift1End) {
+      return [`Shift: ${formatShiftRange(shift.shift1Start, shift.shift1End)}`]
+    }
+
+    return []
   }
 
   const selfAssignedTasks = tasks.filter((t) => t.assigned_to_user_id === user?.id)
@@ -455,16 +552,14 @@ function FrontOfficeDashboard() {
 
                 <div className="grid gap-4 md:grid-cols-2">
                   {sortedShiftWorkers.map((worker) => {
-                    const edited = editingShifts[worker.id]
-                    const todayShift = getWorkerShiftForDate(worker, today, shiftSchedules)
+                    const shiftState = editingShifts[worker.id] ?? buildShiftTemplate(worker)
                     const isOffDuty = offDutyStatus[worker.id]
-                    const workingHours = getWorkingHoursDisplay(
-                      edited.start,
-                      edited.end,
-                      edited.hasBreak,
-                      edited.breakStart,
-                      edited.breakEnd,
-                    )
+                    const workingHours = getWorkingHoursDisplay(shiftState)
+                    const shiftSegments = getShiftSummaryLines(shiftState)
+                    const interShiftBreakLabel =
+                      shiftState.hasSecondShift && shiftState.shift1End && shiftState.shift2Start
+                        ? `Shift Break: ${formatShiftTime(shiftState.shift1End)} - ${formatShiftTime(shiftState.shift2Start)}`
+                        : null
 
                     return (
                       <Card key={worker.id}>
@@ -490,17 +585,22 @@ function FrontOfficeDashboard() {
                             <div className={isOffDuty ? "opacity-50 pointer-events-none" : ""}>
                               <div className="grid grid-cols-2 gap-3">
                                 <div>
-                                  <Label htmlFor={`start-${worker.id}`}>Shift Start</Label>
+                                  <Label htmlFor={`shift1-start-${worker.id}`}>
+                                    {shiftState.hasSecondShift ? "Shift 1 Start" : "Shift Start"}
+                                  </Label>
                                   <Input
-                                    id={`start-${worker.id}`}
+                                    id={`shift1-start-${worker.id}`}
                                     type="time"
-                                    value={edited.start}
+                                    value={shiftState.shift1Start}
                                     onChange={(e) => {
                                       const value = e.target.value
-                                      setEditingShifts((prev) => ({
-                                        ...prev,
-                                        [worker.id]: { ...(prev[worker.id] ?? buildShiftTemplate(worker)), start: value },
-                                      }))
+                                      setEditingShifts((prev) => {
+                                        const next = normalizeShiftDraft({
+                                          ...(prev[worker.id] ?? buildShiftTemplate(worker)),
+                                          shift1Start: value,
+                                        })
+                                        return { ...prev, [worker.id]: next }
+                                      })
                                       markDirty(worker.id)
                                     }}
                                     className="mt-1"
@@ -508,17 +608,22 @@ function FrontOfficeDashboard() {
                                   />
                                 </div>
                                 <div>
-                                  <Label htmlFor={`end-${worker.id}`}>Shift End</Label>
+                                  <Label htmlFor={`shift1-end-${worker.id}`}>
+                                    {shiftState.hasSecondShift ? "Shift 1 End" : "Shift End"}
+                                  </Label>
                                   <Input
-                                    id={`end-${worker.id}`}
+                                    id={`shift1-end-${worker.id}`}
                                     type="time"
-                                    value={edited.end}
+                                    value={shiftState.shift1End}
                                     onChange={(e) => {
                                       const value = e.target.value
-                                      setEditingShifts((prev) => ({
-                                        ...prev,
-                                        [worker.id]: { ...(prev[worker.id] ?? buildShiftTemplate(worker)), end: value },
-                                      }))
+                                      setEditingShifts((prev) => {
+                                        const next = normalizeShiftDraft({
+                                          ...(prev[worker.id] ?? buildShiftTemplate(worker)),
+                                          shift1End: value,
+                                        })
+                                        return { ...prev, [worker.id]: next }
+                                      })
                                       markDirty(worker.id)
                                     }}
                                     className="mt-1"
@@ -530,81 +635,83 @@ function FrontOfficeDashboard() {
                               <div className="flex items-center justify-between py-2 border-t">
                                 <div className="flex items-center gap-2">
                                   <Coffee className="h-4 w-4 text-muted-foreground" />
-                                  <Label htmlFor={`break-${worker.id}`} className="cursor-pointer">
-                                    Break Shifts
+                                  <Label htmlFor={`second-shift-${worker.id}`} className="cursor-pointer">
+                                    Enable Second Shift
                                   </Label>
                                 </div>
                                 <Switch
-                                  id={`break-${worker.id}`}
-                                  checked={edited.hasBreak}
+                                  id={`second-shift-${worker.id}`}
+                                  checked={shiftState.hasSecondShift}
                                   onCheckedChange={(checked) => {
-                                    setEditingShifts((prev) => ({
-                                      ...prev,
-                                      [worker.id]: {
-                                        ...(prev[worker.id] ?? buildShiftTemplate(worker)),
-                                        hasBreak: checked,
-                                        breakStart: checked
-                                          ? (prev[worker.id]?.breakStart ?? buildShiftTemplate(worker).breakStart)
-                                          : buildShiftTemplate(worker).breakStart,
-                                        breakEnd: checked
-                                          ? (prev[worker.id]?.breakEnd ?? buildShiftTemplate(worker).breakEnd)
-                                          : buildShiftTemplate(worker).breakEnd,
-                                      },
-                                    }))
+                                    setEditingShifts((prev) => {
+                                      const current = prev[worker.id] ?? buildShiftTemplate(worker)
+                                      const next = normalizeShiftDraft({
+                                        ...current,
+                                        hasSecondShift: checked,
+                                        shift2Start: checked ? current.shift2Start || current.shift1End : "",
+                                        shift2End: checked ? current.shift2End || current.shift1End : "",
+                                      })
+                                      return { ...prev, [worker.id]: next }
+                                    })
                                     markDirty(worker.id)
                                   }}
                                   disabled={isOffDuty}
                                 />
                               </div>
 
-                              {edited.hasBreak && (
-                                <div className="grid grid-cols-2 gap-3 pl-6 border-l-2 border-muted">
-                                  <div>
-                                    <Label htmlFor={`break-start-${worker.id}`} className="text-xs">
-                                      Break Start
-                                    </Label>
-                                    <Input
-                                      id={`break-start-${worker.id}`}
-                                      type="time"
-                                      value={edited.breakStart}
-                                      onChange={(e) => {
-                                        const value = e.target.value
-                                        setEditingShifts((prev) => ({
-                                          ...prev,
-                                          [worker.id]: {
-                                            ...(prev[worker.id] ?? buildShiftTemplate(worker)),
-                                            breakStart: value,
-                                          },
-                                        }))
-                                        markDirty(worker.id)
-                                      }}
-                                      className="mt-1"
-                                      disabled={isOffDuty}
-                                    />
+                              {shiftState.hasSecondShift && (
+                                <div className="space-y-2 pl-6 border-l-2 border-muted">
+                                  <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                      <Label htmlFor={`shift2-start-${worker.id}`} className="text-xs">
+                                        Shift 2 Start
+                                      </Label>
+                                      <Input
+                                        id={`shift2-start-${worker.id}`}
+                                        type="time"
+                                        value={shiftState.shift2Start}
+                                        onChange={(e) => {
+                                          const value = e.target.value
+                                          setEditingShifts((prev) => {
+                                            const next = normalizeShiftDraft({
+                                              ...(prev[worker.id] ?? buildShiftTemplate(worker)),
+                                              shift2Start: value,
+                                            })
+                                            return { ...prev, [worker.id]: next }
+                                          })
+                                          markDirty(worker.id)
+                                        }}
+                                        className="mt-1"
+                                        disabled={isOffDuty}
+                                      />
+                                    </div>
+                                    <div>
+                                      <Label htmlFor={`shift2-end-${worker.id}`} className="text-xs">
+                                        Shift 2 End
+                                      </Label>
+                                      <Input
+                                        id={`shift2-end-${worker.id}`}
+                                        type="time"
+                                        value={shiftState.shift2End}
+                                        onChange={(e) => {
+                                          const value = e.target.value
+                                          setEditingShifts((prev) => {
+                                            const next = normalizeShiftDraft({
+                                              ...(prev[worker.id] ?? buildShiftTemplate(worker)),
+                                              shift2End: value,
+                                            })
+                                            return { ...prev, [worker.id]: next }
+                                          })
+                                          markDirty(worker.id)
+                                        }}
+                                        className="mt-1"
+                                        disabled={isOffDuty}
+                                      />
+                                    </div>
                                   </div>
-                                  <div>
-                                    <Label htmlFor={`break-end-${worker.id}`} className="text-xs">
-                                      Break End
-                                    </Label>
-                                    <Input
-                                      id={`break-end-${worker.id}`}
-                                      type="time"
-                                      value={edited.breakEnd}
-                                      onChange={(e) => {
-                                        const value = e.target.value
-                                        setEditingShifts((prev) => ({
-                                          ...prev,
-                                          [worker.id]: {
-                                            ...(prev[worker.id] ?? buildShiftTemplate(worker)),
-                                            breakEnd: value,
-                                          },
-                                        }))
-                                        markDirty(worker.id)
-                                      }}
-                                      className="mt-1"
-                                      disabled={isOffDuty}
-                                    />
-                                  </div>
+                                  {interShiftBreakLabel && (
+                                    <p className="text-xs text-muted-foreground">{interShiftBreakLabel}</p>
+                                  )}
                                 </div>
                               )}
 
@@ -613,14 +720,21 @@ function FrontOfficeDashboard() {
                                 <span className="font-semibold">{isOffDuty ? "Off Duty" : workingHours}</span>
                               </div>
 
-                              <div className="flex items-center gap-2 text-sm text-muted-foreground pt-2 border-t">
-                                <Clock className="h-4 w-4" />
-                                <span>
-                                  Today's Schedule:{" "}
-                                  {isOffDuty
-                                    ? "Off Duty"
-                                    : formatShiftRange(todayShift.shift_start, todayShift.shift_end)}
-                                </span>
+                              <div className="flex flex-col gap-1 text-sm text-muted-foreground pt-2 border-t">
+                                <div className="flex items-center gap-2">
+                                  <Clock className="h-4 w-4" />
+                                  <span>
+                                    Today's Schedule:{" "}
+                                    {isOffDuty
+                                      ? "Off Duty"
+                                      : shiftSegments.length > 0
+                                      ? shiftSegments.join(" • ")
+                                      : "Not set"}
+                                  </span>
+                                </div>
+                                {!isOffDuty && interShiftBreakLabel && (
+                                  <span className="pl-6 text-xs text-muted-foreground">{interShiftBreakLabel}</span>
+                                )}
                               </div>
 
                               <Button

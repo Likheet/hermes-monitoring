@@ -180,3 +180,50 @@ export function calculateWorkingHours(
     formatted: `${workingHours.toFixed(1)} hours (${breakHours.toFixed(1)}h break)`,
   }
 }
+
+// Calculate working hours for dual shifts
+export function calculateDualShiftWorkingHours(
+  shift1Start: string,
+  shift1End: string,
+  shift1HasBreak: boolean,
+  shift1BreakStart?: string,
+  shift1BreakEnd?: string,
+  shift2Start?: string,
+  shift2End?: string,
+  shift2HasBreak?: boolean,
+  shift2BreakStart?: string,
+  shift2BreakEnd?: string,
+): {
+  totalHours: number;
+  breakHours: number;
+  workingHours: number;
+  formatted: string;
+  shift1Hours?: number;
+  shift2Hours?: number;
+} {
+  // Calculate shift 1 hours
+  const shift1Result = calculateWorkingHours(shift1Start, shift1End, shift1HasBreak, shift1BreakStart, shift1BreakEnd)
+  
+  let totalHours = shift1Result.totalHours
+  let breakHours = shift1Result.breakHours
+  let workingHours = shift1Result.workingHours
+  let shift2Hours: number | undefined
+
+  // Calculate shift 2 hours if present
+  if (shift2Start && shift2End) {
+    const shift2Result = calculateWorkingHours(shift2Start, shift2End, shift2HasBreak || false, shift2BreakStart, shift2BreakEnd)
+    totalHours += shift2Result.totalHours
+    breakHours += shift2Result.breakHours
+    workingHours += shift2Result.workingHours
+    shift2Hours = shift2Result.workingHours
+  }
+
+  return {
+    totalHours,
+    breakHours,
+    workingHours,
+    formatted: `${workingHours.toFixed(1)} hours total (${breakHours.toFixed(1)}h break)`,
+    shift1Hours: shift1Result.workingHours,
+    shift2Hours,
+  }
+}

@@ -295,8 +295,8 @@ export async function POST(request: Request) {
         { timezoneOffsetMinutes: timezoneOffset },
       )
 
-      if (availability.status === "OFF_DUTY") {
-        return NextResponse.json({ error: "Cannot assign task to an off-duty staff member" }, { status: 400 })
+      if (availability.status === "OFF_DUTY" || availability.status === "SHIFT_BREAK") {
+        return NextResponse.json({ error: "Cannot assign task while the staff member is unavailable" }, { status: 400 })
       }
     }
 

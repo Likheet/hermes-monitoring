@@ -337,7 +337,12 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers, initialD
     
     console.log("\n[TaskAssignment] ✅ FINAL AVAILABILITY RESULTS:")
     allWorkers.forEach(w => {
-      const statusIcon = w.availability.status === "OFF_DUTY" ? "❌" : "✅"
+      const statusIcon =
+        w.availability.status === "OFF_DUTY"
+          ? "❌"
+          : w.availability.status === "SHIFT_BREAK"
+          ? "☕"
+          : "✅"
       console.log(`  ${statusIcon} ${w.name}:`, {
         status: w.availability.status,
         shift_times: `${w.shift_start} - ${w.shift_end}`,
@@ -370,7 +375,11 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers, initialD
   }, [workersWithShifts, currentUser, shiftSchedules])
 
   const sortedStaff = useMemo(() => {
-    const orderByStatus = (status: WorkerAvailability["status"]) => (status === "OFF_DUTY" ? 1 : 0)
+    const orderByStatus = (status: WorkerAvailability["status"]) => {
+      if (status === "AVAILABLE") return 0
+      if (status === "SHIFT_BREAK") return 1
+      return 2
+    }
 
     return [...staffIncludingCurrent].sort((a, b) => {
       const statusCompare = orderByStatus(a.availability.status) - orderByStatus(b.availability.status)
@@ -405,7 +414,7 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers, initialD
   const staffToRender = selectOpen ? frozenStaff : staffGroupedByDepartment
 
   const hasOnDutyStaff = useMemo(
-    () => sortedStaff.some((worker) => worker.availability.status !== "OFF_DUTY"),
+    () => sortedStaff.some((worker) => worker.availability.status === "AVAILABLE"),
     [sortedStaff],
   )
 
@@ -416,7 +425,11 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers, initialD
 
   const selectedWorkerLabel = selectedWorkerEntry
     ? `${selectedWorkerEntry.name} (${departmentLabels[selectedWorkerEntry.department as Department]}) • ${
-        selectedWorkerEntry.availability.status !== "OFF_DUTY" ? "On Duty" : "Off-Duty"
+        selectedWorkerEntry.availability.status === "AVAILABLE"
+          ? "On Duty"
+          : selectedWorkerEntry.availability.status === "SHIFT_BREAK"
+          ? "Shift Break"
+          : "Off Duty"
       }`
     : undefined
 
@@ -432,7 +445,7 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers, initialD
     if (assignedTo) return
 
     const onDutyHousekeeping = sortedStaff.find(
-      (worker) => worker.department === "housekeeping" && worker.availability.status !== "OFF_DUTY",
+      (worker) => worker.department === "housekeeping" && worker.availability.status === "AVAILABLE",
     )
     if (onDutyHousekeeping) {
       setAssignedTo(onDutyHousekeeping.id)
@@ -594,7 +607,10 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers, initialD
       return
     }
 
-    if (assignedEntry.availability.status === "OFF_DUTY") {
+    if (
+      assignedEntry.availability.status === "OFF_DUTY" ||
+      assignedEntry.availability.status === "SHIFT_BREAK"
+    ) {
       setErrors((prev) => ({ ...prev, assignedTo: "Selected staff member is currently off duty" }))
       return
     }
@@ -1150,7 +1166,7 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers, initialD
                     <SelectGroup key={dept}>
                       <SelectLabel>{departmentLabels[dept]}</SelectLabel>
                       {workersInDept.map((worker) => {
-                        const isOnDuty = worker.availability.status !== "OFF_DUTY"
+                        const isOnDuty = worker.availability.status === "AVAILABLE"
                         return (
                           <SelectItem
                             key={worker.id}

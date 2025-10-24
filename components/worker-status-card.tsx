@@ -6,7 +6,7 @@ import type { User, Task } from "@/lib/types"
 import type { MaintenanceTask } from "@/lib/maintenance-types"
 import { UserIcon, Clock, AlertTriangle, Coffee } from "lucide-react"
 import { formatShiftTime } from "@/lib/date-utils"
-import { isWorkerOnShiftFromUser, getWorkerShiftForDate } from "@/lib/shift-utils"
+import { isWorkerOnShiftWithSchedule, getWorkerShiftForDate, timeToMinutes } from "@/lib/shift-utils"
 import { useTasks } from "@/lib/task-context"
 
 interface WorkerStatusCardProps {
@@ -24,8 +24,8 @@ export function WorkerStatusCard({ worker, currentTask, onClick }: WorkerStatusC
   const today = new Date()
   const todayShift = getWorkerShiftForDate(worker, today, shiftSchedules)
 
-  const availability = isWorkerOnShiftFromUser(worker)
-  const isOnBreak = availability.status === "ON_BREAK"
+  const availability = isWorkerOnShiftWithSchedule(worker, shiftSchedules)
+  const isOnBreak = availability.status === "SHIFT_BREAK"
 
   const isWorking = currentTask
     ? isRegularTask
@@ -102,6 +102,67 @@ export function WorkerStatusCard({ worker, currentTask, onClick }: WorkerStatusC
 
   const taskDisplay = getTaskDisplay()
 
+  const shiftWindows = []
+  if (todayShift.shift_1_start && todayShift.shift_1_end) {
+    shiftWindows.push({
+      label: todayShift.has_shift_2 ? "Shift 1" : "Shift",
+      start: todayShift.shift_1_start,
+      end: todayShift.shift_1_end,
+    })
+  } else if (todayShift.shift_start && todayShift.shift_end) {
+    shiftWindows.push({
+      label: "Shift",
+      start: todayShift.shift_start,
+      end: todayShift.shift_end,
+    })
+  }
+
+  if (todayShift.shift_2_start && todayShift.shift_2_end) {
+    shiftWindows.push({
+      label: "Shift 2",
+      start: todayShift.shift_2_start,
+      end: todayShift.shift_2_end,
+    })
+  }
+
+  const hasInterShiftBreak = Boolean(
+    todayShift.shift_1_end &&
+      todayShift.shift_2_start &&
+      timeToMinutes(todayShift.shift_2_start) > timeToMinutes(todayShift.shift_1_end),
+  )
+
+  const interShiftBreak = hasInterShiftBreak
+    ? {
+        start: todayShift.shift_1_end!,
+        end: todayShift.shift_2_start!,
+      }
+    : null
+
+  const breakSlots: Array<{ label: string; start: string; end: string }> = []
+  if (
+    todayShift.has_break &&
+    todayShift.break_start &&
+    todayShift.break_end &&
+    !(hasInterShiftBreak && interShiftBreak && todayShift.break_start === interShiftBreak.start && todayShift.break_end === interShiftBreak.end)
+  ) {
+    breakSlots.push({
+      label: shiftWindows.length > 1 ? "Shift 1 Break" : "Break",
+      start: todayShift.break_start,
+      end: todayShift.break_end,
+    })
+  }
+  if (
+    todayShift.shift_2_has_break &&
+    todayShift.shift_2_break_start &&
+    todayShift.shift_2_break_end
+  ) {
+    breakSlots.push({
+      label: "Shift 2 Break",
+      start: todayShift.shift_2_break_start,
+      end: todayShift.shift_2_break_end,
+    })
+  }
+
   return (
     <Card className={onClick ? "cursor-pointer hover:shadow-md transition-shadow" : ""} onClick={onClick}>
       <CardHeader className="pb-3">
@@ -112,19 +173,35 @@ export function WorkerStatusCard({ worker, currentTask, onClick }: WorkerStatusC
           </div>
           {todayShift.is_override && todayShift.override_reason ? (
             <Badge variant="secondary" className="bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-100">
-              Off-Duty
+              Off Duty
             </Badge>
           ) : availability.status === "OFF_DUTY" ? (
             <Badge variant="secondary" className="bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-100">
-              Off-Duty
+              Off Duty
             </Badge>
-          ) : isOnBreak ? (
-            <Badge variant="secondary" className="bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-100">
-              <Coffee className="h-3 w-3 mr-1" />
-              On break
+          ) : availability.status === "SHIFT_BREAK" ? (
+            <Badge variant="secondary" className="bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-100 flex items-center gap-1">
+              <Coffee className="h-3 w-3" />
+              Shift Break
+              {availability.minutesUntilStateChange && (
+                <span className="text-xs text-amber-700 dark:text-amber-200">
+                  ({availability.minutesUntilStateChange}m)
+                </span>
+              )}
             </Badge>
           ) : (
-            <Badge variant={isWorking ? "default" : "secondary"}>{isWorking ? "Working" : "Available"}</Badge>
+            <Badge variant={isWorking ? "default" : "secondary"} className="flex items-center gap-1">
+              {isWorking ? (
+                "Working"
+              ) : availability.isEndingSoon && availability.minutesUntilStateChange ? (
+                <>
+                  <AlertTriangle className="h-3 w-3" />
+                  Ending Soon ({availability.minutesUntilStateChange}m)
+                </>
+              ) : (
+                "Available"
+              )}
+            </Badge>
           )}
         </div>
       </CardHeader>
@@ -135,17 +212,25 @@ export function WorkerStatusCard({ worker, currentTask, onClick }: WorkerStatusC
             <p className="text-xs text-muted-foreground italic">{todayShift.override_reason}</p>
           ) : (
             <>
-              <p>
-                Shift:{" "}
-                {todayShift.shift_start && todayShift.shift_end
-                  ? `${formatShiftTime(todayShift.shift_start)} - ${formatShiftTime(todayShift.shift_end)}`
-                  : "Not set"}
-              </p>
-              {todayShift.has_break && todayShift.break_start && todayShift.break_end && (
+              {shiftWindows.length > 0 ? (
+                shiftWindows.map((slot) => (
+                  <p key={`${slot.label}-${slot.start}-${slot.end}`}>
+                    {slot.label}: {formatShiftTime(slot.start)} - {formatShiftTime(slot.end)}
+                  </p>
+                ))
+              ) : (
+                <p>Shift: Not set</p>
+              )}
+              {interShiftBreak && (
                 <p className="text-xs text-muted-foreground">
-                  Break: {formatShiftTime(todayShift.break_start)} - {formatShiftTime(todayShift.break_end)}
+                  Shift Break: {formatShiftTime(interShiftBreak.start)} - {formatShiftTime(interShiftBreak.end)}
                 </p>
               )}
+              {breakSlots.map((slot) => (
+                <p key={`${slot.label}-${slot.start}-${slot.end}`} className="text-xs text-muted-foreground">
+                  {slot.label}: {formatShiftTime(slot.start)} - {formatShiftTime(slot.end)}
+                </p>
+              ))}
             </>
           )}
         </div>

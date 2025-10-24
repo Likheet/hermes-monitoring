@@ -84,11 +84,24 @@ export interface ShiftSchedule {
   id: string
   worker_id: string
   schedule_date: string // Format: "YYYY-MM-DD"
+  // Legacy single shift fields (for backward compatibility)
   shift_start: string // Format: "HH:MM"
   shift_end: string // Format: "HH:MM"
   has_break: boolean
   break_start?: string // Format: "HH:MM"
   break_end?: string // Format: "HH:MM"
+  // Explicit dual-shift fields
+  shift_1_start?: string // Format: "HH:MM"
+  shift_1_end?: string // Format: "HH:MM"
+  shift_1_break_start?: string // Format: "HH:MM"
+  shift_1_break_end?: string // Format: "HH:MM"
+  has_shift_2?: boolean
+  is_dual_shift?: boolean
+  shift_2_start?: string // Format: "HH:MM"
+  shift_2_end?: string // Format: "HH:MM"
+  shift_2_has_break?: boolean
+  shift_2_break_start?: string // Format: "HH:MM"
+  shift_2_break_end?: string // Format: "HH:MM"
   is_override: boolean // true if this is a holiday/leave/off-duty day
   override_reason?: string // "holiday", "leave", "sick", "emergency", etc.
   notes?: string

@@ -231,12 +231,15 @@ interface TaskContextType {
   dismissRejectedTask: (taskId: string, userId: string) => void
   updateWorkerShift: (
     workerId: string,
-    shiftStart: string,
-    shiftEnd: string,
+    shift1Start: string,
+    shift1End: string,
     userId: string,
-    hasBreak: boolean,
-    breakStart?: string,
-    breakEnd?: string,
+    options?: {
+      breakStart?: string
+      breakEnd?: string
+      shift2Start?: string
+      shift2End?: string
+    },
   ) => void
   addWorker: (input: CreateUserInput) => Promise<CreateUserResult>
   raiseIssue: (taskId: string, userId: string, issueDescription: string, photos?: string[]) => void
@@ -1184,23 +1187,42 @@ export function TaskProvider({
 
   const updateWorkerShift = (
     workerId: string,
-    shiftStart: string,
-    shiftEnd: string,
+    shift1Start: string,
+    shift1End: string,
     userId: string,
-    hasBreak = false,
-    breakStart?: string,
-    breakEnd?: string,
+    options?: {
+      breakStart?: string
+      breakEnd?: string
+      shift2Start?: string
+      shift2End?: string
+    },
   ) => {
+    const breakStart = options?.breakStart
+    const breakEnd = options?.breakEnd
+    const shift2Start = options?.shift2Start
+    const shift2End = options?.shift2End
+
+    const hasBreak = Boolean(breakStart && breakEnd)
+    const hasSecondShift = Boolean(shift2Start && shift2End)
+    const overallShiftEnd = hasSecondShift ? shift2End! : shift1End
+
     setUsers((prev) => {
       const updatedUsers = prev.map((user) =>
         user.id === workerId
           ? {
               ...user,
-              shift_start: shiftStart,
-              shift_end: shiftEnd,
+              shift_start: shift1Start,
+              shift_end: overallShiftEnd,
               has_break: hasBreak,
               break_start: hasBreak ? breakStart : undefined,
               break_end: hasBreak ? breakEnd : undefined,
+              is_dual_shift: hasSecondShift || user.is_dual_shift,
+              has_shift_2: hasSecondShift || false,
+              shift_2_start: hasSecondShift ? shift2Start : undefined,
+              shift_2_end: hasSecondShift ? shift2End : undefined,
+              shift_2_has_break: hasSecondShift ? false : undefined,
+              shift_2_break_start: undefined,
+              shift_2_break_end: undefined,
             }
           : user,
       )
@@ -1575,17 +1597,56 @@ export function TaskProvider({
     console.log("[v0] Saving shift schedule:", scheduleData)
 
     const buildSchedule = (base?: Partial<ShiftSchedule>): ShiftSchedule => {
-      const hasBreakFlag = (
-        (scheduleData.has_break ?? Boolean(scheduleData.break_start && scheduleData.break_end)) &&
-        Boolean(scheduleData.break_start && scheduleData.break_end)
+      const shift1Start = scheduleData.shift_1_start ?? scheduleData.shift_start
+      const shift1End = scheduleData.shift_1_end ?? scheduleData.shift_end
+      const shift1BreakStart = scheduleData.shift_1_break_start ?? scheduleData.break_start
+      const shift1BreakEnd = scheduleData.shift_1_break_end ?? scheduleData.break_end
+      const shift1HasBreak = Boolean(shift1BreakStart && shift1BreakEnd)
+
+      const shift2Start = scheduleData.shift_2_start
+      const shift2End = scheduleData.shift_2_end
+      const shift2HasBreak = Boolean(scheduleData.shift_2_break_start && scheduleData.shift_2_break_end)
+
+      const hasShift2 =
+        scheduleData.has_shift_2 ?? scheduleData.is_dual_shift ?? Boolean(shift2Start && shift2End)
+      const isDualShift = Boolean(scheduleData.is_dual_shift ?? hasShift2)
+      const isSecondShiftSameDay = Boolean(
+        hasShift2 &&
+          shift1End &&
+          shift2Start &&
+          shift2Start > shift1End,
       )
+
+      const interShiftBreakStart =
+        !shift1HasBreak && hasShift2 && isSecondShiftSameDay && shift1End && shift2Start ? shift1End : undefined
+      const interShiftBreakEnd = interShiftBreakStart ? shift2Start : undefined
+      const effectiveBreakStart = shift1HasBreak ? shift1BreakStart : interShiftBreakStart
+      const effectiveBreakEnd = shift1HasBreak ? shift1BreakEnd : interShiftBreakEnd
+      const effectiveHasBreak = Boolean(effectiveBreakStart && effectiveBreakEnd)
+      const finalShiftEnd =
+        hasShift2 && shift2End ? shift2End : shift1End ?? scheduleData.shift_end
+      const firstShiftEndForStorage =
+        effectiveHasBreak && hasShift2 && effectiveBreakStart ? effectiveBreakStart : shift1End
 
       return {
         ...(base ?? {}),
         ...scheduleData,
-        has_break: hasBreakFlag,
-        break_start: hasBreakFlag ? scheduleData.break_start : undefined,
-        break_end: hasBreakFlag ? scheduleData.break_end : undefined,
+        shift_start: shift1Start ?? scheduleData.shift_start,
+        shift_end: finalShiftEnd ?? scheduleData.shift_end,
+        has_break: effectiveHasBreak,
+        break_start: effectiveHasBreak ? effectiveBreakStart : undefined,
+        break_end: effectiveHasBreak ? effectiveBreakEnd : undefined,
+        shift_1_start: shift1Start,
+        shift_1_end: firstShiftEndForStorage ?? shift1End,
+        shift_1_break_start: shift1HasBreak ? shift1BreakStart : undefined,
+        shift_1_break_end: shift1HasBreak ? shift1BreakEnd : undefined,
+        has_shift_2: Boolean(hasShift2),
+        is_dual_shift: isDualShift,
+        shift_2_start: hasShift2 ? shift2Start : undefined,
+        shift_2_end: hasShift2 ? shift2End : undefined,
+        shift_2_has_break: hasShift2 ? Boolean(shift2HasBreak) : false,
+        shift_2_break_start: hasShift2 && shift2HasBreak ? scheduleData.shift_2_break_start : undefined,
+        shift_2_break_end: hasShift2 && shift2HasBreak ? scheduleData.shift_2_break_end : undefined,
         created_at: new Date().toISOString(),
       } as ShiftSchedule
     }

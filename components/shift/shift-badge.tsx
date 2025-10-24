@@ -10,25 +10,30 @@ interface ShiftBadgeProps {
 }
 
 export function ShiftBadge({ availability, showDetails = false }: ShiftBadgeProps) {
-  if (availability.status === "ON_SHIFT") {
+  if (availability.status === "AVAILABLE") {
+    const endingSoon = availability.isEndingSoon && availability.minutesUntilStateChange
+    const label = endingSoon ? "Ending Soon" : "Available"
     return (
-      <Badge variant="default" className="bg-green-500 text-white flex items-center gap-1">
-        <CheckCircle className="h-3 w-3" />
-        On Shift
-        {showDetails && availability.minutesUntilEnd && (
-          <span className="ml-1 text-xs">({availability.minutesUntilEnd}min left)</span>
+      <Badge
+        variant="default"
+        className={`flex items-center gap-1 ${endingSoon ? "bg-orange-500 text-white" : "bg-green-500 text-white"}`}
+      >
+        {endingSoon ? <AlertCircle className="h-3 w-3" /> : <CheckCircle className="h-3 w-3" />}
+        {label}
+        {showDetails && availability.minutesUntilStateChange && (
+          <span className="ml-1 text-xs">({availability.minutesUntilStateChange}min)</span>
         )}
       </Badge>
     )
   }
 
-  if (availability.status === "ENDING_SOON") {
+  if (availability.status === "SHIFT_BREAK") {
     return (
-      <Badge variant="default" className="bg-orange-500 text-white flex items-center gap-1">
-        <AlertCircle className="h-3 w-3" />
-        Ending Soon
-        {showDetails && availability.minutesUntilEnd && (
-          <span className="ml-1 text-xs">({availability.minutesUntilEnd}min)</span>
+      <Badge variant="default" className="bg-yellow-500 text-white flex items-center gap-1">
+        <Clock className="h-3 w-3" />
+        Shift Break
+        {showDetails && availability.minutesUntilStateChange && (
+          <span className="ml-1 text-xs">({availability.minutesUntilStateChange}min)</span>
         )}
       </Badge>
     )
@@ -37,7 +42,7 @@ export function ShiftBadge({ availability, showDetails = false }: ShiftBadgeProp
   return (
     <Badge variant="secondary" className="flex items-center gap-1">
       <Clock className="h-3 w-3" />
-      Off-Duty
+      Off Duty
     </Badge>
   )
 }
