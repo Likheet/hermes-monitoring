@@ -227,6 +227,7 @@ function CreateTaskForm() {
             workersLoaded={usersLoaded}
             workersLoadError={usersLoadError}
             shiftSchedules={shiftSchedules}
+            currentTasks={tasks}
             initialData={
               rejectedTask
                 ? {

@@ -67,6 +67,15 @@ const DEPARTMENT_ORDER: Department[] = ["housekeeping", "maintenance", "front_de
 // Departments that should not be available for task assignment
 const EXCLUDED_TASK_ASSIGNMENT_DEPARTMENTS: Department[] = ["admin", "housekeeping-dept", "maintenance-dept"]
 
+// Helper function to check if a worker is currently busy with an active task
+const isWorkerBusy = (workerId: string, currentTasks?: Task[]): boolean => {
+  if (!currentTasks) return false
+  return currentTasks.some(task =>
+    task.assigned_to_user_id === workerId &&
+    (task.status === "IN_PROGRESS" || task.status === "PAUSED")
+  )
+}
+
 const RECURRING_FREQUENCY_LABELS: Record<RecurringFrequency, string> = {
   daily: "Daily",
   weekly: "Weekly",
@@ -93,6 +102,7 @@ interface TaskAssignmentFormProps {
     is_override: boolean
     override_reason?: string
   }>
+  currentTasks?: Task[]
   initialData?: {
     assignedTo?: string
     location?: string
@@ -126,7 +136,7 @@ export interface TaskAssignmentData {
   metadata?: Record<string, string | undefined>
 }
 
-export function TaskAssignmentForm({ task, onCancel, onSubmit, workers, initialData, currentUser, shiftSchedules }: TaskAssignmentFormProps) {
+export function TaskAssignmentForm({ task, onCancel, onSubmit, workers, initialData, currentUser, shiftSchedules, currentTasks }: TaskAssignmentFormProps) {
   // Form state
   const [priority, setPriority] = useState<Priority>(task.priority)
   const [duration, setDuration] = useState(task.duration)
@@ -1167,6 +1177,7 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers, initialD
                       <SelectLabel>{departmentLabels[dept]}</SelectLabel>
                       {workersInDept.map((worker) => {
                         const isOnDuty = worker.availability.status === "AVAILABLE"
+                        const isBusy = isWorkerBusy(worker.id, currentTasks)
                         return (
                           <SelectItem
                             key={worker.id}
@@ -1181,17 +1192,27 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers, initialD
                                   {departmentLabels[worker.department as Department]}
                                 </span>
                               </div>
-                              <Badge
-                                variant="outline"
-                                className={cn(
-                                  "text-xs shrink-0",
-                                  isOnDuty
-                                    ? "border-emerald-200 bg-emerald-100 text-emerald-700"
-                                    : "border-slate-200 bg-slate-100 text-slate-500",
+                              <div className="flex items-center gap-1">
+                                {isBusy && (
+                                  <Badge
+                                    variant="outline"
+                                    className="text-xs shrink-0 border-orange-200 bg-orange-100 text-orange-700"
+                                  >
+                                    Busy
+                                  </Badge>
                                 )}
-                              >
-                                {isOnDuty ? "On Duty" : "Off-Duty"}
-                              </Badge>
+                                <Badge
+                                  variant="outline"
+                                  className={cn(
+                                    "text-xs shrink-0",
+                                    isOnDuty
+                                      ? "border-emerald-200 bg-emerald-100 text-emerald-700"
+                                      : "border-slate-200 bg-slate-100 text-slate-500",
+                                  )}
+                                >
+                                  {isOnDuty ? "On Duty" : "Off-Duty"}
+                                </Badge>
+                              </div>
                             </div>
                           </SelectItem>
                         )
