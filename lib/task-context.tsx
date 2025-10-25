@@ -11,6 +11,7 @@ import { useRealtimeTasks, type TaskRealtimePayload } from "./use-realtime-tasks
 import type { hashPassword } from "./auth-utils"
 import { useAuth } from "./auth-context"
 import { databaseTaskToApp, type DatabaseTask } from "./database-types"
+import { createClient } from "./supabase/client"
 import {
   loadTasksFromSupabase,
   loadUsersFromSupabase,
@@ -1161,28 +1162,65 @@ export function TaskProvider({
     const hasSecondShift = Boolean(shift2Start && shift2End)
     const overallShiftEnd = hasSecondShift ? shift2End! : shift1End
 
+    const worker = users.find((u) => u.id === workerId)
+    if (!worker) {
+      console.warn("[v0] updateWorkerShift: Worker not found:", workerId)
+      return
+    }
+
+    const updatedUser: User = {
+      ...worker,
+      shift_start: shift1Start,
+      shift_end: overallShiftEnd,
+      has_break: hasBreak,
+      break_start: hasBreak ? breakStart : undefined,
+      break_end: hasBreak ? breakEnd : undefined,
+      is_dual_shift: hasSecondShift || worker.is_dual_shift,
+      has_shift_2: hasSecondShift || false,
+      shift_2_start: hasSecondShift ? shift2Start : undefined,
+      shift_2_end: hasSecondShift ? shift2End : undefined,
+      shift_2_has_break: hasSecondShift ? false : undefined,
+      shift_2_break_start: undefined,
+      shift_2_break_end: undefined,
+    }
+
     setUsers((prev) => {
-      const updatedUsers = prev.map((user) =>
-        user.id === workerId
-          ? {
-              ...user,
-              shift_start: shift1Start,
-              shift_end: overallShiftEnd,
-              has_break: hasBreak,
-              break_start: hasBreak ? breakStart : undefined,
-              break_end: hasBreak ? breakEnd : undefined,
-              is_dual_shift: hasSecondShift || user.is_dual_shift,
-              has_shift_2: hasSecondShift || false,
-              shift_2_start: hasSecondShift ? shift2Start : undefined,
-              shift_2_end: hasSecondShift ? shift2End : undefined,
-              shift_2_has_break: hasSecondShift ? false : undefined,
-              shift_2_break_start: undefined,
-              shift_2_break_end: undefined,
-            }
-          : user,
-      )
+      const updatedUsers = prev.map((user) => (user.id === workerId ? updatedUser : user))
       persistToStorage(STORAGE_KEYS.users, updatedUsers)
       return updatedUsers
+    })
+
+    // Save to Supabase
+    runWithGlobalLoading(async () => {
+      // Get the user's credentials from the database (we need username for the save)
+      // Since we don't have the password hash here, we'll need to update just the user record
+      const supabase = createClient()
+      const { data, error } = await supabase
+        .from('users')
+        .update({
+          shift_start: updatedUser.shift_start,
+          shift_end: updatedUser.shift_end,
+          has_break: updatedUser.has_break,
+          break_start: updatedUser.break_start,
+          break_end: updatedUser.break_end,
+          is_dual_shift: updatedUser.is_dual_shift,
+          has_shift_2: updatedUser.has_shift_2,
+          shift_2_start: updatedUser.shift_2_start,
+          shift_2_end: updatedUser.shift_2_end,
+          shift_2_has_break: updatedUser.shift_2_has_break,
+          shift_2_break_start: updatedUser.shift_2_break_start,
+          shift_2_break_end: updatedUser.shift_2_break_end,
+        })
+        .eq('id', workerId)
+
+      if (error) {
+        console.error("[v0] Failed to update worker shift in Supabase:", error)
+        // Optionally revert the local state
+      } else {
+        console.log("[v0] Worker shift updated in Supabase successfully")
+      }
+    }).catch((error) => {
+      console.error("[v0] Error updating worker shift:", error)
     })
   }
 
@@ -1562,15 +1600,9 @@ export function TaskProvider({
       const shift2End = scheduleData.shift_2_end
       const shift2HasBreak = Boolean(scheduleData.shift_2_break_start && scheduleData.shift_2_break_end)
 
-      const shift2IsDistinct = Boolean(
-        shift2Start &&
-          shift2End &&
-          (!shift1Start || shift2Start !== shift1Start || shift2End !== shift1End),
-      )
-
-      const requestedShift2 = scheduleData.has_shift_2 || scheduleData.is_dual_shift
-      const hasShift2 = Boolean((requestedShift2 || shift2IsDistinct) && shift2IsDistinct)
-      const isDualShift = Boolean((scheduleData.is_dual_shift || hasShift2) && shift2IsDistinct)
+      const hasShift2 =
+        scheduleData.has_shift_2 ?? scheduleData.is_dual_shift ?? Boolean(shift2Start && shift2End)
+      const isDualShift = Boolean(scheduleData.is_dual_shift ?? hasShift2)
       const isSecondShiftSameDay = Boolean(
         hasShift2 &&
           shift1End &&
@@ -1625,18 +1657,30 @@ export function TaskProvider({
         console.error("[v0] Invalid shift schedule data:", updatedSchedule)
         return
       }
-      setShiftSchedules((prev) => prev.map((s, i) => (i === existingIndex ? updatedSchedule : s)))
+      setShiftSchedules((prev) => {
+        const updated = prev.map((s, i) => (i === existingIndex ? updatedSchedule : s))
+        persistToStorage(STORAGE_KEYS.shiftSchedules, updated)
+        return updated
+      })
       runWithGlobalLoading(async () => {
         const success = await saveShiftScheduleToSupabase(updatedSchedule)
         if (!success) {
           console.error("[v0] Failed to save shift schedule to Supabase, reverting local state")
           // Revert the local state if Supabase save fails
-          setShiftSchedules((prev) => prev.map((s, i) => (i === existingIndex ? shiftSchedules[existingIndex] : s)))
+          setShiftSchedules((prev) => {
+            const reverted = prev.map((s, i) => (i === existingIndex ? shiftSchedules[existingIndex] : s))
+            persistToStorage(STORAGE_KEYS.shiftSchedules, reverted)
+            return reverted
+          })
         }
       }).catch((error) => {
         console.error("[v0] Error saving shift schedule:", error)
         // Revert the local state on error
-        setShiftSchedules((prev) => prev.map((s, i) => (i === existingIndex ? shiftSchedules[existingIndex] : s)))
+        setShiftSchedules((prev) => {
+          const reverted = prev.map((s, i) => (i === existingIndex ? shiftSchedules[existingIndex] : s))
+          persistToStorage(STORAGE_KEYS.shiftSchedules, reverted)
+          return reverted
+        })
       })
     } else {
       const newSchedule = buildSchedule({ id: generateUuid() })
@@ -1647,18 +1691,30 @@ export function TaskProvider({
         return
       }
       console.log("[v0] Creating new shift schedule:", newSchedule.id)
-      setShiftSchedules((prev) => [...prev, newSchedule])
+      setShiftSchedules((prev) => {
+        const updated = [...prev, newSchedule]
+        persistToStorage(STORAGE_KEYS.shiftSchedules, updated)
+        return updated
+      })
       runWithGlobalLoading(async () => {
         const success = await saveShiftScheduleToSupabase(newSchedule)
         if (!success) {
           console.error("[v0] Failed to save new shift schedule to Supabase, reverting local state")
           // Revert the local state if Supabase save fails
-          setShiftSchedules((prev) => prev.filter((s) => s.id !== newSchedule.id))
+          setShiftSchedules((prev) => {
+            const reverted = prev.filter((s) => s.id !== newSchedule.id)
+            persistToStorage(STORAGE_KEYS.shiftSchedules, reverted)
+            return reverted
+          })
         }
       }).catch((error) => {
         console.error("[v0] Error saving new shift schedule:", error)
         // Revert the local state on error
-        setShiftSchedules((prev) => prev.filter((s) => s.id !== newSchedule.id))
+        setShiftSchedules((prev) => {
+          const reverted = prev.filter((s) => s.id !== newSchedule.id)
+          persistToStorage(STORAGE_KEYS.shiftSchedules, reverted)
+          return reverted
+        })
       })
     }
   }
@@ -1683,6 +1739,7 @@ export function TaskProvider({
     console.log("[v0] Deleting shift schedule:", scheduleId)
     setShiftSchedules((prev) => {
       const updated = prev.filter((s) => s.id !== scheduleId)
+      persistToStorage(STORAGE_KEYS.shiftSchedules, updated)
       runWithGlobalLoading(async () => {
         await deleteShiftScheduleFromSupabase(scheduleId)
       }).catch((error) => {

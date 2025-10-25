@@ -49,16 +49,6 @@ type DatabaseTaskSummary = Pick<
   | "supervisor_remarks"
   | "photo_requirements"
   | "requires_verification"
-  | "is_custom_task"
-  | "custom_task_name"
-  | "custom_task_category"
-  | "custom_task_priority"
-  | "custom_task_photo_required"
-  | "custom_task_photo_count"
-  | "custom_task_is_recurring"
-  | "custom_task_recurring_frequency"
-  | "custom_task_requires_specific_time"
-  | "custom_task_recurring_time"
 >
 
 type CacheKey =
@@ -124,21 +114,6 @@ function logSupabaseFailure(scope: CacheKey | "bootstrap", error: unknown) {
     /fetch failed/i.test(message) || /ECONN|ENOTFOUND|ETIMEDOUT/i.test(message)
   const logger = isNetwork ? console.warn : console.error
   logger(`[supabase] ${scope} fetch failed; continuing with cached data`, error)
-}
-
-function parseTimeToMinutes(time: string | null | undefined): number {
-  if (!time) {
-    return 0
-  }
-
-  const parts = time.split(":")
-  const hours = Number.parseInt(parts[0] ?? "0", 10)
-  const minutes = Number.parseInt(parts[1] ?? "0", 10)
-  if (Number.isNaN(hours) || Number.isNaN(minutes)) {
-    return 0
-  }
-
-  return hours * 60 + minutes
 }
 
 export interface LoadOptions {
@@ -466,7 +441,7 @@ export async function loadShiftSchedulesFromSupabase(
         created_at: dbSchedule.created_at ?? new Date().toISOString(),
       }
 
-      // Infer dual-shift style only when the break spans an unusually long window (legacy data).
+      // If dual shift columns are missing but a long break exists, infer settings.
       if (
         !enriched.is_dual_shift &&
         !enriched.has_shift_2 &&
@@ -475,19 +450,12 @@ export async function loadShiftSchedulesFromSupabase(
         enriched.break_start &&
         enriched.break_end
       ) {
-        const breakStartMinutes = parseTimeToMinutes(enriched.break_start)
-        const breakEndMinutes = parseTimeToMinutes(enriched.break_end)
-        const inferredGap = Math.max(0, breakEndMinutes - breakStartMinutes)
-
-        // Treat as an inter-shift gap only if the pause lasts at least 2 hours.
-        if (inferredGap >= 120) {
-          enriched.shift_1_start = enriched.shift_start
-          enriched.shift_1_end = enriched.break_start
-          enriched.shift_2_start = enriched.break_end
-          enriched.shift_2_end = enriched.shift_end
-          enriched.has_shift_2 = true
-          enriched.is_dual_shift = true
-        }
+        enriched.shift_1_start = enriched.shift_start
+        enriched.shift_1_end = enriched.break_start
+        enriched.shift_2_start = enriched.break_end
+        enriched.shift_2_end = enriched.shift_end
+        enriched.has_shift_2 = true
+        enriched.is_dual_shift = true
       }
 
       return databaseShiftScheduleToApp(enriched)
@@ -512,7 +480,6 @@ export async function saveShiftScheduleToSupabase(schedule: ShiftSchedule): Prom
       console.warn(
         "[v0] shift_schedules dual-shift columns missing in Supabase; retrying save with legacy schema.",
       )
-      // Use legacy columns but preserve dual shift data in legacy format if possible
       const legacyPayload = {
         id: dbSchedule.id,
         worker_id: dbSchedule.worker_id,
@@ -527,10 +494,6 @@ export async function saveShiftScheduleToSupabase(schedule: ShiftSchedule): Prom
       }
       const fallback = await supabase.from("shift_schedules").upsert(legacyPayload)
       error = fallback.error
-
-      if (!error) {
-        console.log("[v0] ⚠️ Shift schedule saved with legacy schema only - dual shift features may be limited")
-      }
     }
 
     if (error) {
@@ -540,16 +503,6 @@ export async function saveShiftScheduleToSupabase(schedule: ShiftSchedule): Prom
 
     invalidateCache("shift_schedules")
     console.log("[v0] ✅ Shift schedule saved to Supabase:", schedule.id)
-
-    // Also clear client-side storage cache to ensure consistency
-    if (typeof window !== "undefined") {
-      try {
-        window.localStorage.removeItem("hermes-cache-shifts-v1")
-      } catch (error) {
-        console.warn("[v0] Failed to clear client-side shift cache:", error)
-      }
-    }
-
     return true
   } catch (error) {
     console.error("[v0] Exception saving shift schedule:", error)
@@ -569,16 +522,6 @@ export async function deleteShiftScheduleFromSupabase(scheduleId: string): Promi
 
     invalidateCache("shift_schedules")
     console.log("[v0] ✅ Shift schedule deleted from Supabase:", scheduleId)
-
-    // Also clear client-side storage cache to ensure consistency
-    if (typeof window !== "undefined") {
-      try {
-        window.localStorage.removeItem("hermes-cache-shifts-v1")
-      } catch (error) {
-        console.warn("[v0] Failed to clear client-side shift cache:", error)
-      }
-    }
-
     return true
   } catch (error) {
     console.error("[v0] Exception deleting shift schedule:", error)
