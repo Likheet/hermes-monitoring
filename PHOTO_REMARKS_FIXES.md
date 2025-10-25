@@ -64,7 +64,7 @@ This document outlines the comprehensive fixes implemented to resolve the **crit
 #### **1. Components Fixed**
 
 **`components/task-card.tsx`** - Enhanced Task Display
-```typescript
+\`\`\`typescript
 // ✅ BEFORE: Only worker remarks
 {task.worker_remark && (
   <p>"{task.worker_remark}"</p>
@@ -101,10 +101,10 @@ This document outlines the comprehensive fixes implemented to resolve the **crit
     </div>
   </div>
 )}
-```
+\`\`\`
 
 **`app/supervisor/verify/[taskId]/page.tsx`** - Complete Photo Verification UI
-```typescript
+\`\`\`typescript
 // ✅ BEFORE: Single photo display
 <CardTitle>Task Completion Photos ({task.categorized_photos.room_photos?.length || 0} + (task.categorized_photos.proof_photos?.length || 0)})</CardTitle>
 
@@ -158,12 +158,12 @@ This document outlines the comprehensive fixes implemented to resolve the **crit
     </div>
   </div>
 )}
-```
+\`\`\`
 
 #### **2. Real-time Subscription Enhanced**
 
 **`lib/task-context.tsx`** - Comprehensive Field Updates
-```typescript
+\`\`\`typescript
 // ✅ Enhanced real-time update handler
 const handleRealtimeTaskUpdate = useCallback((payload: TaskRealtimePayload) => {
   if (!payload || payload.table !== "tasks") return
@@ -225,12 +225,12 @@ const handleRealtimeTaskUpdate = useCallback((payload: TaskRealtimePayload) => {
     queueForcedRefresh()
   }
 }
-```
+\`\`\`
 
 #### **3. API Data Flow Improvements**
 
 **Task Creation API** - Enhanced Remark Handling
-```typescript
+\`\`\`typescript
 // ✅ Both remark types now handled properly
 const rpcPayload = {
   worker_remarks: workerRemark || "",
@@ -239,7 +239,7 @@ const rpcPayload = {
 }
 
 // Task Completion API** - Enhanced Photo Storage
-```typescript
+\`\`\`typescript
 // ✅ Proper categorized photo handling
 const categorizedPhotos = categorizedPhotos || currentTask.categorized_photos ?? {
   room_photos: [],
@@ -255,7 +255,7 @@ const { data, error } = await supabase
     supervisor_remarks: existingTask.supervisor_remarks || "",
     photo_url: task.photo_url, // Keep legacy compatibility
   })
-```
+\`\`\`
 
 ---
 
@@ -264,36 +264,36 @@ const { data, error } = await supabase
 ### **Before Deploying to Production:**
 
 #### **1. Create Task with Remarks Testing**
-```typescript
+\`\`\`typescript
 // Test as Front Office User:
 1. Create task with worker remark: "Test remark for worker"
 2. Verify: Worker sees the blue "Worker: Test remark for worker" label
 3. Create task with supervisor remark: "Test remark for supervisor"
 4. Verify: Supervisor sees the orange "Supervisor: Test remark for supervisor" label
-```
+\`\`\`
 
 #### **2. Complete Task with Photos Testing**
-```typescript
+\`\`\`typescript
 // Test as Worker User:
 1. Complete task with 2 room photos + 3 proof photos
 2. Verify: All photos are accessible in TaskCard
 3. Verify: All photos are accessible in verification page with proper categorization
-```
+\`\`\`
 
 #### **3. Real-time Updates Testing**
-```typescript
+\`\`\`typescript
 // Test Multi-User Scenarios:
 1. Worker A completes task with photos
 2. Supervisor B opens verification page immediately
 3. Verify photos appear without manual refresh
-```
+\`\`\`
 
 ---
 
 ## 🚀 **DEPLOYMENT INSTRUCTIONS**
 
 ### **Phase 1: Zero-Risk Code Changes (Deploy Now)**
-```bash
+\`\`\`bash
 # All code changes have been applied:
 git add .
 git commit -m "Fix photo and remarks display issues"
@@ -303,23 +303,23 @@ git commit -m "Fix photo and remarks display issues"
 - app/supervisor/verify/[taskId]/page.tsx (Complete photo verification UI)
 - lib/task-context.tsx (Enhanced real-time updates)
 - app/api/tasks/route.ts (Improved remark handling)
-```
+\`\`\`
 
 ### **Phase 2: Database Schema Fixes (Deploy After 11 PM)**
-```sql
+\`\`\`sql
 -- Run when ready to standardize database schema
 psql "$POSTGRES_URL_NON_POOLING" -f scripts/hermes-schema-fix.sql
-```
+\`\`\`
 
 ### **Phase 3: Validation & Monitoring**
-```bash
+\`\`\`bash
 # After fixes, verify data integrity
 SELECT
   COUNT(*) as total_tasks,
   COUNT(CASE WHEN worker_remarks IS NOT NULL AND supervisor_remarks IS NULL THEN 1 ELSE 0 END) as tasks_with_remarks,
   COUNT(CASE WHEN categorized_photos IS NOT NULL THEN 1 ELSE 0 END) as tasks_with_photos
 FROM tasks;
-```
+\`\`\`
 
 ---
 
@@ -350,7 +350,7 @@ FROM tasks;
 ## 🔧 **MAINTENANCE GUIDELINES**
 
 ### **Ongoing Monitoring**
-```bash
+\`\`\`bash
 # Monitor photo display performance
 SELECT COUNT(*) FROM tasks WHERE categorized_photos IS NOT NULL;
 
@@ -364,7 +364,7 @@ SELECT
   COUNT(CASE WHEN supervisor_remarks IS NOT NULL THEN 1 ELSE 0 END) as supervisor_remarks_count
 FROM tasks
 GROUP BY user_id;
-```
+\`\`\`
 
 ---
 
