@@ -25,23 +25,23 @@ This guide walks you through deploying the comprehensive performance fixes for y
 These changes are zero-risk and can be deployed immediately:
 
 1. **Real-time Subscription Fix**
-   ```bash
+   \`\`\`bash
    # Files already updated in your codebase:
    - lib/use-realtime-tasks.ts (Enhanced role-based filtering)
    - lib/task-context.tsx (Added currentUser context for real-time updates)
-   ```
+   \`\`\`
 
 2. **Cache Simplification**
-   ```bash
+   \`\`\`bash
    # Files already updated:
    - lib/task-context.tsx (Removed 4 unnecessary caching layers)
-   ```
+   \`\`\`
 
 3. **API Optimization**
-   ```bash
+   \`\`\`bash
    # Files already updated:
    - app/api/tasks/route.ts (Optimized user validation queries)
-   ```
+   \`\`\`
 
 **Expected Impact**: Users should see real-time updates working across all roles immediately.
 
@@ -53,7 +53,7 @@ These changes are zero-risk and can be deployed immediately:
 
 #### Step 1: Create Database Backup
 
-```bash
+\`\`\`bash
 # Connect to your Supabase database and run:
 psql "$POSTGRES_URL_NON_POOLING" -f scripts/hermes-backup.sql
 
@@ -63,11 +63,11 @@ psql "$POSTGRES_URL_NON_POOLING" -f scripts/hermes-backup.sql
 # ... etc
 # 🔒 BACKUP COMPLETED SUCCESSFULLY!
 #    Timestamp: 2024-XX-XX_HHMMSS
-```
+\`\`\`
 
 #### Step 2: Deploy Performance Indexes
 
-```bash
+\`\`\`bash
 # Create performance indexes (takes 2-5 minutes)
 psql "$POSTGRES_URL_NON_POOLING" -f scripts/hermes-performance-indexes.sql
 
@@ -76,11 +76,11 @@ psql "$POSTGRES_URL_NON_POOLING" -f scripts/hermes-performance-indexes.sql
 # ✓ Created idx_shift_schedules_worker_date
 # ... etc
 # 🎉 PERFORMANCE INDEXES COMPLETED!
-```
+\`\`\`
 
 #### Step 3: Deploy Missing Functions
 
-```bash
+\`\`\`bash
 # Create missing database functions
 psql "$POSTGRES_URL_NON_POOLING" -f scripts/hermes-missing-functions.sql
 
@@ -89,11 +89,11 @@ psql "$POSTGRES_URL_NON_POOLING" -f scripts/hermes-missing-functions.sql
 # ✓ Created list_tasks_summary function
 # ... etc
 # 🎉 MISSING FUNCTIONS COMPLETED!
-```
+\`\`\`
 
 #### Step 4: Fix Schema Consistency
 
-```bash
+\`\`\`bash
 # Fix schema inconsistencies
 psql "$POSTGRES_URL_NON_POOLING" -f scripts/hermes-schema-fix.sql
 
@@ -102,7 +102,7 @@ psql "$POSTGRES_URL_NON_POOLING" -f scripts/hermes-schema-fix.sql
 # ✓ Added missing estimated_duration column to tasks
 # ... etc
 # 🎉 SCHEMA CONSISTENCY FIXES COMPLETED!
-```
+\`\`\`
 
 ---
 
@@ -112,7 +112,7 @@ If anything goes wrong, you can rollback completely:
 
 ### **Emergency Rollback (Under 60 Seconds)**
 
-```bash
+\`\`\`bash
 # First, create a rollback script from your backup timestamp
 cp scripts/hermes-rollback-template.sql scripts/hermes-rollback-YYYY-MM-DD_HHMMSS.sql
 
@@ -126,15 +126,15 @@ psql "$POSTGRES_URL_NON_POOLING" -f scripts/hermes-rollback-YYYY-MM-DD_HHMMSS.sq
 # ✓ Restored tasks
 # ... etc
 # 🎉 ROLLBACK COMPLETED SUCCESSFULLY!
-```
+\`\`\`
 
 ### **Revert Code Changes**
 
-```bash
+\`\`\`bash
 # If needed, revert to your previous commit
 git checkout HEAD~1
 git push -f origin main
-```
+\`\`\`
 
 ---
 

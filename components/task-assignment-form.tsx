@@ -1315,5 +1315,3 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers, initialD
   </>
   )
 }
-
-
