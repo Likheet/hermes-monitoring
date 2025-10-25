@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 
 export const dynamic = "force-dynamic"
 
@@ -25,14 +25,14 @@ import {
   Coffee,
   Calendar,
   MapPin,
-  User,
+  User as UserIcon,
   CalendarClock,
   Edit,
   Edit2,
   Filter,
   ChevronDown,
 } from "lucide-react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams, usePathname } from "next/navigation"
 import Link from "next/link"
 import { useRealtimeTasks } from "@/lib/use-realtime-tasks"
 import { RejectedTaskCard } from "@/components/rejected-task-card"
@@ -45,6 +45,7 @@ import {
   calculateWorkingHours,
   calculateDualShiftWorkingHours,
   formatShiftTime,
+  formatDistanceToNow,
 } from "@/lib/date-utils"
 import { validateDualShiftTimes, getWorkerShiftForDate } from "@/lib/shift-utils"
 import { WeeklyScheduleView } from "@/components/shift/weekly-schedule-view"
@@ -52,6 +53,7 @@ import { ReassignTaskModal } from "@/components/reassign-task-modal"
 import { EditTaskModal } from "@/components/edit-task-modal"
 import { FrontDeskActiveTaskModal } from "@/components/front-desk-active-task-modal"
 import type { Task, User } from "@/lib/types"
+import { isFrontOfficeTab, type FrontOfficeTab } from "@/lib/front-office-tabs"
 
 type ShiftDraft = {
   shift1Start: string
@@ -84,16 +86,56 @@ function FrontOfficeDashboard() {
   const { user, logout } = useAuth()
   const { tasks, issues, users, maintenanceTasks, updateWorkerShift, shiftSchedules, saveShiftSchedule } = useTasks()
   const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
   const { toast } = useToast()
   const { isConnected } = useRealtimeTasks({ enabled: true })
 
-  const [activeTab, setActiveTab] = useState("home")
+  const [activeTab, setActiveTab] = useState<FrontOfficeTab>(() => {
+    const initialTab = searchParams.get("tab")
+    return isFrontOfficeTab(initialTab) ? initialTab : "home"
+  })
   const [assignmentFilter, setAssignmentFilter] = useState<"mine" | "all">("mine")
   const [reassignTask, setReassignTask] = useState<Task | null>(null)
   const [editTask, setEditTask] = useState<Task | null>(null)
   const [selfTaskModal, setSelfTaskModal] = useState<Task | null>(null)
   const [isStaffStatusOpen, setStaffStatusOpen] = useState(true)
   const [shiftSortOption, setShiftSortOption] = useState<ShiftSortOption>("status")
+
+  const handleTabChange = useCallback(
+    (tab: FrontOfficeTab) => {
+      setActiveTab((current) => (current === tab ? current : tab))
+
+      const nextSearchParams = new URLSearchParams(searchParams.toString())
+      if (tab === "home") {
+        nextSearchParams.delete("tab")
+      } else {
+        nextSearchParams.set("tab", tab)
+      }
+
+      const currentSearch = searchParams.toString()
+      const nextSearch = nextSearchParams.toString()
+
+      if (nextSearch !== currentSearch) {
+        const searchSuffix = nextSearch ? `?${nextSearch}` : ""
+        router.replace(`${pathname}${searchSuffix}`)
+      }
+    },
+    [pathname, router, searchParams],
+  )
+
+  useEffect(() => {
+    const tabParam = searchParams.get("tab")
+
+    if (isFrontOfficeTab(tabParam)) {
+      setActiveTab((current) => (current === tabParam ? current : tabParam))
+      return
+    }
+
+    if (tabParam === null) {
+      setActiveTab((current) => (current === "home" ? current : "home"))
+    }
+  }, [searchParams])
 
   const workers = users.filter((u) => u.role === "worker" || u.role === "front_office")
   const [today] = useState(() => new Date())
@@ -390,15 +432,12 @@ function FrontOfficeDashboard() {
     const breakStart = shift2Start ? shift.shift1End : undefined
     const breakEnd = shift2Start ? shift2Start : undefined
 
-    updateWorkerShift(
-      workerId,
-      shift.shift1Start,
-      shift2End ?? shift.shift1End,
-      user!.id,
-      Boolean(breakStart && breakEnd),
+    updateWorkerShift(workerId, shift.shift1Start, shift2End ?? shift.shift1End, user!.id, {
       breakStart,
       breakEnd,
-    )
+      shift2Start,
+      shift2End,
+    })
     markDirty(workerId, false)
 
     const todayDate = today.toISOString().split("T")[0]
@@ -780,12 +819,17 @@ function FrontOfficeDashboard() {
         const supervisorCompletedTasks = departmentTasks.filter((taskItem) => taskItem.status === "COMPLETED")
         const supervisorRejectedTasks = departmentTasks.filter((taskItem) => taskItem.status === "REJECTED")
 
+        // For verification pending, include all completed tasks needing verification (less restrictive filtering)
+        const allCompletedTasks = tasks.filter((taskItem) => taskItem.status === "COMPLETED")
+        const supervisorVerificationPendingTasks = allCompletedTasks.filter((taskItem) => taskItem.rating === null) // All completed tasks needing verification
+
         return (
           <main className="container mx-auto max-w-7xl px-4 py-6 space-y-8">
-            <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
               {[
                 { label: "Pending", count: supervisorPendingTasks.length },
                 { label: "In Progress", count: supervisorInProgressTasks.length },
+                { label: "Verification Pending", count: supervisorVerificationPendingTasks.length },
                 { label: "Completed", count: supervisorCompletedTasks.length },
                 { label: "Rejected", count: supervisorRejectedTasks.length },
               ].map((stat) => (
@@ -846,6 +890,96 @@ function FrontOfficeDashboard() {
 
             <section className="space-y-3">
               <div className="flex items-center justify-between">
+                <h2 className="text-lg font-semibold text-orange-600">Verification Pending</h2>
+                <Badge variant="secondary">{supervisorVerificationPendingTasks.length} need verification</Badge>
+              </div>
+              {supervisorVerificationPendingTasks.length === 0 ? (
+                <div className="flex min-h-[160px] items-center justify-center rounded-lg border border-dashed">
+                  <p className="text-muted-foreground">No tasks pending verification.</p>
+                </div>
+              ) : (
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  {supervisorVerificationPendingTasks.map((task) => {
+                    // Calculate priority based on how long it's been pending verification
+                    const getVerificationPriority = () => {
+                      if (!task.completed_at) return "low"
+                      const now = new Date()
+                      const completedTime = new Date(task.completed_at.client)
+                      const hoursSinceCompletion = (now.getTime() - completedTime.getTime()) / (1000 * 60 * 60)
+
+                      if (hoursSinceCompletion > 24) return "high" // Over 24 hours
+                      if (hoursSinceCompletion > 4) return "medium" // Over 4 hours
+                      return "low" // Under 4 hours
+                    }
+
+                    const verificationPriority = getVerificationPriority()
+                    const priorityBorderColors = {
+                      high: "border-red-300 hover:border-red-400",
+                      medium: "border-orange-300 hover:border-orange-400",
+                      low: "border-orange-200 hover:border-orange-300"
+                    }
+
+                    return (
+                      <Link key={task.id} href={`/front-office/supervisor/verify/${task.id}`}>
+                        <Card className={`hover:shadow-md transition-shadow cursor-pointer ${priorityBorderColors[verificationPriority]}`}>
+                          <CardHeader className="pb-2">
+                            <div className="flex items-start justify-between gap-2">
+                              <CardTitle className="text-base">{task.task_type}</CardTitle>
+                              <div className="flex flex-col gap-1 items-end">
+                                <div className="flex gap-1">
+                                  <Badge variant="secondary" className="bg-orange-100 text-orange-800">Verify</Badge>
+                                  {verificationPriority === "high" && (
+                                    <Badge variant="destructive" className="text-xs">Urgent</Badge>
+                                  )}
+                                  {verificationPriority === "medium" && (
+                                    <Badge variant="secondary" className="bg-yellow-100 text-yellow-800 text-xs">Pending</Badge>
+                                  )}
+                                </div>
+                                {task.completed_at && (
+                                  <span className="text-xs text-orange-600 font-medium">
+                                    {formatDistanceToNow(task.completed_at.client)}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </CardHeader>
+                          <CardContent className="space-y-2 text-sm text-muted-foreground">
+                            <div className="flex items-center gap-2">
+                              <UserIcon className="h-4 w-4" />
+                              <span>{getWorkerName(task.assigned_to_user_id)}</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <MapPin className="h-4 w-4" />
+                              <span>{task.room_number || "N/A"}</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <CalendarClock className="h-4 w-4" />
+                              <span>Completed {task.completed_at ? formatFullTimestamp(task.completed_at.client) : "Recently"}</span>
+                            </div>
+                            {task.actual_duration_minutes && (
+                              <div className="flex items-center gap-2">
+                                <Clock className="h-4 w-4" />
+                                <span>
+                                  {task.actual_duration_minutes} / {task.expected_duration_minutes} min
+                                </span>
+                              </div>
+                            )}
+                            <div className="flex items-center gap-2">
+                              <Badge variant="outline" className="text-xs capitalize">
+                                {task.department.replace(/_/g, " ")}
+                              </Badge>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      </Link>
+                    )
+                  })}
+                </div>
+              )}
+            </section>
+
+            <section className="space-y-3">
+              <div className="flex items-center justify-between">
                 <h2 className="text-lg font-semibold">Active Tasks</h2>
                 <Badge variant="secondary">{supervisorInProgressTasks.length} active</Badge>
               </div>
@@ -863,7 +997,7 @@ function FrontOfficeDashboard() {
                       </CardHeader>
                       <CardContent className="space-y-2 text-sm text-muted-foreground">
                         <div className="flex items-center gap-2">
-                          <User className="h-4 w-4" />
+                          <UserIcon className="h-4 w-4" />
                           <span>{getWorkerName(task.assigned_to_user_id)}</span>
                         </div>
                         <div className="flex items-center gap-2">
@@ -1006,7 +1140,7 @@ function FrontOfficeDashboard() {
                                 <span className="truncate">{task.room_number}</span>
                               </div>
                               <div className="flex items-center gap-2">
-                                <User className="h-3 w-3 sm:h-4 sm:w-4 shrink-0" />
+                                <UserIcon className="h-3 w-3 sm:h-4 sm:w-4 shrink-0" />
                                 <span className="truncate">{getWorkerName(task.assigned_to_user_id)}</span>
                               </div>
                               <div className="flex items-center gap-2">
@@ -1019,7 +1153,7 @@ function FrontOfficeDashboard() {
                               </div>
                               {assignmentFilter === "all" && (
                                 <div className="flex items-center gap-2 col-span-full">
-                                  <User className="h-3 w-3 sm:h-4 sm:w-4 shrink-0" />
+                                  <UserIcon className="h-3 w-3 sm:h-4 sm:w-4 shrink-0" />
                                   <span className="text-xs">
                                     Assigned by:{" "}
                                     <span className="font-medium">{getAssignerName(task.assigned_by_user_id)}</span>
@@ -1270,7 +1404,7 @@ function FrontOfficeDashboard() {
     }}
   />
 
-  <FrontOfficeBottomNav activeTab={activeTab} onTabChange={setActiveTab} />
+  <FrontOfficeBottomNav activeTab={activeTab} onTabChange={handleTabChange} />
 
   {reassignTask && (
         <ReassignTaskModal task={reassignTask} open={!!reassignTask} onOpenChange={() => setReassignTask(null)} />

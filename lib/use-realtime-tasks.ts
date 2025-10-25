@@ -11,8 +11,32 @@ interface UseRealtimeTasksOptions {
   filter?: {
     userId?: string
     department?: string
+    role?: string
   }
   onTaskUpdate?: (payload: TaskRealtimePayload) => void
+}
+
+// Helper function to determine subscription filters based on user role
+function getSubscriptionFilters(filter?: UseRealtimeTasksOptions['filter']) {
+  if (!filter) return undefined
+
+  // Workers get their personal tasks
+  if (filter.userId && (!filter.role || filter.role === 'worker')) {
+    return `assigned_to_user_id=eq.${filter.userId}`
+  }
+
+  // Supervisors see tasks from their department
+  if (filter.role === 'supervisor' && filter.department) {
+    return `department=eq.${filter.department}`
+  }
+
+  // Front office sees all tasks (no filter needed)
+  if (filter.role === 'front_office' || filter.role === 'admin') {
+    return undefined // No filter - get all updates
+  }
+
+  // Default to user filter if available
+  return filter.userId ? `assigned_to_user_id=eq.${filter.userId}` : undefined
 }
 
 export function useRealtimeTasks(options: UseRealtimeTasksOptions = {}) {
@@ -76,7 +100,7 @@ export function useRealtimeTasks(options: UseRealtimeTasksOptions = {}) {
           event: "*",
           schema: "public",
           table: "tasks",
-          filter: filter?.userId ? `assigned_to_user_id=eq.${filter.userId}` : undefined,
+          filter: getSubscriptionFilters(filter),
         },
         handleTaskUpdate,
       )
@@ -105,7 +129,7 @@ export function useRealtimeTasks(options: UseRealtimeTasksOptions = {}) {
       })
 
     channelRef.current = taskChannel
-  }, [cleanup, enabled, filter?.userId, handleTaskUpdate])
+  }, [cleanup, enabled, filter?.userId, filter?.role, filter?.department, handleTaskUpdate])
 
   const attemptReconnect = useCallback(() => {
     if (!enabled) {

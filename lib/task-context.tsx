@@ -1,6 +1,6 @@
 "use client"
 
-import { createContext, useContext, useState, useEffect, useCallback, useTransition, useRef, type ReactNode } from "react"
+import { createContext, useContext, useState, useEffect, useCallback, useTransition, useRef, useMemo, type ReactNode } from "react"
 import type { Task, AuditLogEntry, User, TaskIssue, CategorizedPhotos, Department, UserRole } from "./types"
 import type { MaintenanceSchedule, MaintenanceTask, MaintenanceTaskType, ShiftSchedule } from "./maintenance-types"
 import { createDualTimestamp, mockUsers } from "./mock-data"
@@ -9,6 +9,7 @@ import { triggerHapticFeedback } from "./haptics"
 import { ALL_ROOMS, getMaintenanceItemsForRoom } from "./location-data"
 import { useRealtimeTasks, type TaskRealtimePayload } from "./use-realtime-tasks"
 import type { hashPassword } from "./auth-utils"
+import { useAuth } from "./auth-context"
 import { databaseTaskToApp, type DatabaseTask } from "./database-types"
 import {
   loadTasksFromSupabase,
@@ -40,22 +41,14 @@ const STORAGE_KEYS = {
 } as const
 
 const MAX_CACHED_TASKS = 100
-const LIST_CACHE_TTL_MS = 180_000
-const storageWarningFlags: Record<string, boolean> = {}
-const STORAGE_WRITE_DEBOUNCE_MS = 150
-const storageWriteTimers: Partial<Record<string, ReturnType<typeof setTimeout>>> = {}
-const storageSnapshots: Record<string, string> = {}
-const storageObjectCache = new WeakMap<object, string>()
+const LIST_CACHE_TTL_MS = 30_000 // Reduced from 3 minutes to 30 seconds
 const REALTIME_REFRESH_DEBOUNCE_MS = 250
 const REALTIME_REFRESH_COOLDOWN_MS = 4_000
-const storageDisabledKeys = new Set<string>()
 
 function loadFromStorage<T>(key: string): T | null {
   if (typeof window === "undefined") return null
   const raw = window.localStorage.getItem(key)
   if (!raw) return null
-
-  storageSnapshots[key] = raw
 
   try {
     return JSON.parse(raw) as T
@@ -67,83 +60,31 @@ function loadFromStorage<T>(key: string): T | null {
 
 function persistToStorage(key: string, value: unknown) {
   if (typeof window === "undefined") return
-  if (storageDisabledKeys.has(key)) return
 
   try {
     let payload = value
     if (key === STORAGE_KEYS.tasks && Array.isArray(value)) {
       payload = (value as Task[]).slice(0, MAX_CACHED_TASKS)
     }
-    let serialized: string
 
-    if (payload && typeof payload === "object") {
-      const cached = storageObjectCache.get(payload as object)
-      if (cached) {
-        serialized = cached
-      } else {
-        serialized = JSON.stringify(payload)
-        storageObjectCache.set(payload as object, serialized)
-      }
-    } else {
-      serialized = JSON.stringify(payload)
-    }
-
-    if (storageSnapshots[key] === serialized) {
-      return
-    }
-
-    const pendingTimer = storageWriteTimers[key]
-    if (pendingTimer) {
-      clearTimeout(pendingTimer)
-    }
-
-    storageWriteTimers[key] = setTimeout(() => {
-      try {
-        window.localStorage.setItem(key, serialized)
-        storageSnapshots[key] = serialized
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error)
-        const isQuotaError =
-          (error instanceof DOMException && error.name === "QuotaExceededError") ||
-          /quotaexceedederror/i.test(message)
-
-        if (isQuotaError) {
-          storageDisabledKeys.add(key)
-          try {
-            window.localStorage.removeItem(key)
-            storageSnapshots[key] = ""
-          } catch {
-            // ignore secondary failure
-          }
-        }
-
-        if (!storageWarningFlags[key]) {
-          storageWarningFlags[key] = true
-          if (isQuotaError) {
-            console.warn(
-              `[cache] Disabled persistence for key due to storage quota limits: ${key}. Continuing without offline cache.`,
-            )
-          } else {
-            console.warn("[cache] Failed to persist data for key:", key, error)
-          }
-        }
-      } finally {
-        delete storageWriteTimers[key]
-      }
-    }, STORAGE_WRITE_DEBOUNCE_MS)
+    const serialized = JSON.stringify(payload)
+    window.localStorage.setItem(key, serialized)
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
-    if ((error instanceof DOMException && error.name === "QuotaExceededError") || /quotaexceedederror/i.test(message)) {
-      storageDisabledKeys.add(key)
-      if (!storageWarningFlags[key]) {
-        storageWarningFlags[key] = true
-        console.warn(`[cache] Disabled persistence for key due to storage quota limits: ${key}. Continuing without offline cache.`)
-      }
-      return
-    }
+    const isQuotaError =
+      (error instanceof DOMException && error.name === "QuotaExceededError") ||
+      /quotaexceedederror/i.test(message)
 
-    if (!storageWarningFlags[key]) {
-      storageWarningFlags[key] = true
+    if (isQuotaError) {
+      console.warn(
+        `[cache] Storage quota exceeded for key: ${key}. Skipping cache persistence.`
+      )
+      try {
+        window.localStorage.removeItem(key)
+      } catch {
+        // ignore removal failure
+      }
+    } else {
       console.warn("[cache] Failed to persist data for key:", key, error)
     }
   }
@@ -277,6 +218,8 @@ export function TaskProvider({
   initialShiftSchedules,
   bootstrapMeta,
 }: TaskProviderProps) {
+  const { user: currentUser } = useAuth()
+
   const sanitizedInitialTasks = initialTasks ? initialTasks.slice(0, MAX_CACHED_TASKS) : undefined
   const sanitizedInitialUsers = initialUsers && initialUsers.length > 0 ? initialUsers : undefined
   const sanitizedInitialShiftSchedules =
@@ -682,8 +625,20 @@ export function TaskProvider({
     [queueForcedRefresh, startRealtimeTransition],
   )
 
+  // Prepare real-time subscription filters based on current user role
+  const realtimeFilters = useMemo(() => {
+    if (!currentUser) return undefined
+
+    return {
+      userId: currentUser.id,
+      role: currentUser.role,
+      department: currentUser.department,
+    }
+  }, [currentUser])
+
   const { isConnected } = useRealtimeTasks({
     enabled: true,
+    filter: realtimeFilters,
     onTaskUpdate: handleRealtimeTaskUpdate,
   })
 

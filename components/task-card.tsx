@@ -58,8 +58,16 @@ export function TaskCard({ task, href }: TaskCardProps) {
               <span className="sm:hidden">{task.priority_level.split("_")[0]}</span>
             </Badge>
           </div>
+          {/* Display both worker and supervisor remarks */}
           {task.worker_remark && (
-            <p className="text-sm text-muted-foreground mt-2 line-clamp-2 italic">"{task.worker_remark}"</p>
+            <p className="text-sm text-blue-600 mt-2 line-clamp-2 italic">
+              <span className="font-medium">Worker:</span> "{task.worker_remark}"
+            </p>
+          )}
+          {task.supervisor_remark && (
+            <p className="text-sm text-orange-600 mt-2 line-clamp-2 italic">
+              <span className="font-medium">Supervisor:</span> "{task.supervisor_remark}"
+            </p>
           )}
           {/* </CHANGE> */}
         </CardHeader>
@@ -76,10 +84,62 @@ export function TaskCard({ task, href }: TaskCardProps) {
             <CalendarClock className="h-4 w-4 sm:h-5 sm:w-5 shrink-0" />
             <span className="truncate">Assigned {formatTimestamp(task.assigned_at)}</span>
           </div>
+          {/* Enhanced photo display with categorized photos support */}
           {photoText && (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Camera className="h-4 w-4 sm:h-5 sm:w-5 shrink-0" />
               <span>{photoText}</span>
+            </div>
+          )}
+
+          {/* Display categorized photos if available */}
+          {task.categorized_photos && (
+            <div className="mt-2 space-y-1">
+              <div className="text-sm font-medium text-muted-foreground mb-1">
+                <Camera className="h-3 w-3 mr-1" />
+                Task Photos ({task.categorized_photos.room_photos?.length || 0 + task.categorized_photos.proof_photos?.length || 0})
+              </div>
+              <div className="flex gap-1">
+                {task.categorized_photos.room_photos?.slice(0, 3).map((url, index) => (
+                  <img
+                    key={`room-${index}`}
+                    src={url}
+                    alt="Room photo"
+                    className="w-12 h-12 object-cover rounded border cursor-pointer hover:opacity-80"
+                    onClick={() => console.log('Room photo clicked:', url)}
+                  />
+                ))}
+                {task.categorized_photos.room_photos?.length > 3 && (
+                  <div className="w-12 h-12 bg-muted rounded flex items-center justify-center text-xs text-muted-foreground">
+                    +{task.categorized_photos.room_photos.length - 3}
+                  </div>
+                )}
+              </div>
+
+              {task.categorized_photos.proof_photos?.length > 0 && (
+                <>
+                  <div className="text-sm font-medium text-muted-foreground mb-1 mt-2">
+                    <Camera className="h-3 w-3 mr-1" />
+                    Proof Photos ({task.categorized_photos.proof_photos.length})
+                  </div>
+                  <div className="flex gap-1">
+                    {task.categorized_photos.proof_photos.slice(0, 2).map((url, index) => (
+                      <img
+                        key={`proof-${index}`}
+                        src={url}
+                        alt="Proof photo"
+                        className="w-16 h-16 object-cover rounded border cursor-pointer hover:opacity-80"
+                        onClick={() => console.log('Proof photo clicked:', url)}
+                      />
+                    ))}
+                    {task.categorized_photos.proof_photos.length > 2 && (
+                      <div className="w-16 h-16 bg-muted rounded flex items-center justify-center text-xs text-muted-foreground">
+                        +{task.categorized_photos.proof_photos.length - 2}
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
             </div>
           )}
           {/* </CHANGE> */}

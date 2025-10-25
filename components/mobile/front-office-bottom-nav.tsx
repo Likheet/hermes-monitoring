@@ -1,23 +1,25 @@
 "use client"
 
+import type { ComponentType } from "react"
 import { Home, Clock, ClipboardList, ShieldCheck } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { triggerHaptic } from "@/lib/haptics"
+import type { FrontOfficeTab } from "@/lib/front-office-tabs"
 
 interface FrontOfficeBottomNavProps {
-  activeTab: string
-  onTabChange: (tab: string) => void
+  activeTab: FrontOfficeTab
+  onTabChange: (tab: FrontOfficeTab) => void
 }
 
 export function FrontOfficeBottomNav({ activeTab, onTabChange }: FrontOfficeBottomNavProps) {
-  const navItems = [
+  const navItems: Array<{ id: FrontOfficeTab; icon: ComponentType<{ className?: string }>; label: string }> = [
     { id: "home", icon: Home, label: "Home" },
     { id: "shifts", icon: Clock, label: "Shifts" },
     { id: "assignments", icon: ClipboardList, label: "Assignments" },
     { id: "supervisor", icon: ShieldCheck, label: "Supervisor" },
   ]
 
-  const handleTabClick = (tabId: string) => {
+  const handleTabClick = (tabId: FrontOfficeTab) => {
     triggerHaptic("light")
     onTabChange(tabId)
   }
