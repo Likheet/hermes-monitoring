@@ -1562,9 +1562,15 @@ export function TaskProvider({
       const shift2End = scheduleData.shift_2_end
       const shift2HasBreak = Boolean(scheduleData.shift_2_break_start && scheduleData.shift_2_break_end)
 
-      const hasShift2 =
-        scheduleData.has_shift_2 ?? scheduleData.is_dual_shift ?? Boolean(shift2Start && shift2End)
-      const isDualShift = Boolean(scheduleData.is_dual_shift ?? hasShift2)
+      const shift2IsDistinct = Boolean(
+        shift2Start &&
+          shift2End &&
+          (!shift1Start || shift2Start !== shift1Start || shift2End !== shift1End),
+      )
+
+      const requestedShift2 = scheduleData.has_shift_2 || scheduleData.is_dual_shift
+      const hasShift2 = Boolean((requestedShift2 || shift2IsDistinct) && shift2IsDistinct)
+      const isDualShift = Boolean((scheduleData.is_dual_shift || hasShift2) && shift2IsDistinct)
       const isSecondShiftSameDay = Boolean(
         hasShift2 &&
           shift1End &&

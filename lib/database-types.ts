@@ -13,6 +13,7 @@ import type {
   TaskStatus,
   CategorizedPhotos,
 } from "./types"
+import type { TaskCategory, Priority as TaskPriority } from "./task-definitions"
 
 export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[]
 
@@ -323,10 +324,16 @@ function parseShiftTiming(raw: string | null) {
           ? parsed.shift_2_break_end
           : DEFAULT_SHIFT.shift2BreakEnd
 
-      const hasShift2 =
-        Boolean(parsed.hasShift2 ?? parsed.has_shift_2) || Boolean(shift2Start && shift2End)
-      const isDualShift = Boolean(parsed.isDualShift ?? parsed.is_dual_shift ?? hasShift2)
-      const shift2HasBreak = Boolean(shift2BreakStart && shift2BreakEnd)
+      const shift2IsDistinct = Boolean(
+        typeof shift2Start === "string" &&
+          typeof shift2End === "string" &&
+          (shift2Start !== start || shift2End !== end),
+      )
+
+      const requestedShift2 = Boolean(parsed.hasShift2 ?? parsed.has_shift_2 ?? parsed.isDualShift ?? parsed.is_dual_shift)
+      const hasShift2 = Boolean((requestedShift2 || shift2IsDistinct) && shift2IsDistinct)
+      const isDualShift = Boolean((parsed.isDualShift ?? parsed.is_dual_shift ?? hasShift2) && shift2IsDistinct)
+      const shift2HasBreak = Boolean(shift2BreakStart && shift2BreakEnd && hasShift2)
 
       return {
         start,
@@ -336,11 +343,11 @@ function parseShiftTiming(raw: string | null) {
         hasBreak: Boolean(breakStart && breakEnd),
         isDualShift,
         hasShift2,
-        shift2Start: shift2Start ?? undefined,
-        shift2End: shift2End ?? undefined,
+        shift2Start: hasShift2 ? shift2Start ?? undefined : undefined,
+        shift2End: hasShift2 ? shift2End ?? undefined : undefined,
         shift2HasBreak,
-        shift2BreakStart: shift2BreakStart ?? undefined,
-        shift2BreakEnd: shift2BreakEnd ?? undefined,
+        shift2BreakStart: shift2HasBreak ? shift2BreakStart ?? undefined : undefined,
+        shift2BreakEnd: shift2HasBreak ? shift2BreakEnd ?? undefined : undefined,
       }
     } catch (error) {
       console.warn("shift_timing JSON parse failed, falling back to range parsing:", error)
@@ -582,8 +589,8 @@ export function databaseTaskToApp(dbTask: DatabaseTask): Task {
     audit_log: auditLog,
     is_custom_task: dbTask.is_custom_task ?? false,
     custom_task_name: dbTask.custom_task_name ?? null,
-    custom_task_category: dbTask.custom_task_category ?? null,
-    custom_task_priority: dbTask.custom_task_priority ?? null,
+  custom_task_category: (dbTask.custom_task_category ?? null) as TaskCategory | null,
+  custom_task_priority: (dbTask.custom_task_priority ?? null) as TaskPriority | null,
     custom_task_photo_required: dbTask.custom_task_photo_required ?? null,
     custom_task_photo_count: dbTask.custom_task_photo_count ?? null,
     custom_task_processed: false,
@@ -600,10 +607,22 @@ export function databaseShiftScheduleToApp(dbSchedule: DatabaseShiftSchedule): S
   const breakStart = dbSchedule.shift_1_break_start || dbSchedule.break_start
   const breakEnd = dbSchedule.shift_1_break_end || dbSchedule.break_end
   const shift1HasBreak = Boolean(breakStart && breakEnd)
-  const shift2HasBreak = Boolean(dbSchedule.shift_2_break_start && dbSchedule.shift_2_break_end)
-  const hasShift2 =
-    dbSchedule.has_shift_2 || Boolean(dbSchedule.shift_2_start && dbSchedule.shift_2_end)
-  const isDualShift = dbSchedule.is_dual_shift || hasShift2
+  const shift2StartRaw = dbSchedule.shift_2_start || undefined
+  const shift2EndRaw = dbSchedule.shift_2_end || undefined
+  const shift2HasBreakRaw = Boolean(dbSchedule.shift_2_break_start && dbSchedule.shift_2_break_end)
+
+  const shift2IsDistinct = Boolean(
+    shift2StartRaw &&
+      shift2EndRaw &&
+      (shift2StartRaw !== shiftStart || shift2EndRaw !== shiftEnd),
+  )
+
+  const hasShift2 = Boolean(
+    (dbSchedule.has_shift_2 || dbSchedule.is_dual_shift || (shift2StartRaw && shift2EndRaw)) &&
+      shift2IsDistinct,
+  )
+  const shift2HasBreak = hasShift2 && shift2HasBreakRaw
+  const isDualShift = Boolean((dbSchedule.is_dual_shift || hasShift2) && shift2IsDistinct)
 
   return {
     id: dbSchedule.id,
@@ -625,8 +644,8 @@ export function databaseShiftScheduleToApp(dbSchedule: DatabaseShiftSchedule): S
     // Dual shift specific fields
     has_shift_2: hasShift2,
     is_dual_shift: isDualShift,
-    shift_2_start: dbSchedule.shift_2_start ?? undefined,
-    shift_2_end: dbSchedule.shift_2_end ?? undefined,
+    shift_2_start: hasShift2 ? shift2StartRaw : undefined,
+    shift_2_end: hasShift2 ? shift2EndRaw : undefined,
     shift_2_has_break: shift2HasBreak,
     shift_2_break_start: shift2HasBreak ? dbSchedule.shift_2_break_start ?? undefined : undefined,
     shift_2_break_end: shift2HasBreak ? dbSchedule.shift_2_break_end ?? undefined : undefined,
@@ -749,8 +768,11 @@ export function appTaskToDatabase(task: Task): Omit<DatabaseTask, "created_at" |
 }
 
 export function appShiftScheduleToDatabase(schedule: ShiftSchedule): Omit<DatabaseShiftSchedule, "created_at"> {
-  const shift1Start = schedule.shift_1_start ?? schedule.shift_start ?? null
-  const shift1End = schedule.shift_1_end ?? schedule.shift_end ?? null
+  const shiftStart = schedule.shift_start ?? schedule.shift_1_start ?? null
+  const finalShiftEnd = schedule.shift_end ?? schedule.shift_2_end ?? schedule.shift_1_end ?? null
+
+  const shift1Start = schedule.shift_1_start ?? shiftStart
+  const shift1End = schedule.shift_1_end ?? (schedule.has_shift_2 ? schedule.break_start ?? finalShiftEnd : finalShiftEnd)
   const shift1BreakStart = schedule.shift_1_break_start ?? schedule.break_start ?? null
   const shift1BreakEnd = schedule.shift_1_break_end ?? schedule.break_end ?? null
   const shift1HasBreak = Boolean(shift1BreakStart && shift1BreakEnd)
@@ -761,15 +783,22 @@ export function appShiftScheduleToDatabase(schedule: ShiftSchedule): Omit<Databa
   const shift2BreakEnd = schedule.shift_2_break_end ?? null
   const shift2HasBreak = Boolean(shift2BreakStart && shift2BreakEnd)
 
-  const hasShift2 = Boolean(schedule.has_shift_2 ?? (shift2Start && shift2End))
-  const isDualShift = Boolean(schedule.is_dual_shift ?? hasShift2)
+  const shift2IsDistinct = Boolean(
+    shift2Start &&
+      shift2End &&
+      (shift1Start == null || shift2Start !== shift1Start || shift2End !== shift1End),
+  )
+
+  const requestedShift2 = schedule.has_shift_2 || schedule.is_dual_shift
+  const hasShift2 = Boolean((requestedShift2 || shift2IsDistinct) && shift2IsDistinct)
+  const isDualShift = Boolean((schedule.is_dual_shift || hasShift2) && shift2IsDistinct)
 
   return {
     id: schedule.id,
     worker_id: schedule.worker_id,
     schedule_date: schedule.schedule_date,
-    shift_start: shift1Start,
-    shift_end: shift1End,
+    shift_start: shiftStart,
+    shift_end: finalShiftEnd,
     break_start: shift1HasBreak ? shift1BreakStart : null,
     break_end: shift1HasBreak ? shift1BreakEnd : null,
     shift_1_start: shift1Start,
@@ -778,8 +807,9 @@ export function appShiftScheduleToDatabase(schedule: ShiftSchedule): Omit<Databa
     shift_1_break_end: shift1HasBreak ? shift1BreakEnd : null,
     shift_2_start: hasShift2 ? shift2Start : null,
     shift_2_end: hasShift2 ? shift2End : null,
-    shift_2_break_start: shift2HasBreak ? shift2BreakStart : null,
-    shift_2_break_end: shift2HasBreak ? shift2BreakEnd : null,
+    shift_2_break_start: hasShift2 && shift2HasBreak ? shift2BreakStart : null,
+    shift_2_break_end: hasShift2 && shift2HasBreak ? shift2BreakEnd : null,
+    shift_2_has_break: hasShift2 && shift2HasBreak ? true : false,
     has_shift_2: hasShift2,
     is_dual_shift: isDualShift,
     is_override: schedule.is_override || false,

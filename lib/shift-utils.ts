@@ -994,38 +994,49 @@ export function getWorkerShiftForDate(
     let shift2Start = schedule.shift_2_start ?? undefined
     let shift2End = schedule.shift_2_end ?? undefined
     let shift2HasBreak = Boolean(schedule.shift_2_break_start && schedule.shift_2_break_end)
-    let finalHasShift2 =
-      schedule.has_shift_2 || schedule.is_dual_shift || Boolean(shift2Start && shift2End)
+    const shift2IsDistinct = Boolean(
+      shift2Start &&
+        shift2End &&
+        (!shift1Start || shift2Start !== shift1Start || shift2End !== shift1End),
+    )
 
-    // If dual-shift columns are missing but a break exists, derive shift segments.
-    if (!finalHasShift2 && schedule.break_start && schedule.break_end && shift1End !== schedule.break_start) {
-      finalHasShift2 = true
-      shift2Start = schedule.break_end ?? undefined
-      shift2End = schedule.shift_end ?? shift1End
+    const hasSecondShift = Boolean(
+      (schedule.has_shift_2 || schedule.is_dual_shift || shift2IsDistinct) && shift2IsDistinct,
+    )
+    const isDualShift = Boolean((schedule.is_dual_shift || hasSecondShift) && shift2IsDistinct)
+
+    if (!hasSecondShift) {
+      shift2Start = undefined
+      shift2End = undefined
       shift2HasBreak = false
     }
 
     return {
       shift_start: shift1Start,
-      shift_end: shift1HasBreak && finalHasShift2 && schedule.break_start ? schedule.shift_end ?? shift1End : shift1End,
+      shift_end:
+        shift1HasBreak && hasSecondShift && schedule.break_start
+          ? schedule.shift_end ?? shift1End
+          : shift1End,
       has_break: shift1HasBreak,
       break_start: shift1HasBreak ? shift1BreakStart : undefined,
       break_end: shift1HasBreak ? shift1BreakEnd : undefined,
       shift_1_start: shift1Start,
       shift_1_end:
-        shift1HasBreak && finalHasShift2 && schedule.break_start ? schedule.break_start : shift1End,
+        shift1HasBreak && hasSecondShift && schedule.break_start ? schedule.break_start : shift1End,
       shift_1_break_start: shift1HasBreak ? shift1BreakStart : undefined,
       shift_1_break_end: shift1HasBreak ? shift1BreakEnd : undefined,
       is_override: schedule.is_override,
       override_reason: schedule.override_reason,
       // Dual shift information
-      has_shift_2: finalHasShift2,
-      is_dual_shift: schedule.is_dual_shift,
-      shift_2_start: finalHasShift2 ? shift2Start : undefined,
-      shift_2_end: finalHasShift2 ? shift2End : undefined,
-      shift_2_has_break: shift2HasBreak,
-      shift_2_break_start: shift2HasBreak ? schedule.shift_2_break_start : undefined,
-      shift_2_break_end: shift2HasBreak ? schedule.shift_2_break_end : undefined,
+      has_shift_2: hasSecondShift,
+  is_dual_shift: isDualShift,
+      shift_2_start: hasSecondShift ? shift2Start : undefined,
+      shift_2_end: hasSecondShift ? shift2End : undefined,
+      shift_2_has_break: hasSecondShift ? shift2HasBreak : false,
+      shift_2_break_start:
+        hasSecondShift && shift2HasBreak ? schedule.shift_2_break_start : undefined,
+      shift_2_break_end:
+        hasSecondShift && shift2HasBreak ? schedule.shift_2_break_end : undefined,
     }
   }
 
