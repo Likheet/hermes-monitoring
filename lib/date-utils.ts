@@ -69,6 +69,26 @@ export function calculateDuration(
   return `${hours}h ${mins}m`
 }
 
+export function formatDurationMinutes(totalMinutes: number): string {
+  if (!Number.isFinite(totalMinutes) || totalMinutes <= 0) {
+    return "0m"
+  }
+
+  const minutes = Math.round(totalMinutes)
+  const hours = Math.floor(minutes / 60)
+  const remainingMinutes = minutes % 60
+
+  if (hours <= 0) {
+    return `${minutes}m`
+  }
+
+  if (remainingMinutes === 0) {
+    return `${hours}h`
+  }
+
+  return `${hours}h ${remainingMinutes}m`
+}
+
 export function calculateShiftHours(shiftStart: string, shiftEnd: string): string {
   // Parse time strings in HH:MM format
   const [startHour, startMin] = shiftStart.split(":").map(Number)

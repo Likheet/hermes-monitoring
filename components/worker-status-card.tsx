@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge"
 import type { User, Task } from "@/lib/types"
 import type { MaintenanceTask } from "@/lib/maintenance-types"
 import { UserIcon, Clock, AlertTriangle, Coffee } from "lucide-react"
-import { formatShiftTime } from "@/lib/date-utils"
+import { formatShiftTime, formatDurationMinutes } from "@/lib/date-utils"
 import { isWorkerOnShiftWithSchedule, getWorkerShiftForDate, timeToMinutes } from "@/lib/shift-utils"
 import { useTasks } from "@/lib/task-context"
 
@@ -26,6 +26,11 @@ export function WorkerStatusCard({ worker, currentTask, onClick }: WorkerStatusC
 
   const availability = isWorkerOnShiftWithSchedule(worker, shiftSchedules)
   const isOnBreak = availability.status === "SHIFT_BREAK"
+  const isBetweenShifts = isOnBreak && availability.breakType === "INTER_SHIFT"
+  const formattedStateChange =
+    typeof availability.minutesUntilStateChange === "number"
+      ? formatDurationMinutes(availability.minutesUntilStateChange)
+      : null
 
   const isWorking = currentTask
     ? isRegularTask
@@ -182,10 +187,12 @@ export function WorkerStatusCard({ worker, currentTask, onClick }: WorkerStatusC
           ) : availability.status === "SHIFT_BREAK" ? (
             <Badge variant="secondary" className="bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-100 flex items-center gap-1">
               <Coffee className="h-3 w-3" />
-              Shift Break
-              {availability.minutesUntilStateChange && (
+              {isBetweenShifts ? "Between Shifts" : "Shift Break"}
+              {formattedStateChange && (
                 <span className="text-xs text-amber-700 dark:text-amber-200">
-                  ({availability.minutesUntilStateChange}m)
+                  {isBetweenShifts
+                    ? `Next shift in ${formattedStateChange}`
+                    : `(${formattedStateChange})`}
                 </span>
               )}
             </Badge>
@@ -223,7 +230,12 @@ export function WorkerStatusCard({ worker, currentTask, onClick }: WorkerStatusC
               )}
               {interShiftBreak && (
                 <p className="text-xs text-muted-foreground">
-                  Shift Break: {formatShiftTime(interShiftBreak.start)} - {formatShiftTime(interShiftBreak.end)}
+                  Between Shifts: {formatShiftTime(interShiftBreak.start)} - {formatShiftTime(interShiftBreak.end)}
+                </p>
+              )}
+              {isBetweenShifts && availability.nextShiftStart && (
+                <p className="text-xs text-muted-foreground">
+                  Next shift starts at {formatShiftTime(availability.nextShiftStart)}
                 </p>
               )}
               {breakSlots.map((slot) => (

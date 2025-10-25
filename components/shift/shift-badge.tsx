@@ -3,6 +3,7 @@
 import { Badge } from "@/components/ui/badge"
 import { Clock, AlertCircle, CheckCircle } from "lucide-react"
 import type { WorkerAvailability } from "@/lib/shift-utils"
+import { formatDurationMinutes } from "@/lib/date-utils"
 
 interface ShiftBadgeProps {
   availability: WorkerAvailability
@@ -21,19 +22,29 @@ export function ShiftBadge({ availability, showDetails = false }: ShiftBadgeProp
         {endingSoon ? <AlertCircle className="h-3 w-3" /> : <CheckCircle className="h-3 w-3" />}
         {label}
         {showDetails && availability.minutesUntilStateChange && (
-          <span className="ml-1 text-xs">({availability.minutesUntilStateChange}min)</span>
+          <span className="ml-1 text-xs">
+            ({formatDurationMinutes(availability.minutesUntilStateChange)})
+          </span>
         )}
       </Badge>
     )
   }
 
   if (availability.status === "SHIFT_BREAK") {
+    const isBetweenShifts = availability.breakType === "INTER_SHIFT"
+    const breakCountdown =
+      typeof availability.minutesUntilStateChange === "number"
+        ? formatDurationMinutes(availability.minutesUntilStateChange)
+        : null
+
     return (
       <Badge variant="default" className="bg-yellow-500 text-white flex items-center gap-1">
         <Clock className="h-3 w-3" />
-        Shift Break
-        {showDetails && availability.minutesUntilStateChange && (
-          <span className="ml-1 text-xs">({availability.minutesUntilStateChange}min)</span>
+        {isBetweenShifts ? "Between Shifts" : "Shift Break"}
+        {showDetails && breakCountdown && (
+          <span className="ml-1 text-xs">
+            {isBetweenShifts ? `Next in ${breakCountdown}` : `(${breakCountdown})`}
+          </span>
         )}
       </Badge>
     )
