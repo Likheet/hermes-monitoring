@@ -254,16 +254,22 @@ export async function POST(request: Request) {
 
     // Validate assigned user availability (prevent assigning tasks to off-duty users)
     if (assigned_to_user_id) {
-      // Load the worker profile and any explicit schedule overrides for today
+      // Optimized: Single query to get user with their shift schedules
       const todayStr = formatDateKeyForTimezone(new Date(), timezoneOffset)
       const { data: userData, error: userError } = await supabase
         .from("users")
         .select(`
           id, name, shift_start, shift_end, has_break, break_start, break_end,
-          is_dual_shift, has_shift_2, shift_2_start, shift_2_end, shift_2_has_break, shift_2_break_start, shift_2_break_end
+          shift_schedules!inner(
+            id, schedule_date, shift_start, shift_end, has_break,
+            break_start, break_end, shift_1_start, shift_1_end,
+            has_shift_2, shift_2_start, shift_2_end
+          )
         `)
         .eq("id", assigned_to_user_id)
-        .maybeSingle()
+        .eq("shift_schedules.schedule_date", todayStr)
+        .limit(1)
+        .single()
       if (userError) {
         console.error("Failed to load assigned user:", userError)
         return NextResponse.json({ error: "Failed to validate assignee" }, { status: 400 })
@@ -271,22 +277,6 @@ export async function POST(request: Request) {
 
       if (!userData) {
         return NextResponse.json({ error: "Assigned user not found" }, { status: 400 })
-      }
-
-      const { data: schedules, error: scheduleError } = await supabase
-        .from("shift_schedules")
-        .select(`
-          id, worker_id, schedule_date, shift_start, shift_end, has_break,
-          break_start, break_end, shift_1_start, shift_1_end, shift_1_break_start, shift_1_break_end,
-          shift_2_start, shift_2_end, shift_2_break_start, shift_2_break_end,
-          has_shift_2, is_dual_shift, is_override, override_reason
-        `)
-        .eq("worker_id", assigned_to_user_id)
-        .eq("schedule_date", todayStr)
-
-      if (scheduleError) {
-        console.error("Failed to load shift schedules for assignment:", scheduleError)
-        return NextResponse.json({ error: "Failed to validate assignee" }, { status: 400 })
       }
 
       const availability = isWorkerOnShiftWithSchedule(
@@ -298,15 +288,8 @@ export async function POST(request: Request) {
           has_break: userData.has_break,
           break_start: userData.break_start,
           break_end: userData.break_end,
-          is_dual_shift: userData.is_dual_shift,
-          has_shift_2: userData.has_shift_2,
-          shift_2_start: userData.shift_2_start,
-          shift_2_end: userData.shift_2_end,
-          shift_2_has_break: userData.shift_2_has_break,
-          shift_2_break_start: userData.shift_2_break_start,
-          shift_2_break_end: userData.shift_2_break_end,
         } as any,
-        schedules ?? [],
+        userData.shift_schedules || [],
         { timezoneOffsetMinutes: timezoneOffset },
       )
 
