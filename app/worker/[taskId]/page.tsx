@@ -22,6 +22,7 @@ import { startPauseMonitoring, stopPauseMonitoring } from "@/lib/pause-monitorin
 import { getCategorizedPhotoSections } from "@/lib/image-utils"
 import type { CategorizedPhotos, Task } from "@/lib/types"
 import { bucketToCategorizedPhotos, categorizedPhotosToBucket } from "@/lib/photo-utils"
+import { formatDuration } from "@/lib/time-utils"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -513,7 +514,7 @@ function TaskDetail({ params }: TaskDetailProps) {
             </CardHeader>
             <CardContent>
               <div className="text-center">
-                <div className="text-4xl font-bold font-mono">{formatTime(elapsedTime)}</div>
+                <div className="text-4xl font-bold font-mono">{formatDuration(elapsedTime)}</div>
                 <p className="text-sm text-muted-foreground mt-2">Expected: {task.expected_duration_minutes} min</p>
               </div>
             </CardContent>
@@ -789,10 +790,4 @@ const priorityColors = {
   TIME_SENSITIVE: "bg-accent text-accent-foreground",
   DAILY_TASK: "bg-muted text-muted-foreground",
   PREVENTIVE_MAINTENANCE: "bg-secondary text-secondary-foreground",
-}
-
-function formatTime(seconds: number) {
-  const mins = Math.floor(seconds / 60)
-  const secs = seconds % 60
-  return `${mins}:${secs.toString().padStart(2, "0")}`
 }

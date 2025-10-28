@@ -677,8 +677,8 @@ export function TaskProvider({
 
         if (response.ok) {
           const { task } = await response.json()
-          setTasks((prev) =>
-            prev.map((t) => {
+          setTasks((prev) => {
+            const next = prev.map((t) => {
               if (t.id !== taskId) return t
               const merged = {
                 ...t,
@@ -693,8 +693,12 @@ export function TaskProvider({
               })
 
               return merged
-            }),
-          )
+            })
+
+            const limited = next.length > MAX_CACHED_TASKS ? next.slice(0, MAX_CACHED_TASKS) : next
+            persistToStorage(STORAGE_KEYS.tasks, limited)
+            return limited
+          })
           console.log("[v0] Task updated successfully via API:", taskId)
           return true
         } else {

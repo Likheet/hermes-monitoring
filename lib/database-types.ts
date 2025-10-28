@@ -268,7 +268,13 @@ function parseShiftTiming(raw: string | null) {
       const shift1Source =
         parsed && typeof parsed.shift1 === "object" && parsed.shift1 !== null ? parsed.shift1 : parsed
       const shift2Source =
-        parsed && typeof parsed.shift2 === "object" && parsed.shift2 !== null ? parsed.shift2 : parsed
+        parsed && typeof parsed.shift2 === "object" && parsed.shift2 !== null
+          ? parsed.shift2
+          : parsed && typeof parsed.secondary_shift === "object" && parsed.secondary_shift !== null
+          ? parsed.secondary_shift
+          : parsed && typeof parsed.secondaryShift === "object" && parsed.secondaryShift !== null
+          ? parsed.secondaryShift
+          : null
 
       const start =
         typeof shift1Source.start === "string"
@@ -304,7 +310,7 @@ function parseShiftTiming(raw: string | null) {
           : DEFAULT_SHIFT.breakEnd
 
       const shift2Start =
-        typeof shift2Source.start === "string"
+        shift2Source && typeof shift2Source.start === "string"
           ? shift2Source.start
           : typeof parsed.shift2Start === "string"
           ? parsed.shift2Start
@@ -312,7 +318,7 @@ function parseShiftTiming(raw: string | null) {
           ? parsed.shift_2_start
           : DEFAULT_SHIFT.shift2Start
       const shift2End =
-        typeof shift2Source.end === "string"
+        shift2Source && typeof shift2Source.end === "string"
           ? shift2Source.end
           : typeof parsed.shift2End === "string"
           ? parsed.shift2End
@@ -320,9 +326,9 @@ function parseShiftTiming(raw: string | null) {
           ? parsed.shift_2_end
           : DEFAULT_SHIFT.shift2End
       const shift2BreakStart =
-        typeof shift2Source.breakStart === "string"
+        shift2Source && typeof shift2Source.breakStart === "string"
           ? shift2Source.breakStart
-          : typeof shift2Source.break_start === "string"
+          : shift2Source && typeof shift2Source.break_start === "string"
           ? shift2Source.break_start
           : typeof parsed.shift2BreakStart === "string"
           ? parsed.shift2BreakStart
@@ -330,9 +336,9 @@ function parseShiftTiming(raw: string | null) {
           ? parsed.shift_2_break_start
           : DEFAULT_SHIFT.shift2BreakStart
       const shift2BreakEnd =
-        typeof shift2Source.breakEnd === "string"
+        shift2Source && typeof shift2Source.breakEnd === "string"
           ? shift2Source.breakEnd
-          : typeof shift2Source.break_end === "string"
+          : shift2Source && typeof shift2Source.break_end === "string"
           ? shift2Source.break_end
           : typeof parsed.shift2BreakEnd === "string"
           ? parsed.shift2BreakEnd
@@ -340,8 +346,9 @@ function parseShiftTiming(raw: string | null) {
           ? parsed.shift_2_break_end
           : DEFAULT_SHIFT.shift2BreakEnd
 
+      const rawHasShift2 = parsed.hasShift2 ?? parsed.has_shift_2
       const hasShift2 =
-        Boolean(parsed.hasShift2 ?? parsed.has_shift_2) || Boolean(shift2Start && shift2End)
+        typeof rawHasShift2 === "boolean" ? rawHasShift2 : Boolean(shift2Start && shift2End)
       const isDualShift = Boolean(parsed.isDualShift ?? parsed.is_dual_shift ?? hasShift2)
       const shift2HasBreak = Boolean(shift2BreakStart && shift2BreakEnd)
 

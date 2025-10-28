@@ -22,6 +22,7 @@ import { useTasks } from "@/lib/task-context"
 import { useAuth } from "@/lib/auth-context"
 import { useToast } from "@/hooks/use-toast"
 import { formatFullTimestamp } from "@/lib/date-utils"
+import { formatDuration } from "@/lib/time-utils"
 import type { Task, CategorizedPhotos } from "@/lib/types"
 import {
   CheckCircle2,
@@ -391,7 +392,7 @@ export function FrontDeskActiveTaskModal({ task, open, onOpenChange }: FrontDesk
                   <div className="flex items-center justify-between rounded-lg border bg-muted/40 px-3 py-2">
                     <span className="font-medium text-foreground">{statusLabel}</span>
                     {activeTask.status === "IN_PROGRESS" ? (
-                      <span className="font-mono text-sm text-primary">{formatElapsed(elapsedTime)}</span>
+                      <span className="font-mono text-sm text-primary">{formatDuration(elapsedTime)}</span>
                     ) : (
                       <span>{activeTask.started_at ? formatFullTimestamp(activeTask.started_at.client) : "Not started"}</span>
                     )}
@@ -671,10 +672,4 @@ export function FrontDeskActiveTaskModal({ task, open, onOpenChange }: FrontDesk
       )}
     </>
   )
-}
-
-function formatElapsed(seconds: number) {
-  const mins = Math.floor(seconds / 60)
-  const secs = seconds % 60
-  return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`
 }

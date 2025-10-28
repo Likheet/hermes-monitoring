@@ -56,3 +56,16 @@ export function validate12HourTime(time: string): boolean {
 
   return !isNaN(hours) && !isNaN(minutes) && hours >= 1 && hours <= 12 && minutes >= 0 && minutes <= 59
 }
+
+export function formatDuration(totalSeconds: number): string {
+  const safeSeconds = Math.max(0, Math.floor(totalSeconds))
+  const hours = Math.floor(safeSeconds / 3600)
+  const minutes = Math.floor((safeSeconds % 3600) / 60)
+  const seconds = safeSeconds % 60
+
+  const paddedHours = hours.toString().padStart(2, "0")
+  const paddedMinutes = minutes.toString().padStart(2, "0")
+  const paddedSeconds = seconds.toString().padStart(2, "0")
+
+  return `${paddedHours}:${paddedMinutes}:${paddedSeconds}`
+}

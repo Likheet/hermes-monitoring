@@ -339,6 +339,7 @@ export function TaskVerificationView({ taskId, returnPath }: TaskVerificationVie
                   <TaskImage
                     src={url}
                     alt={`Proof Photo ${index + 1}`}
+                    priority={index === 0}
                     fill
                     className="object-cover"
                     sizes="(max-width: 768px) 45vw, 320px"
