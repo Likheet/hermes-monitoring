@@ -37,7 +37,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const restoreSession = async () => {
       try {
-        const response = await fetch("/api/auth/session")
+        const response = await fetch("/api/auth/session", {
+          credentials: "include",
+        })
         if (response.ok) {
           const { user } = await response.json()
           if (user) {
@@ -60,6 +62,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username, password }),
+        credentials: "include",
       })
 
       if (response.ok) {
@@ -78,7 +81,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = async () => {
     try {
-      await fetch("/api/auth/logout", { method: "POST" })
+      await fetch("/api/auth/logout", { method: "POST", credentials: "include" })
       setUser(null)
     } catch (error) {
       console.error("Logout error:", error)

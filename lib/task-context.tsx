@@ -453,6 +453,7 @@ export function TaskProvider({
           const response = await fetch("/api/dashboard/summary", {
             method: "GET",
             cache: "no-store",
+            credentials: "include",
           })
 
           if (!response.ok) {
@@ -673,6 +674,7 @@ export function TaskProvider({
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(updates),
+          credentials: "include",
         })
 
         if (response.ok) {
@@ -753,6 +755,7 @@ export function TaskProvider({
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ userId }),
+          credentials: "include",
         })
 
         if (response.ok) {
@@ -803,6 +806,7 @@ export function TaskProvider({
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ userId, reason }),
+          credentials: "include",
         })
 
         if (response.ok) {
@@ -840,6 +844,7 @@ export function TaskProvider({
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ userId }),
+          credentials: "include",
         })
 
         if (response.ok) {
@@ -863,6 +868,7 @@ export function TaskProvider({
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ userId, categorizedPhotos, remark }),
+          credentials: "include",
         })
 
         if (response.ok) {
@@ -908,6 +914,7 @@ export function TaskProvider({
             assigned_at_client: taskData.assigned_at.client,
             client_timezone_offset: clientTimezoneOffset,
           }),
+          credentials: "include",
         })
 
         if (!response.ok) {

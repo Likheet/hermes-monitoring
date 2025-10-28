@@ -45,7 +45,7 @@ function sanitizeRoomPayload(room: ApiRoomPayload): RoomInventoryItem | null {
 
 export async function fetchActiveRoomInventory(): Promise<RoomInventoryItem[]> {
   try {
-    const response = await fetch("/api/rooms/inventory", { cache: "no-store" })
+    const response = await fetch("/api/rooms/inventory", { cache: "no-store", credentials: "include" })
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`)
     }

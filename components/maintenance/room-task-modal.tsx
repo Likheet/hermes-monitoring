@@ -168,6 +168,7 @@ async function compressImage(file: File): Promise<File> {
       const response = await fetch("/api/upload-photo", {
         method: "POST",
         body: formData,
+        credentials: "include",
       })
 
       if (!response.ok) throw new Error("Upload failed")

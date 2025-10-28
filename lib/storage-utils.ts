@@ -6,6 +6,7 @@ export async function uploadTaskPhoto(taskId: string, file: Blob): Promise<strin
   const response = await fetch("/api/upload-photo", {
     method: "POST",
     body: formData,
+    credentials: "include",
   })
 
   if (!response.ok) {
