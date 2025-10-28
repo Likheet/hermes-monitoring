@@ -66,10 +66,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const { user } = await response.json()
         setUser(user)
         return true
-      } else {
-        const { error } = await response.json()
-        return false
       }
+
+      await response.json()
+      return false
     } catch (error) {
       console.error("Login error:", error)
       return false

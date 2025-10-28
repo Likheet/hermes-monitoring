@@ -10,6 +10,7 @@ import { formatExactTimestamp } from "@/lib/date-utils"
 import { useState } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { useRouter } from "next/navigation"
+import { TaskImage } from "@/components/task-image"
 
 interface RejectedTaskCardProps {
   task: Task
@@ -77,10 +78,12 @@ export function RejectedTaskCard({ task }: RejectedTaskCardProps) {
             <DialogTitle>Rejection Proof</DialogTitle>
             <DialogDescription>Photo evidence of the issue</DialogDescription>
           </DialogHeader>
-          <img
-            src={task.rejection_proof_photo_url || "/placeholder.svg"}
+          <TaskImage
+            src={task.rejection_proof_photo_url}
             alt="Rejection proof"
-            className="w-full rounded-lg"
+            width={1024}
+            height={768}
+            className="w-full rounded-lg object-contain"
           />
         </DialogContent>
       </Dialog>

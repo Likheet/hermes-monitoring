@@ -38,8 +38,10 @@ interface EditTaskDefinitionModalProps {
 export function EditTaskDefinitionModal({ task, open, onOpenChange, onSuccess }: EditTaskDefinitionModalProps) {
   const { toast } = useToast()
 
-  const getBooleanValue = (value: any, defaultValue = false): boolean => {
-    if (typeof value === "boolean") return value
+  const getBooleanValue = (value: unknown, defaultValue = false): boolean => {
+    if (typeof value === "boolean") {
+      return value
+    }
     return defaultValue
   }
 
@@ -83,7 +85,7 @@ export function EditTaskDefinitionModal({ task, open, onOpenChange, onSuccess }:
     })
   }, [task])
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!formData.name.trim()) {
       toast({
         title: "Error",
@@ -134,10 +136,10 @@ export function EditTaskDefinitionModal({ task, open, onOpenChange, onSuccess }:
       .map((k) => k.trim())
       .filter((k) => k.length > 0)
 
-    let updated
+    let updated: CustomTaskDefinition | null
     if (task.isCustom) {
       // Update existing custom task
-      updated = updateCustomTaskDefinition(task.id, {
+      updated = await updateCustomTaskDefinition(task.id, {
         name: formData.name,
         category: formData.category,
         department: formData.department,
@@ -160,7 +162,7 @@ export function EditTaskDefinitionModal({ task, open, onOpenChange, onSuccess }:
       })
     } else {
       // Create a custom task override with the same ID as the built-in task
-      updated = saveCustomTaskDefinition({
+      updated = await saveCustomTaskDefinition({
         id: task.id, // Use the same ID to override the built-in task
         name: formData.name,
         category: formData.category,

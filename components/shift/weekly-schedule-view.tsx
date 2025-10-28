@@ -60,12 +60,12 @@ export function WeeklyScheduleView({ workers }: WeeklyScheduleViewProps) {
   const { saveShiftSchedule, getShiftSchedules, shiftSchedules } = useTasks()
   const [schedules, setSchedules] = useState<Record<string, WeekSchedule>>({})
   const [loading, setLoading] = useState(true)
-  const [selectedWorker, setSelectedWorker] = useState<string | null>(null)
-  const [selectedDay, setSelectedDay] = useState<string | null>(null)
+  const [, setSelectedWorker] = useState<string | null>(null)
+  const [, setSelectedDay] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [weekOffset, setWeekOffset] = useState(0)
 
-  const getWeekDates = () => {
+  const weekDates = useMemo(() => {
     const today = new Date()
     const currentDay = today.getDay()
     const monday = new Date(today)
@@ -76,9 +76,7 @@ export function WeeklyScheduleView({ workers }: WeeklyScheduleViewProps) {
       date.setDate(monday.getDate() + index)
       return date.toISOString().split("T")[0]
     })
-  }
-
-  const weekDates = useMemo(() => getWeekDates(), [weekOffset])
+  }, [weekOffset])
 
   const isPastDate = (dateString: string) => {
     const date = new Date(dateString)
@@ -339,7 +337,6 @@ export function WeeklyScheduleView({ workers }: WeeklyScheduleViewProps) {
                   <th className="text-left p-3 font-semibold">Worker</th>
                   {DAYS_OF_WEEK.map((day, index) => {
                     const date = weekDates[index]
-                    const isPast = isPastDate(date)
                     const isTodayDate = isToday(date)
 
                     return (

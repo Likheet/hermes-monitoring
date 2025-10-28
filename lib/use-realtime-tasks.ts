@@ -104,7 +104,7 @@ export function useRealtimeTasks(options: UseRealtimeTasksOptions = {}) {
         },
         handleTaskUpdate,
       )
-      .subscribe((status, err) => {
+  .subscribe((status: string, err?: Error | null) => {
         setConnectionStatus(status)
 
         if (err) {
@@ -129,7 +129,7 @@ export function useRealtimeTasks(options: UseRealtimeTasksOptions = {}) {
       })
 
     channelRef.current = taskChannel
-  }, [cleanup, enabled, filter?.userId, filter?.role, filter?.department, handleTaskUpdate])
+  }, [cleanup, enabled, filter, handleTaskUpdate])
 
   const attemptReconnect = useCallback(() => {
     if (!enabled) {

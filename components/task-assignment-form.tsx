@@ -159,8 +159,8 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers, initialD
   const [customCategory, setCustomCategory] = useState<TaskCategory>(task.category)
   const [photoRequired, setPhotoRequired] = useState(task.photoRequired)
   const [photoCount, setPhotoCount] = useState(task.photoCount)
-  const [photoDocumentationRequired, setPhotoDocumentationRequired] = useState(task.photoDocumentationRequired || false)
-  const [photoCategories, setPhotoCategories] = useState(task.photoCategories || [])
+  const photoDocumentationRequired = task.photoDocumentationRequired ?? false
+  const photoCategories: TaskAssignmentData["photoCategories"] = task.photoCategories ?? []
   //
   const [roomInventory, setRoomInventory] = useState<RoomInventoryItem[]>(INITIAL_ROOM_INVENTORY)
   const [fromRoom, setFromRoom] = useState(
@@ -382,7 +382,7 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers, initialD
         availability: currentUserAvailability,
       },
     ]
-  }, [workersWithShifts, currentUser, shiftSchedules])
+  }, [workersWithShifts, currentUser, shiftSchedules, shiftOptions])
 
   const sortedStaff = useMemo(() => {
     const orderByStatus = (status: WorkerAvailability["status"]) => {
@@ -446,7 +446,8 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers, initialD
   const clearAssignedToError = () =>
     setErrors((prev) => {
       if (!prev.assignedTo) return prev
-      const { assignedTo: _removed, ...rest } = prev
+      const rest = { ...prev }
+      delete rest.assignedTo
       return rest
     })
 
@@ -683,8 +684,8 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers, initialD
       assignedTo,
       photoRequired: isOtherTask ? photoRequired : task.photoRequired,
       photoCount: isOtherTask ? photoCount : task.photoCount,
-      photoDocumentationRequired: isOtherTask ? photoDocumentationRequired : task.photoDocumentationRequired || false,
-      photoCategories: isOtherTask ? photoCategories : task.photoCategories || [],
+  photoDocumentationRequired,
+  photoCategories,
       //
       isCustomTask: isOtherTask,
       isRecurring: !isOtherTask && definitionIsRecurring,

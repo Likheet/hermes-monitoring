@@ -1,12 +1,11 @@
 "use client"
 
-import { useState } from "react"
+import { useRef, useState } from "react"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { AlertTriangle, X } from "lucide-react"
-import { SimplePhotoCapture } from "@/components/simple-photo-capture"
 import Image from "next/image"
 
 interface RaiseIssueModalProps {
@@ -18,6 +17,30 @@ interface RaiseIssueModalProps {
 export function RaiseIssueModal({ open, onOpenChange, onSubmit }: RaiseIssueModalProps) {
   const [issueDescription, setIssueDescription] = useState("")
   const [photos, setPhotos] = useState<string[]>([]) // Added photos state
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
+
+  const handleAddPhoto = () => {
+    fileInputRef.current?.click()
+  }
+
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    if (photos.length >= 5) {
+      event.target.value = ""
+      return
+    }
+
+    const reader = new FileReader()
+    reader.onloadend = () => {
+      const base64String = reader.result as string
+      setPhotos((prev) => [...prev, base64String])
+    }
+    reader.readAsDataURL(file)
+
+    event.target.value = ""
+  }
 
   const handleSubmit = () => {
     if (!issueDescription.trim()) return
@@ -26,10 +49,6 @@ export function RaiseIssueModal({ open, onOpenChange, onSubmit }: RaiseIssueModa
     setIssueDescription("")
     setPhotos([]) // Reset photos
     onOpenChange(false)
-  }
-
-  const handlePhotoCapture = (photoUrl: string) => {
-    setPhotos((prev) => [...prev, photoUrl])
   }
 
   const handleRemovePhoto = (index: number) => {
@@ -45,7 +64,7 @@ export function RaiseIssueModal({ open, onOpenChange, onSubmit }: RaiseIssueModa
             Raise Issue
           </DialogTitle>
           <DialogDescription>
-            Describe the issue you're facing with this task. You can also attach photos. This will be sent to both
+            Describe the issue you&apos;re facing with this task. You can also attach photos. This will be sent to both
             supervisor and front office.
           </DialogDescription>
         </DialogHeader>
@@ -66,11 +85,16 @@ export function RaiseIssueModal({ open, onOpenChange, onSubmit }: RaiseIssueModa
           <div>
             <Label>Attach Photos (Optional)</Label>
             <p className="text-xs text-muted-foreground mb-2">Add photos to help explain the issue</p>
-            <SimplePhotoCapture
-              onPhotoCapture={handlePhotoCapture}
-              label="Add Photo"
-              maxPhotos={5}
-              currentPhotoCount={photos.length}
+            <Button variant="outline" onClick={handleAddPhoto} disabled={photos.length >= 5}>
+              Add Photo
+            </Button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              onChange={handleFileChange}
+              className="hidden"
             />
           </div>
 

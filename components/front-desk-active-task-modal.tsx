@@ -34,14 +34,13 @@ import {
   ShieldCheck,
   User,
 } from "lucide-react"
+import { bucketToCategorizedPhotos, categorizedPhotosToBucket, type PhotoBucket } from "@/lib/photo-utils"
 
 interface FrontDeskActiveTaskModalProps {
   task: Task | null
   open: boolean
   onOpenChange: (open: boolean) => void
 }
-
-type PhotoBucket = Partial<Record<string, string[]>>
 
 const PRIORITY_STYLES: Record<string, string> = {
   GUEST_REQUEST: "bg-red-500 text-white",
@@ -62,7 +61,7 @@ type PendingAction = "start" | "pause" | "resume" | "complete" | null
 
 export function FrontDeskActiveTaskModal({ task, open, onOpenChange }: FrontDeskActiveTaskModalProps) {
   const { user } = useAuth()
-  const { tasks, users, startTask, pauseTask, resumeTask, completeTask } = useTasks()
+  const { tasks, users, startTask, pauseTask, resumeTask, completeTask, updateTask } = useTasks()
   const { toast } = useToast()
 
   const [pendingAction, setPendingAction] = useState<PendingAction>(null)
@@ -114,6 +113,52 @@ export function FrontDeskActiveTaskModal({ task, open, onOpenChange }: FrontDesk
 
     setElapsedTime(0)
   }, [activeTask?.id, activeTask?.status])
+
+  useEffect(() => {
+    if (!activeTask || !activeTask.photo_documentation_required) {
+      return
+    }
+
+    const hasPersistedPhotos = Boolean(
+      activeTask.categorized_photos &&
+        Object.values(activeTask.categorized_photos).some((value) => Array.isArray(value) && value.length > 0),
+    )
+
+    if (hasPersistedPhotos) {
+      return
+    }
+
+    let cancelled = false
+
+    const hydrate = async () => {
+      try {
+        const response = await fetch(`/api/tasks/${activeTask.id}`, {
+          method: "GET",
+          cache: "no-store",
+          credentials: "include",
+        })
+
+        if (!response.ok) {
+          return
+        }
+
+        const payload = (await response.json()) as { task?: Task }
+        if (cancelled || !payload?.task?.categorized_photos) {
+          return
+        }
+
+        setCategorizedPhotos(categorizedPhotosToBucket(payload.task.categorized_photos))
+      } catch (error) {
+        console.error("[front-desk] Failed to hydrate categorized photos", error)
+      }
+    }
+
+    void hydrate()
+
+    return () => {
+      cancelled = true
+    }
+  }, [activeTask?.id, activeTask?.photo_documentation_required])
 
   useEffect(() => {
     if (!open) {
@@ -417,12 +462,14 @@ export function FrontDeskActiveTaskModal({ task, open, onOpenChange }: FrontDesk
                 <CardContent>
                   <div className="grid grid-cols-3 gap-2">
                     {photos.map((photo, index) => (
-                      <img
-                        key={index}
-                        src={photo || "/placeholder.svg"}
-                        alt={`Photo ${index + 1}`}
-                        className="aspect-square w-full rounded-lg border object-cover"
-                      />
+                      <div key={index} className="aspect-square">
+                        {/* eslint-disable-next-line @next/next/no-img-element -- Photos come from the camera capture pipeline as data URLs */}
+                        <img
+                          src={photo || "/placeholder.svg"}
+                          alt={`Photo ${index + 1}`}
+                          className="h-full w-full rounded-lg border object-cover"
+                        />
+                      </div>
                     ))}
                   </div>
                 </CardContent>
@@ -590,88 +637,40 @@ export function FrontDeskActiveTaskModal({ task, open, onOpenChange }: FrontDesk
           onOpenChange={setShowCategorizedPhotoModal}
           taskId={activeTask.id}
           photoCategories={activeTask.photo_categories}
-          existingPhotos={categorizedPhotos ? bucketToRecord(categorizedPhotos) : undefined}
-          onSave={(nextPhotos) => {
+          existingPhotos={categorizedPhotos || undefined}
+          onSave={async (nextPhotos) => {
             setCategorizedPhotos(nextPhotos)
             setShowCategorizedPhotoModal(false)
-            toast({
-              title: "Photos updated",
-              description: "Photo documentation saved successfully.",
-            })
+
+            if (!activeTask) {
+              toast({
+                title: "Task unavailable",
+                description: "Unable to locate the active task to save photos.",
+                variant: "destructive",
+              })
+              return
+            }
+
+            const payload = bucketToCategorizedPhotos(nextPhotos)
+            const success = await updateTask(activeTask.id, { categorized_photos: payload })
+
+            if (success) {
+              toast({
+                title: "Photos updated",
+                description: "Photo documentation saved successfully.",
+              })
+            } else {
+              toast({
+                title: "Save failed",
+                description: "Could not persist photos. Please try again soon.",
+                variant: "destructive",
+              })
+            }
           }}
         />
       )}
     </>
   )
-}
-
-function categorizedPhotosToBucket(source: CategorizedPhotos): PhotoBucket {
-  const bucket: PhotoBucket = {}
-  const baseKeys: Array<keyof CategorizedPhotos> = [
-    "room_photos",
-    "proof_photos",
-    "before_photos",
-    "during_photos",
-    "after_photos",
-  ]
-
-  for (const key of baseKeys) {
-    const values = source[key]
-    if (Array.isArray(values) && values.length > 0) {
-      bucket[key as string] = values
-    }
-  }
-
-  if (source.dynamic_categories) {
-    for (const [key, values] of Object.entries(source.dynamic_categories)) {
-      if (Array.isArray(values) && values.length > 0) {
-        bucket[key] = values
-      }
-    }
-  }
-
-  return bucket
-}
-
-function bucketToCategorizedPhotos(bucket: PhotoBucket): CategorizedPhotos {
-  const {
-    room_photos = [],
-    proof_photos = [],
-    before_photos,
-    during_photos,
-    after_photos,
-    ...rest
-  } = bucket
-
-  const payload: CategorizedPhotos = {
-    room_photos,
-    proof_photos,
-  }
-
-  if (before_photos) payload.before_photos = before_photos
-  if (during_photos) payload.during_photos = during_photos
-  if (after_photos) payload.after_photos = after_photos
-
-  const dynamicEntries = Object.entries(rest).filter(([, values]) => Array.isArray(values) && values.length > 0)
-  if (dynamicEntries.length > 0) {
-    const dynamic: Record<string, string[]> = {}
-    for (const [key, values] of dynamicEntries) {
-      dynamic[key] = values as string[]
-    }
-    payload.dynamic_categories = dynamic
-  }
-
-  return payload
-}
-
-function bucketToRecord(bucket: PhotoBucket): Record<string, string[]> {
-  const record: Record<string, string[]> = {}
-  for (const [key, values] of Object.entries(bucket)) {
-    if (Array.isArray(values) && values.length > 0) {
-      record[key] = values
-    }
-  }
-  return record
 }
 
 function formatElapsed(seconds: number) {

@@ -5,7 +5,7 @@ export type { TaskCategory, Priority, RecurringFrequency } from "./task-definiti
 
 export type UserRole = "worker" | "supervisor" | "front_office" | "admin"
 export type Department = "housekeeping" | "maintenance" | "front_desk" | "admin" | "housekeeping-dept" | "maintenance-dept"
-export type TaskStatus = "PENDING" | "IN_PROGRESS" | "PAUSED" | "COMPLETED" | "REJECTED"
+export type TaskStatus = "PENDING" | "IN_PROGRESS" | "PAUSED" | "COMPLETED" | "REJECTED" | "VERIFIED"
 export type PriorityLevel = "GUEST_REQUEST" | "TIME_SENSITIVE" | "DAILY_TASK" | "PREVENTIVE_MAINTENANCE"
 
 // Dual timestamp structure for anti-tampering

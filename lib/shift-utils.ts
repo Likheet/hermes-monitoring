@@ -60,11 +60,6 @@ function getDatePartsForTimezone(date: Date, timezoneOffsetMinutes?: number) {
   }
 }
 
-function getCurrentMinutesForTimezone(date: Date, timezoneOffsetMinutes?: number) {
-  const { hours, minutes } = getDatePartsForTimezone(date, timezoneOffsetMinutes)
-  return hours * 60 + minutes
-}
-
 export function formatDateKeyForTimezone(date: Date, timezoneOffsetMinutes?: number) {
   const { year, month, day } = getDatePartsForTimezone(date, timezoneOffsetMinutes)
   const monthStr = month.toString().padStart(2, "0")
@@ -72,27 +67,21 @@ export function formatDateKeyForTimezone(date: Date, timezoneOffsetMinutes?: num
   return `${year}-${monthStr}-${dayStr}`
 }
 
-function formatTimeForLog(hours: number, minutes: number) {
-  return `${hours.toString().padStart(2, "0")}:${minutes.toString().padStart(2, "0")}`
-}
-
 const MAX_SINGLE_SHIFT_BREAK_MINUTES = 120
 const MAX_DUAL_SHIFT_BREAK_MINUTES = 240
 const MIN_INTER_SHIFT_BREAK_MINUTES = 1
 const MAX_INTER_SHIFT_BREAK_MINUTES = 1440
 
-type ShiftSegmentType = "WORK" | "BREAK"
-
 interface ShiftSegment {
-  type: ShiftSegmentType
-  shiftNumber?: 1 | 2
-  breakType?: WorkerBreakType
+  type: "WORK" | "BREAK"
+  shiftNumber: 1 | 2
   startMinutes: number
   endMinutes: number
   startTime: string
   endTime: string
   shiftStartTime?: string
   shiftEndTime?: string
+  breakType?: WorkerBreakType
 }
 
 interface ShiftEvaluationConfig {
@@ -1175,8 +1164,7 @@ export function calculateMonthlyAttendance(
   const monthNum = month.getMonth()
   const monthStr = `${year}-${(monthNum + 1).toString().padStart(2, "0")}`
 
-  // Get first and last day of month
-  const firstDay = new Date(year, monthNum, 1)
+  // Get last day of month
   const lastDay = new Date(year, monthNum + 1, 0)
   const totalDays = lastDay.getDate()
 

@@ -12,6 +12,8 @@ import type {
   PriorityLevel,
   TaskStatus,
   CategorizedPhotos,
+  TaskCategory,
+  Priority,
 } from "./types"
 
 export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[]
@@ -161,7 +163,7 @@ const STATUS_DB_TO_APP: Record<DatabaseTask["status"], TaskStatus> = {
   in_progress: "IN_PROGRESS",
   paused: "PAUSED",
   completed: "COMPLETED",
-  verified: "COMPLETED",
+  verified: "VERIFIED",
   rejected: "REJECTED",
 }
 
@@ -170,24 +172,33 @@ const STATUS_APP_TO_DB: Record<TaskStatus, DatabaseTask["status"]> = {
   IN_PROGRESS: "in_progress",
   PAUSED: "paused",
   COMPLETED: "completed",
+  VERIFIED: "verified",
   REJECTED: "rejected",
 }
 
 const PRIORITY_DB_TO_APP: Record<NonNullable<DatabaseTask["priority_level"]>, PriorityLevel> = {
   low: "DAILY_TASK",
   medium: "GUEST_REQUEST",
-  high: "TIME_SENSITIVE",
+  high: "PREVENTIVE_MAINTENANCE",
   urgent: "TIME_SENSITIVE",
 }
 
 const PRIORITY_APP_TO_DB: Record<PriorityLevel, DatabaseTask["priority_level"]> = {
-  GUEST_REQUEST: "medium",
-  TIME_SENSITIVE: "urgent",
   DAILY_TASK: "low",
+  GUEST_REQUEST: "medium",
   PREVENTIVE_MAINTENANCE: "high",
+  TIME_SENSITIVE: "urgent",
 }
 
 const TASK_STATUS_VALUES: TaskStatus[] = ["PENDING", "IN_PROGRESS", "PAUSED", "COMPLETED", "REJECTED"]
+const TASK_CATEGORY_VALUES: TaskCategory[] = [
+  "GUEST_REQUEST",
+  "ROOM_CLEANING",
+  "COMMON_AREA",
+  "PREVENTIVE_MAINTENANCE",
+  "TIME_SENSITIVE",
+]
+const PRIORITY_VALUES: Priority[] = ["urgent", "high", "medium", "low"]
 
 function normalizeDepartment(role: DatabaseUser["role"], department: DatabaseUser["department"]): Department {
   if (
@@ -222,20 +233,26 @@ function toTaskStatus(value: unknown): TaskStatus | null {
   return null
 }
 
-function toPriorityLevel(value: unknown): PriorityLevel {
+function toCustomTaskCategory(value: unknown): TaskCategory | null {
   if (typeof value === "string") {
-    const key = value.toLowerCase() as keyof typeof PRIORITY_DB_TO_APP
-    if (key in PRIORITY_DB_TO_APP) {
-      return PRIORITY_DB_TO_APP[key]
-    }
-
-    const uppercase = value.toUpperCase() as PriorityLevel
-    if ((["GUEST_REQUEST", "TIME_SENSITIVE", "DAILY_TASK", "PREVENTIVE_MAINTENANCE"] as string[]).includes(uppercase)) {
-      return uppercase as PriorityLevel
+    const upper = value.toUpperCase() as TaskCategory
+    if ((TASK_CATEGORY_VALUES as string[]).includes(upper)) {
+      return upper as TaskCategory
     }
   }
 
-  return "DAILY_TASK"
+  return null
+}
+
+function toCustomTaskPriority(value: unknown): Priority | null {
+  if (typeof value === "string") {
+    const lower = value.toLowerCase() as Priority
+    if ((PRIORITY_VALUES as string[]).includes(lower)) {
+      return lower as Priority
+    }
+  }
+
+  return null
 }
 
 function parseShiftTiming(raw: string | null) {
@@ -381,6 +398,30 @@ function parseDualTimestampJson(data: Json | null, fallback?: string | null): Du
   }
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null
+}
+
+function extractTimestampSource(raw: unknown): string | undefined {
+  if (typeof raw === "string") {
+    return raw
+  }
+
+  if (isRecord(raw)) {
+    const server = raw["server"]
+    if (typeof server === "string") {
+      return server
+    }
+
+    const client = raw["client"]
+    if (typeof client === "string") {
+      return client
+    }
+  }
+
+  return undefined
+}
+
 function parsePauseHistory(data: Json): PauseRecord[] {
   if (!data) return []
 
@@ -388,27 +429,35 @@ function parsePauseHistory(data: Json): PauseRecord[] {
     const value = typeof data === "string" ? JSON.parse(data) : data
     if (Array.isArray(value)) {
       return value
-        .map((entry) => {
-          const record = entry as Record<string, any>
-          const pausedRaw = record?.paused_at
-          const resumedRaw = record?.resumed_at
+        .map<PauseRecord | null>((entry) => {
+          if (!isRecord(entry)) {
+            return null
+          }
 
-          const pausedSource =
-            typeof pausedRaw === "string" ? pausedRaw : pausedRaw?.server ?? pausedRaw?.client ?? undefined
-          const resumedSource =
-            resumedRaw === null
-              ? null
-              : typeof resumedRaw === "string"
-                ? resumedRaw
-                : resumedRaw?.server ?? resumedRaw?.client ?? undefined
+          const pausedSource = extractTimestampSource(entry["paused_at"])
+          if (!pausedSource) {
+            return null
+          }
+
+          const resumedRaw = entry["resumed_at"]
+          let resumedTimestamp: DualTimestamp | null = null
+
+          if (resumedRaw === null) {
+            resumedTimestamp = null
+          } else {
+            const resumedSource = extractTimestampSource(resumedRaw)
+            resumedTimestamp = resumedSource ? toDualTimestamp(resumedSource) : null
+          }
+
+          const reasonRaw = entry["reason"]
 
           return {
             paused_at: toDualTimestamp(pausedSource),
-            resumed_at: resumedSource === null ? null : resumedSource ? toDualTimestamp(resumedSource) : null,
-            reason: typeof record?.reason === "string" ? record.reason : "",
+            resumed_at: resumedTimestamp,
+            reason: typeof reasonRaw === "string" ? reasonRaw : "",
           }
         })
-        .filter((entry): entry is PauseRecord => Boolean(entry.paused_at))
+        .filter((entry): entry is PauseRecord => entry !== null)
     }
   } catch (error) {
     console.warn("pause_history JSON parse failed, defaulting to empty array:", error)
@@ -424,24 +473,32 @@ function parseAuditLog(data: Json): AuditLogEntry[] {
     const value = typeof data === "string" ? JSON.parse(data) : data
     if (Array.isArray(value)) {
       return value
-        .map((entry) => {
-          const record = entry as Record<string, any>
-          const timestampRaw = record?.timestamp
-          const timestampSource =
-            typeof timestampRaw === "string"
-              ? timestampRaw
-              : timestampRaw?.server ?? timestampRaw?.client ?? undefined
+        .map<AuditLogEntry | null>((entry) => {
+          if (!isRecord(entry)) {
+            return null
+          }
+
+          const timestampSource = extractTimestampSource(entry["timestamp"])
+          if (!timestampSource) {
+            return null
+          }
+
+          const userIdRaw = entry["user_id"]
+          const actionRaw = entry["action"]
+          const oldStatusRaw = entry["old_status"]
+          const newStatusRaw = entry["new_status"]
+          const detailsRaw = entry["details"]
 
           return {
             timestamp: toDualTimestamp(timestampSource),
-            user_id: typeof record?.user_id === "string" ? record.user_id : "",
-            action: typeof record?.action === "string" ? record.action : "",
-            old_status: toTaskStatus(record?.old_status),
-            new_status: toTaskStatus(record?.new_status),
-            details: typeof record?.details === "string" ? record.details : "",
+            user_id: typeof userIdRaw === "string" ? userIdRaw : "",
+            action: typeof actionRaw === "string" ? actionRaw : "",
+            old_status: toTaskStatus(oldStatusRaw),
+            new_status: toTaskStatus(newStatusRaw),
+            details: typeof detailsRaw === "string" ? detailsRaw : "",
           }
         })
-        .filter((entry): entry is AuditLogEntry => Boolean(entry.action))
+        .filter((entry): entry is AuditLogEntry => entry !== null && Boolean(entry.action))
     }
   } catch (error) {
     console.warn("audit_log JSON parse failed, defaulting to empty array:", error)
@@ -492,10 +549,12 @@ function parsePhotoRequirements(data: Json): {
       }
     }
 
-    if (value && typeof value === "object") {
-      const simple = (value as Record<string, any>).simple
-      const simpleRequired = Boolean(simple?.required)
-      const simpleCount = typeof simple?.count === "number" ? simple.count : null
+    if (isRecord(value)) {
+      const simpleRaw = value["simple"]
+      const simpleRecord = isRecord(simpleRaw) ? simpleRaw : null
+      const simpleRequired = Boolean(simpleRecord?.["required"])
+      const simpleCountValue = simpleRecord?.["count"]
+      const simpleCount = typeof simpleCountValue === "number" ? simpleCountValue : null
 
       return {
         simpleRequired,
@@ -582,8 +641,8 @@ export function databaseTaskToApp(dbTask: DatabaseTask): Task {
     audit_log: auditLog,
     is_custom_task: dbTask.is_custom_task ?? false,
     custom_task_name: dbTask.custom_task_name ?? null,
-    custom_task_category: dbTask.custom_task_category ?? null,
-    custom_task_priority: dbTask.custom_task_priority ?? null,
+  custom_task_category: toCustomTaskCategory(dbTask.custom_task_category),
+  custom_task_priority: toCustomTaskPriority(dbTask.custom_task_priority),
     custom_task_photo_required: dbTask.custom_task_photo_required ?? null,
     custom_task_photo_count: dbTask.custom_task_photo_count ?? null,
     custom_task_processed: false,

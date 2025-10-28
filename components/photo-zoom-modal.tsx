@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { Loader2, AlertCircle } from "lucide-react"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { TaskImage } from "@/components/task-image"
 
 interface PhotoZoomModalProps {
   open: boolean
@@ -35,9 +36,11 @@ export function PhotoZoomModal({ open, onOpenChange, photoUrl, alt = "Task photo
             </div>
           )}
           {!error && (
-            <img
-              src={photoUrl || "/placeholder.svg"}
+            <TaskImage
+              src={photoUrl}
               alt={alt}
+              width={1280}
+              height={960}
               className="max-h-[80vh] w-auto object-contain"
               onLoad={() => setLoading(false)}
               onError={() => {

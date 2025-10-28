@@ -83,8 +83,9 @@ export function PhotoCaptureModal({
           fileInputRef.current.value = ""
         }
       }
-    } catch (err: any) {
-      setError(err.message || "Failed to upload photo. Please try again.")
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Failed to upload photo. Please try again."
+      setError(message)
       triggerErrorHaptic()
       console.error("Photo upload error:", err)
     } finally {
@@ -154,6 +155,7 @@ export function PhotoCaptureModal({
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                 {capturedPhotos.map((photo, index) => (
                   <div key={index} className="relative">
+                    {/* eslint-disable-next-line @next/next/no-img-element -- Captured photos are in-memory data URLs */}
                     <img
                       src={photo || "/placeholder.svg"}
                       alt={`Captured ${index + 1}`}
@@ -204,6 +206,7 @@ export function PhotoCaptureModal({
             </div>
           ) : (
             <div className="space-y-4">
+              {/* eslint-disable-next-line @next/next/no-img-element -- Camera preview relies on data URLs */}
               <img
                 src={currentPhoto || "/placeholder.svg"}
                 alt="Current"

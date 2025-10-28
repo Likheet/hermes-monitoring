@@ -108,7 +108,7 @@ export function MaintenanceScheduleHelp() {
             <ol className="space-y-2 text-sm text-blue-800 ml-8">
               <li className="flex items-start gap-2">
                 <span className="font-semibold min-w-[20px]">1.</span>
-                <span>Click the "Create Schedule" button to open the schedule form</span>
+                <span>Click the &quot;Create Schedule&quot; button to open the schedule form</span>
               </li>
               <li className="flex items-start gap-2">
                 <span className="font-semibold min-w-[20px]">2.</span>
@@ -164,7 +164,7 @@ export function MaintenanceScheduleHelp() {
               <li className="flex items-start gap-2">
                 <span className="text-amber-600 font-bold">•</span>
                 <span>
-                  <strong>Use Quick Setup:</strong> For standard configurations, use the "Generate Monthly Template"
+                  <strong>Use Quick Setup:</strong> For standard configurations, use the &quot;Generate Monthly Template&quot;
                   button to create all common schedules at once
                 </span>
               </li>

@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { ArrowLeft, AlertCircle } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
-import type { PriorityLevel, Priority, Department } from "@/lib/types"
+import type { PriorityLevel, Priority, Department, Task } from "@/lib/types"
 import { TaskSearch } from "@/components/task-search"
 import type { TaskDefinition, TaskCategory } from "@/lib/task-definitions"
 import { TaskAssignmentForm, type TaskAssignmentData } from "@/components/task-assignment-form"
@@ -30,7 +30,7 @@ function CreateTaskForm() {
   const { toast } = useToast()
 
   const [selectedTaskDef, setSelectedTaskDef] = useState<TaskDefinition | null>(null)
-  const [rejectedTask, setRejectedTask] = useState<any>(null)
+  const [rejectedTask, setRejectedTask] = useState<Task | null>(null)
   const hasLoadedRejectedTask = useRef(false)
 
   const workers = users.filter((u) => u.role === "worker" || u.role === "front_office")

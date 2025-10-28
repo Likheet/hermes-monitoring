@@ -51,6 +51,7 @@ import {
 import { validateDualShiftTimes, getWorkerShiftForDate } from "@/lib/shift-utils"
 import { WeeklyScheduleView } from "@/components/shift/weekly-schedule-view"
 import { ReassignTaskModal } from "@/components/reassign-task-modal"
+import { TaskImage } from "@/components/task-image"
 import { EditTaskModal } from "@/components/edit-task-modal"
 import { FrontDeskActiveTaskModal } from "@/components/front-desk-active-task-modal"
 import type { Task, User } from "@/lib/types"
@@ -90,7 +91,7 @@ function FrontOfficeDashboard() {
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const { toast } = useToast()
-  const { isConnected } = useRealtimeTasks({ enabled: true })
+  useRealtimeTasks({ enabled: true })
 
   const [activeTab, setActiveTab] = useState<FrontOfficeTab>(() => {
     const initialTab = searchParams.get("tab")
@@ -161,7 +162,8 @@ function FrontOfficeDashboard() {
     }
   }
 
-  const createShiftDraft = (worker: User): ShiftDraft => {
+  const createShiftDraft = useCallback(
+    (worker: User): ShiftDraft => {
     const todayShift = getWorkerShiftForDate(worker, today, shiftSchedules)
     const hasSecondShift = Boolean(
       (todayShift.is_dual_shift || todayShift.has_shift_2) && todayShift.shift_2_start && todayShift.shift_2_end,
@@ -172,22 +174,23 @@ function FrontOfficeDashboard() {
       (hasSecondShift ? todayShift.shift_2_start || todayShift.break_start || "14:00" : todayShift.shift_end || "17:00")
     const shift2Start = hasSecondShift ? todayShift.shift_2_start || todayShift.break_end || shift1End : ""
     const shift2End = hasSecondShift ? todayShift.shift_2_end || todayShift.shift_end || shift1End : ""
-
-    return normalizeShiftDraft({
-      shift1Start,
-      shift1End,
-      hasSecondShift,
-      shift2Start,
-      shift2End,
-    })
-  }
+      return normalizeShiftDraft({
+        shift1Start,
+        shift1End,
+        hasSecondShift,
+        shift2Start,
+        shift2End,
+      })
+    },
+    [shiftSchedules, today],
+  )
 
   const [editingShifts, setEditingShifts] = useState<Record<string, ShiftDraft>>(
     Object.fromEntries(workers.map((w) => [w.id, createShiftDraft(w)])),
   )
   const [dirtyWorkers, setDirtyWorkers] = useState<Record<string, boolean>>({})
 
-  const buildShiftTemplate = (worker: User): ShiftDraft => createShiftDraft(worker)
+  const buildShiftTemplate = useCallback((worker: User): ShiftDraft => createShiftDraft(worker), [createShiftDraft])
 
   const shiftsAreEqual = (a: ShiftDraft, b: ShiftDraft) =>
     a.shift1Start === b.shift1Start &&
@@ -245,7 +248,7 @@ function FrontOfficeDashboard() {
 
       return mutated ? next : prev
     })
-  }, [workers, shiftSchedules, dirtyWorkers, today])
+  }, [workers, shiftSchedules, dirtyWorkers, today, buildShiftTemplate])
 
   useEffect(() => {
     setDirtyWorkers((prev) => {
@@ -764,7 +767,7 @@ function FrontOfficeDashboard() {
                                 <div className="flex items-center gap-2">
                                   <Clock className="h-4 w-4" />
                                   <span>
-                                    Today's Schedule:{" "}
+                                    Today&apos;s Schedule:{" "}
                                     {isOffDuty
                                       ? "Off Duty"
                                       : shiftSegments.length > 0
@@ -954,10 +957,12 @@ function FrontOfficeDashboard() {
                         <Card className={`overflow-hidden hover:shadow-md transition-shadow cursor-pointer ${priorityBorderColors[verificationPriority]}`}>
                           {primaryPhoto && (
                             <div className="relative h-40 w-full border-b border-border bg-muted">
-                              <img
-                                src={primaryPhoto || "/placeholder.svg"}
+                              <TaskImage
+                                src={primaryPhoto}
                                 alt={`${task.task_type} documentation preview`}
-                                className="h-full w-full object-cover"
+                                fill
+                                className="object-cover"
+                                sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
                               />
                               {proofPhotoUrls.length > 0 && (
                                 <span className="absolute bottom-2 left-2 rounded-full bg-black/60 px-2 py-1 text-xs font-medium text-white">
@@ -1379,7 +1384,7 @@ function FrontOfficeDashboard() {
                         key={issue.id}
                         issue={issue}
                         task={task}
-                        onResolve={(issueId) => {
+                        onResolve={() => {
                         }}
                       />
                     )

@@ -50,11 +50,6 @@ export default function MaintenanceRoomPage() {
     router.push(`/worker/maintenance/${roomNumber}/${taskType}/${encodeURIComponent(location)}`)
   }
 
-  const getTaskStatusForLocation = (taskType: string, location: string) => {
-    const task = tasks.find((t) => t.task_type === taskType && t.location === location)
-    return task?.status || "pending"
-  }
-
   if (tasks.length === 0) {
     return (
       <div className="min-h-screen bg-muted/30">

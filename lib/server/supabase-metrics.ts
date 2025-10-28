@@ -1,15 +1,7 @@
 import { createClient } from "@supabase/supabase-js"
-import type { Json } from "@/lib/types"
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
-
-interface StatRow {
-  tag: string
-  total_time: number
-  calls: number
-  rows: number
-}
 
 export interface QueryMetric {
   name: string
@@ -17,10 +9,6 @@ export interface QueryMetric {
   totalMs: number
   avgMs: number
   rows: number
-}
-
-function isValueDefined<T>(value: T | undefined | null): value is T {
-  return typeof value !== "undefined" && value !== null
 }
 
 function toMillis(value: number): number {
@@ -52,7 +40,7 @@ export async function fetchQueryMetrics(): Promise<QueryMetric[]> {
 
   return data
     .flatMap<QueryMetric>((row) => {
-      const jsonRow = row as Record<string, Json>
+      const jsonRow = row as Record<string, unknown>
       const tag = jsonRow.tag
       const totalTime = jsonRow.total_time
       const calls = jsonRow.calls

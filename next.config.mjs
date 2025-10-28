@@ -12,7 +12,13 @@ const nextConfig = {
     ignoreBuildErrors: true,
   },
   images: {
-    unoptimized: true,
+    remotePatterns: [
+      {
+        protocol: "https",
+        hostname: "wtfnntauwvsgohfmhgyo.supabase.co",
+        pathname: "/storage/v1/object/public/task-photos/**",
+      },
+    ],
   },
   ...(process.env.NODE_ENV === 'production' && {
     experimental: {
@@ -23,10 +29,6 @@ const nextConfig = {
 
 const nextVersion =
   pkg.dependencies?.next ?? pkg.devDependencies?.next ?? process.env.npm_package_dependencies_next ?? "unknown"
-console.log("Node.js version:", process.version)
-console.log("Next.js version:", nextVersion)
-console.log("NODE_ENV:", process.env.NODE_ENV)
-console.log("Starting PWA configuration...")
 
 let finalConfig = nextConfig
 

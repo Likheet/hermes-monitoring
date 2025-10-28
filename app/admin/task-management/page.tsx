@@ -23,7 +23,14 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { ArrowLeft, Plus, Trash2, Search, AlertCircle, CheckCircle, Clock, MapPin, Camera, Edit, Repeat } from "lucide-react"
 import { CATEGORY_LABELS, CATEGORY_COLORS } from "@/lib/task-definitions"
-import type { TaskCategory, Department, Priority, PhotoCategory, RecurringFrequency } from "@/lib/task-definitions"
+import type {
+  TaskCategory,
+  Department,
+  Priority,
+  PhotoCategory,
+  RecurringFrequency,
+  TaskDefinition,
+} from "@/lib/task-definitions"
 import type { Task } from "@/lib/types"
 import {
   getCustomTaskDefinitions,
@@ -52,9 +59,9 @@ function TaskManagementPage() {
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedCategory, setSelectedCategory] = useState<TaskCategory | "ALL">("ALL")
   const [customTaskDefs, setCustomTaskDefs] = useState<CustomTaskDefinition[]>([])
-  const [allTaskDefs, setAllTaskDefs] = useState<any[]>([])
+  const [allTaskDefs, setAllTaskDefs] = useState<(TaskDefinition | CustomTaskDefinition)[]>([])
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
-  const [editingTask, setEditingTask] = useState<any>(null)
+  const [editingTask, setEditingTask] = useState<(TaskDefinition | CustomTaskDefinition) | null>(null)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
 
   const createDefaultNewTaskForm = () => ({
@@ -97,6 +104,8 @@ function TaskManagementPage() {
     
     loadTaskDefinitions()
   }, [])
+
+  type TaskWithCustomCategories = Task & { custom_task_photo_categories?: PhotoCategory[] | null }
 
   const customTasks = tasks.filter(
     (task) =>
@@ -176,6 +185,7 @@ function TaskManagementPage() {
       priority: newTaskForm.priority,
       photoRequired: newTaskForm.photoRequired,
       photoCount: newTaskForm.photoCount,
+      photoDocumentationRequired: newTaskForm.photoDocumentationRequired,
       photoCategories: newTaskForm.photoCategories.length > 0 ? newTaskForm.photoCategories : undefined,
       keywords: keywordsArray,
       requiresRoom: newTaskForm.requiresRoom,
@@ -217,12 +227,19 @@ function TaskManagementPage() {
   }
 
   const openAddDialogWithCustomTask = (task: Task) => {
+    const taskWithCategories = task as TaskWithCustomCategories
     const name = task.custom_task_name || task.task_type
     const category = (task.custom_task_category as TaskCategory) || "GUEST_REQUEST"
     const priority = (task.custom_task_priority as Priority) || "medium"
     const photoRequiredValue = task.custom_task_photo_required ?? task.photo_required ?? false
     const photoRequired = !!photoRequiredValue
     const photoCount = task.custom_task_photo_count ?? (photoRequired ? Math.max(1, task.photo_urls.length || 1) : 0)
+    const photoCategories =
+      taskWithCategories.custom_task_photo_categories ?? task.photo_categories ?? ([] as PhotoCategory[])
+    const photoDocumentationRequired =
+      (Array.isArray(taskWithCategories.custom_task_photo_categories) &&
+        taskWithCategories.custom_task_photo_categories.length > 0) ||
+      Boolean(task.photo_documentation_required)
     const isRecurring = Boolean(task.custom_task_is_recurring)
     const recurringFrequency = (task.custom_task_recurring_frequency || "") as RecurringFrequency | ""
     const requiresSpecificTime = Boolean(task.custom_task_requires_specific_time)
@@ -236,11 +253,12 @@ function TaskManagementPage() {
       priority,
       photoRequired,
       photoCount,
+      photoDocumentationRequired,
+      photoCategories,
       keywords: name.toLowerCase(),
       requiresRoom: !!task.room_number,
       requiresACLocation: false,
       sourceTaskId: task.id,
-      photoCategories: task.custom_task_photo_categories || [],
       isRecurring,
       recurringFrequency,
       requiresSpecificTime,
@@ -280,7 +298,7 @@ function TaskManagementPage() {
     }
   }
 
-  const handleEditTask = (task: any) => {
+  const handleEditTask = (task: TaskDefinition | CustomTaskDefinition) => {
     setEditingTask(task)
     setIsEditDialogOpen(true)
   }
@@ -580,7 +598,7 @@ function TaskManagementPage() {
             </CardHeader>
             <CardContent>
               <p className="text-sm text-muted-foreground mb-4">
-                Front-office staff have created custom tasks that aren't in the standard library. Review them below and
+                Front-office staff have created custom tasks that aren&apos;t in the standard library. Review them below and
                 add them as permanent task types. Click any request to auto-fill the creation form with its details.
               </p>
             </CardContent>
@@ -666,7 +684,7 @@ function TaskManagementPage() {
                               {task.worker_remark && (
                                 <div className="p-3 bg-muted rounded-lg">
                                   <p className="text-sm text-muted-foreground">Additional Details:</p>
-                                  <p className="text-sm mt-1">"{task.worker_remark}"</p>
+                                  <p className="text-sm mt-1">&quot;{task.worker_remark}&quot;</p>
                                 </div>
                               )}
 
@@ -714,7 +732,7 @@ function TaskManagementPage() {
                   <CheckCircle className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
                   <h3 className="text-lg font-semibold mb-2">No Custom Task Requests</h3>
                   <p className="text-sm text-muted-foreground">
-                    When front-office creates custom tasks, they'll appear here for review.
+                    When front-office creates custom tasks, they&apos;ll appear here for review.
                   </p>
                 </CardContent>
               </Card>

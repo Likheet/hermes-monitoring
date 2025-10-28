@@ -277,6 +277,7 @@ export function RatingModal({ open, onOpenChange, onSubmit, taskId }: RatingModa
 
               {proofPhoto && (
                 <div className="relative">
+                  {/* eslint-disable-next-line @next/next/no-img-element -- Camera capture preview relies on data URLs for instant feedback */}
                   <img
                     src={proofPhoto || "/placeholder.svg"}
                     alt="Proof"

@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { ProtectedRoute } from "@/components/protected-route"
 import { useAuth } from "@/lib/auth-context"
 import { useTasks } from "@/lib/task-context"
@@ -40,7 +40,7 @@ function ShiftManagement() {
 
   const [offDutyStatus, setOffDutyStatus] = useState<Record<string, boolean>>({})
 
-  const normalizeShiftState = (state: ShiftEditorState): ShiftEditorState => {
+  const normalizeShiftState = useCallback((state: ShiftEditorState): ShiftEditorState => {
     const hasSecondShift = Boolean(state.hasSecondShift && state.shift2Start && state.shift2End)
     return {
       shift1Start: state.shift1Start,
@@ -49,7 +49,7 @@ function ShiftManagement() {
       shift2Start: hasSecondShift ? state.shift2Start : "",
       shift2End: hasSecondShift ? state.shift2End : "",
     }
-  }
+  }, [])
 
   const updateEditingShift = (workerId: string, updates: Partial<ShiftEditorState>) => {
     setEditingShifts((prev) => {
@@ -109,7 +109,7 @@ function ShiftManagement() {
 
     setEditingShifts(nextEditing)
     setOffDutyStatus(nextOffDuty)
-  }, [shiftSchedules, today, workers])
+  }, [shiftSchedules, today, workers, normalizeShiftState])
 
   const handleSaveShift = (workerId: string) => {
     const shift = editingShifts[workerId]
@@ -467,7 +467,7 @@ function ShiftManagement() {
                             <div className="flex items-center gap-2">
                               <Clock className="h-4 w-4" />
                               <span>
-                                Today's Schedule:{" "}
+                                Today&apos;s Schedule:{" "}
                                 {isOffDuty
                                   ? "Off Duty"
                                   : shiftSegments.length > 0

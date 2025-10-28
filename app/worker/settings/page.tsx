@@ -21,28 +21,35 @@ interface UserPreferences {
   auto_logout_minutes: number
 }
 
+const DEFAULT_PREFERENCES: UserPreferences = {
+  theme: "system",
+  notifications_enabled: true,
+  sound_enabled: true,
+  haptic_enabled: true,
+  auto_logout_minutes: 480,
+}
+
 function SettingsPage() {
-  const { user, logout } = useAuth()
+  const { logout } = useAuth()
   const router = useRouter()
   const { toast } = useToast()
 
-  const [preferences, setPreferences] = useState<UserPreferences>({
-    theme: "system",
-    notifications_enabled: true,
-    sound_enabled: true,
-    haptic_enabled: true,
-    auto_logout_minutes: 480,
-  })
+  const [preferences, setPreferences] = useState<UserPreferences>(() => ({ ...DEFAULT_PREFERENCES }))
 
   useEffect(() => {
-    // Load preferences from localStorage for now (will use database later)
     const saved = localStorage.getItem("user-preferences")
     if (saved) {
-      setPreferences(JSON.parse(saved))
+      try {
+        const parsed = JSON.parse(saved) as UserPreferences
+        setPreferences(parsed)
+        applyTheme(parsed.theme)
+        return
+      } catch (error) {
+        console.warn("[settings] Failed to parse user preferences from storage", error)
+      }
     }
 
-    // Apply theme
-    applyTheme(preferences.theme)
+    applyTheme(DEFAULT_PREFERENCES.theme)
   }, [])
 
   const applyTheme = (theme: "light" | "dark" | "system") => {
@@ -109,7 +116,10 @@ function SettingsPage() {
                   <p className="text-sm text-muted-foreground">Choose your preferred theme</p>
                 </div>
               </div>
-              <Select value={preferences.theme} onValueChange={(value: any) => updatePreference("theme", value)}>
+              <Select
+                value={preferences.theme}
+                onValueChange={(value) => updatePreference("theme", value as UserPreferences["theme"])}
+              >
                 <SelectTrigger className="w-32">
                   <SelectValue />
                 </SelectTrigger>

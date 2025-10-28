@@ -27,14 +27,7 @@ function HandoverPage() {
 
   const pendingHandovers = activeTasks.filter((task) => !submittedTasks.has(task.id))
 
-  const handleHandoverSubmit = (
-    taskId: string,
-    data: {
-      statusUpdate: string
-      priorityChanged: boolean
-      handoverNotes: string
-    },
-  ) => {
+  const handleHandoverSubmit = (taskId: string) => {
     // In real implementation, this would call an API to save handover
 
     setSubmittedTasks((prev) => new Set(prev).add(taskId))
@@ -117,7 +110,7 @@ function HandoverPage() {
 
       <main className="container mx-auto px-4 py-6 max-w-2xl space-y-6">
         {pendingHandovers.map((task) => (
-          <HandoverForm key={task.id} task={task} onSubmit={(data) => handleHandoverSubmit(task.id, data)} />
+          <HandoverForm key={task.id} task={task} onSubmit={() => handleHandoverSubmit(task.id)} />
         ))}
       </main>
     </div>

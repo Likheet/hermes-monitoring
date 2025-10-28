@@ -8,7 +8,6 @@ import { createNotification, playNotificationSound } from "./notification-utils"
 import { triggerHapticFeedback } from "./haptics"
 import { ALL_ROOMS, getMaintenanceItemsForRoom } from "./location-data"
 import { useRealtimeTasks, type TaskRealtimePayload } from "./use-realtime-tasks"
-import type { hashPassword } from "./auth-utils"
 import { useAuth } from "./auth-context"
 import { databaseTaskToApp, type DatabaseTask } from "./database-types"
 import { createClient } from "./supabase/client"
@@ -147,7 +146,7 @@ interface TaskContextType {
   isBusy: boolean
   usersLoaded: boolean
   usersLoadError: boolean
-  updateTask: (taskId: string, updates: Partial<Task>) => Promise<void>
+  updateTask: (taskId: string, updates: Partial<Task>) => Promise<boolean>
   addAuditLog: (taskId: string, entry: Omit<AuditLogEntry, "timestamp">) => void
   startTask: (taskId: string, userId: string) => Promise<{ success: boolean; error?: string }>
   pauseTask: (
@@ -234,11 +233,6 @@ export function TaskProvider({
   const [shiftSchedules, setShiftSchedules] = useState<ShiftSchedule[]>(() => sanitizedInitialShiftSchedules ?? [])
   const [usersLoaded, setUsersLoaded] = useState(Boolean(sanitizedInitialUsers))
   const [usersLoadError, setUsersLoadError] = useState(false)
-  const hasInitialPayload =
-    (sanitizedInitialTasks?.length ?? 0) > 0 ||
-    (sanitizedInitialUsers?.length ?? 0) > 0 ||
-    (sanitizedInitialShiftSchedules?.length ?? 0) > 0
-  const [isLoading, setIsLoading] = useState(!hasInitialPayload)
   const [activeRequests, setActiveRequests] = useState(0)
   const [, startRealtimeTransition] = useTransition()
   const lastTasksFetchRef = useRef(bootstrapMeta?.tasksFetchedAt ?? 0)
@@ -347,7 +341,10 @@ export function TaskProvider({
 
       const execute = async () => {
         try {
-          const data = await loadTasksFromSupabase({ ...loadOptions, includePhotos: true })
+          const data = await loadTasksFromSupabase({
+            ...loadOptions,
+            includePhotos: loadOptions.includePhotos ?? false,
+          })
           const limited = data.length > MAX_CACHED_TASKS ? data.slice(0, MAX_CACHED_TASKS) : data
           setTasks(limited)
           persistToStorage(STORAGE_KEYS.tasks, limited)
@@ -649,8 +646,6 @@ export function TaskProvider({
   }, [isConnected])
 
   useEffect(() => {
-    setIsLoading(false)
-
     void (async () => {
       try {
         await refreshDashboardSnapshot({ useGlobalLoader: false })
@@ -672,7 +667,7 @@ export function TaskProvider({
   }, [])
 
   const updateTask = async (taskId: string, updates: Partial<Task>) => {
-    await runWithGlobalLoading(async () => {
+    return runWithGlobalLoading(async () => {
       try {
         const response = await fetch(`/api/tasks/${taskId}`, {
           method: "PATCH",
@@ -701,11 +696,14 @@ export function TaskProvider({
             }),
           )
           console.log("[v0] Task updated successfully via API:", taskId)
+          return true
         } else {
           console.error("[v0] Failed to update task via API:", await response.text())
+          return false
         }
       } catch (error) {
         console.error("[v0] Error updating task:", error)
+        return false
       }
     })
   }

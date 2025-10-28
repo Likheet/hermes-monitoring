@@ -510,7 +510,7 @@ function ProfilePage() {
                           )}
                           {task.quality_comment && (
                             <p className="text-sm sm:text-sm text-muted-foreground italic truncate">
-                              "{task.quality_comment}"
+                              &quot;{task.quality_comment}&quot;
                             </p>
                           )}
                         </div>

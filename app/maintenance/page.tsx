@@ -19,7 +19,7 @@ function MaintenanceDashboard() {
   const { maintenanceTasks, tasks } = useTasks()
   const router = useRouter()
 
-  const { isConnected } = useRealtimeTasks({
+  useRealtimeTasks({
     enabled: true,
     filter: { department: user?.department },
   })

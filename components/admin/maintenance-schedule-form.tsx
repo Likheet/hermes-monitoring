@@ -53,18 +53,6 @@ export function MaintenanceScheduleForm({ schedule, onClose, onSave }: ScheduleF
     }
   }
 
-  const getRoomCount = () => {
-    if (taskType === "lift") return "4 lifts"
-    if (taskType === "all") {
-      if (area === "both") return "102 rooms (all tasks)"
-      if (area === "a_block") return "60 rooms (all tasks)"
-      return "42 rooms (all tasks)"
-    }
-    if (area === "both") return "102 rooms"
-    if (area === "a_block") return "60 rooms"
-    return "42 rooms"
-  }
-
   const getTaskCount = () => {
     if (taskType === "lift") return "4 tasks"
     const roomCount = area === "both" ? 102 : area === "a_block" ? 60 : 42

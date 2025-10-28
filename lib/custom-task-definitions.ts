@@ -1,12 +1,22 @@
-import type { TaskDefinition } from "./task-definitions"
+import type { TaskCategory, Priority, TaskDefinition } from "./task-definitions"
 import { TASK_DEFINITIONS } from "./task-definitions"
 import { createClient } from "./supabase/client"
-import type { Task } from "./types"
 
 export interface CustomTaskDefinition extends TaskDefinition {
   isCustom: true
   createdBy: string
   createdAt: string
+}
+
+type CustomTaskRow = {
+  task_type: string
+  custom_task_name: string | null
+  custom_task_category: TaskCategory | null
+  custom_task_priority: Priority | null
+  custom_task_photo_required: boolean | null
+  custom_task_photo_count: number | null
+  created_at: string
+  assigned_by_user_id: string | null
 }
 
 export async function getCustomTaskDefinitions(): Promise<CustomTaskDefinition[]> {
@@ -16,7 +26,9 @@ export async function getCustomTaskDefinitions(): Promise<CustomTaskDefinition[]
     const supabase = createClient()
     const { data, error } = await supabase
       .from("tasks")
-      .select("task_type, custom_task_name, custom_task_category, custom_task_priority, custom_task_photo_required, custom_task_photo_count, created_at, assigned_by_user_id")
+      .select(
+        "task_type, custom_task_name, custom_task_category, custom_task_priority, custom_task_photo_required, custom_task_photo_count, created_at, assigned_by_user_id",
+      )
       .eq("is_custom_task", true)
       .order("created_at", { ascending: false })
 
@@ -32,11 +44,13 @@ export async function getCustomTaskDefinitions(): Promise<CustomTaskDefinition[]
     }
 
     // Convert database records to CustomTaskDefinition format
-    const customTasks: CustomTaskDefinition[] = data.map((task: any) => ({
+  const rows = (data ?? []) as CustomTaskRow[]
+
+  const customTasks: CustomTaskDefinition[] = rows.map((task) => ({
       id: `custom-db-${task.task_type}`,
       name: task.custom_task_name || task.task_type,
-      category: (task.custom_task_category as any) || "GUEST_REQUEST",
-      priority: (task.custom_task_priority as any) || "medium",
+      category: task.custom_task_category ?? "GUEST_REQUEST",
+      priority: task.custom_task_priority ?? "medium",
       department: "housekeeping",
       duration: 30, // Default duration
       photoRequired: task.custom_task_photo_required || false,
@@ -51,7 +65,7 @@ export async function getCustomTaskDefinitions(): Promise<CustomTaskDefinition[]
       requiresSpecificTime: false,
       recurringTime: undefined,
       isCustom: true,
-      createdBy: task.assigned_by_user_id,
+      createdBy: task.assigned_by_user_id ?? "unknown",
       createdAt: task.created_at,
     }))
 

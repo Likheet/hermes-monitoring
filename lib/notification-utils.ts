@@ -153,7 +153,14 @@ export function playNotificationSound() {
 
   try {
     // Create a simple beep sound using Web Audio API
-    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)()
+    const extendedWindow = window as Window & { webkitAudioContext?: typeof AudioContext }
+    const AudioContextConstructor = window.AudioContext ?? extendedWindow.webkitAudioContext
+
+    if (!AudioContextConstructor) {
+      return
+    }
+
+    const audioContext = new AudioContextConstructor()
     const oscillator = audioContext.createOscillator()
     const gainNode = audioContext.createGain()
 
@@ -168,6 +175,7 @@ export function playNotificationSound() {
 
     oscillator.start(audioContext.currentTime)
     oscillator.stop(audioContext.currentTime + 0.3)
-  } catch (error) {
+  } catch {
+    // Ignore audio playback failures when audio context is unavailable
   }
 }

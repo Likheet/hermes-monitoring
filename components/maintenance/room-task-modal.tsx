@@ -33,7 +33,6 @@ export function RoomTaskModal({ roomNumber, tasks, onClose, onTaskComplete }: Ro
   const [categorizedPhotos, setCategorizedPhotos] = useState<Record<string, CategorizedPhotos>>({})
   const [acLocations, setAcLocations] = useState<Record<string, string>>({})
   const [notes, setNotes] = useState<Record<string, string>>({})
-  const [photoModalOpen, setPhotoModalOpen] = useState(false)
   const [issueModalOpen, setIssueModalOpen] = useState(false)
   const intervalRef = useRef<NodeJS.Timeout>()
 
@@ -453,6 +452,7 @@ async function compressImage(file: File): Promise<File> {
               <div className="grid grid-cols-3 gap-2">
                 {taskPhotos.room_photos.map((url, index) => (
                   <div key={index} className="relative group">
+                    {/* eslint-disable-next-line @next/next/no-img-element -- Captured maintenance photos are stored as in-memory URLs */}
                     <img
                       src={url || "/placeholder.svg"}
                       alt={`Room ${index + 1}`}
@@ -505,6 +505,7 @@ async function compressImage(file: File): Promise<File> {
               <div className="grid grid-cols-3 gap-2">
                 {taskPhotos.proof_photos.map((url, index) => (
                   <div key={index} className="relative group">
+                    {/* eslint-disable-next-line @next/next/no-img-element -- Captured maintenance photos are stored as in-memory URLs */}
                     <img
                       src={url || "/placeholder.svg"}
                       alt={`Proof ${index + 1}`}

@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
 import { cookies } from "next/headers"
 import { databaseTaskToApp } from "@/lib/database-types"
+import type { DualTimestamp, PauseRecord } from "@/lib/types"
 
 function toDualTimestamp() {
   const iso = new Date().toISOString()
@@ -23,7 +24,9 @@ function normalizeStatus(status: string) {
   }
 }
 
-function extractTimestamp(value: any) {
+type TimestampPayload = string | (Partial<DualTimestamp> & { server?: string | null; client?: string | null }) | null | undefined
+
+function extractTimestamp(value: TimestampPayload) {
   if (!value) return null
   if (typeof value === "string") return value
   if (typeof value === "object") {
@@ -59,8 +62,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     }
 
     // Calculate actual duration (excluding pause time)
-    const pauseHistory = Array.isArray(currentTask.pause_history) ? currentTask.pause_history : []
-    const updatedPauseHistory = pauseHistory.map((entry: any) => ({ ...entry }))
+    const pauseHistory = Array.isArray(currentTask.pause_history)
+      ? (currentTask.pause_history as PauseRecord[])
+      : []
+    const updatedPauseHistory = pauseHistory.map((entry) => ({ ...entry }))
 
     let totalPauseTime = 0
     for (const pause of updatedPauseHistory) {

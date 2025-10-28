@@ -1,8 +1,9 @@
 import { createClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
 import { cookies } from "next/headers"
-import { databaseTaskToApp } from "@/lib/database-types"
-import { formatDateKeyForTimezone, getWorkerShiftForDate, isWorkerOnShiftWithSchedule } from "@/lib/shift-utils"
+import { databaseTaskToApp, databaseUserToApp } from "@/lib/database-types"
+import type { DatabaseUser } from "@/lib/database-types"
+import { formatDateKeyForTimezone, isWorkerOnShiftWithSchedule } from "@/lib/shift-utils"
 import type { SupabaseClient } from "@supabase/supabase-js"
 
 const PRIORITY_APP_TO_DB: Record<string, "low" | "medium" | "high" | "urgent"> = {
@@ -291,11 +292,10 @@ export async function POST(request: Request) {
         .eq("worker_id", assigned_to_user_id)
         .eq("schedule_date", todayStr)
 
-      const availability = isWorkerOnShiftWithSchedule(
-        userData as any,
-        schedules || [],
-        { timezoneOffsetMinutes: timezoneOffset },
-      )
+      const appUser = databaseUserToApp(userData as DatabaseUser)
+      const availability = isWorkerOnShiftWithSchedule(appUser, schedules || [], {
+        timezoneOffsetMinutes: timezoneOffset,
+      })
 
       if (availability.status === "OFF_DUTY" || availability.status === "SHIFT_BREAK") {
         return NextResponse.json({ error: "Cannot assign task while the staff member is unavailable" }, { status: 400 })

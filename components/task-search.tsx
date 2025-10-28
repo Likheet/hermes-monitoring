@@ -194,7 +194,7 @@ export function TaskSearch({ onSelectTask }: TaskSearchProps) {
 
         {showSuggestions && searchQuery.length >= 2 && filteredTasks.length === 0 && (
           <div className="absolute z-50 w-full mt-2 bg-card border-2 border-border rounded-xl shadow-lg p-4 text-center text-muted-foreground">
-            No tasks found for "{searchQuery}". Try different keywords or use the category filters above.
+            No tasks found for &quot;{searchQuery}&quot;. Try different keywords or use the category filters above.
           </div>
         )}
       </div>

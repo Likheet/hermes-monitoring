@@ -35,26 +35,33 @@ export async function retryWithBackoff<T>(fn: () => Promise<T>, options: RetryOp
   throw lastError!
 }
 
-export function isNetworkError(error: any): boolean {
-  return (
-    error instanceof TypeError &&
-    (error.message.includes("fetch") || error.message.includes("network") || error.message.includes("Failed to fetch"))
-  )
+export function isNetworkError(error: unknown): error is TypeError {
+  if (!(error instanceof TypeError)) {
+    return false
+  }
+
+  const message = error.message ?? ""
+
+  return message.includes("fetch") || message.includes("network") || message.includes("Failed to fetch")
 }
 
-export function shouldRetry(error: any): boolean {
+function hasStatusCode(value: unknown): value is { status: number } {
+  return typeof value === "object" && value !== null && "status" in value && typeof (value as { status: unknown }).status === "number"
+}
+
+export function shouldRetry(error: unknown): boolean {
   // Retry on network errors
   if (isNetworkError(error)) {
     return true
   }
 
   // Retry on 5xx server errors
-  if (error.status >= 500 && error.status < 600) {
+  if (hasStatusCode(error) && error.status >= 500 && error.status < 600) {
     return true
   }
 
   // Retry on 429 (rate limit)
-  if (error.status === 429) {
+  if (hasStatusCode(error) && error.status === 429) {
     return true
   }
 

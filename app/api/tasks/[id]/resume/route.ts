@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
 import { cookies } from "next/headers"
 import { databaseTaskToApp } from "@/lib/database-types"
+import type { PauseRecord } from "@/lib/types"
 
 function toDualTimestamp() {
   const iso = new Date().toISOString()
@@ -46,8 +47,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       return NextResponse.json({ error: "Task not found" }, { status: 404 })
     }
 
-    const pauseHistory = Array.isArray(currentTask.pause_history) ? currentTask.pause_history : []
-    const updatedPauseHistory = pauseHistory.map((entry: any) => ({ ...entry }))
+    const pauseHistory = Array.isArray(currentTask.pause_history)
+      ? (currentTask.pause_history as PauseRecord[])
+      : []
+    const updatedPauseHistory = pauseHistory.map((entry) => ({ ...entry }))
     for (let index = updatedPauseHistory.length - 1; index >= 0; index--) {
       const entry = updatedPauseHistory[index]
       if (!entry?.resumed_at) {

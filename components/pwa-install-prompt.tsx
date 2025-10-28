@@ -71,7 +71,7 @@ export function PWAInstallPrompt() {
           <div className="flex-1">
             <h3 className="font-semibold text-sm mb-1">Install App</h3>
             <p className="text-xs text-muted-foreground">
-              Tap the share button <Share className="inline h-3 w-3" /> and select "Add to Home Screen"
+              Tap the share button <Share className="inline h-3 w-3" /> and select &quot;Add to Home Screen&quot;
             </p>
           </div>
           <Button variant="ghost" size="icon" className="h-6 w-6" onClick={handleDismiss}>

@@ -15,7 +15,7 @@ import { LogSuppressor } from "@/components/log-suppressor"
 import { PWARegister } from "@/components/pwa-register"
 import { TaskProviderGate } from "@/components/task-provider-gate"
 
-import { Geist, Geist_Mono, Source_Serif_4 } from "next/font/google"
+import { Geist, Geist_Mono } from "next/font/google"
 
 // Initialize fonts
 const geistSans = Geist({
@@ -30,10 +30,6 @@ const geistMono = Geist_Mono({
   weight: ["400", "500", "600", "700"],
 })
 
-const sourceSerif4 = Source_Serif_4({
-  subsets: ["latin"],
-  weight: ["200", "300", "400", "500", "600", "700", "800", "900"],
-})
 
 export const metadata: Metadata = {
   title: "Resort Task Manager",

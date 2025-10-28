@@ -26,13 +26,13 @@ function SupervisorDashboard() {
   const { user, logout } = useAuth()
   const { tasks, issues, users, maintenanceTasks } = useTasks()
   const router = useRouter()
-  const { isConnected } = useRealtimeTasks({
+  useRealtimeTasks({
     enabled: true,
     filter: { department: user?.department },
   })
 
   const [taskFilter, setTaskFilter] = useState<"all" | "rejected" | "pending" | "in_progress">("all")
-  const [workerFilter, setWorkerFilter] = useState("ALL")
+  const workerFilter = "ALL"
   const [escalations, setEscalations] = useState<Escalation[]>([])
   const [selectedWorker, setSelectedWorker] = useState<UserType | null>(null)
   const [isProfileDialogOpen, setIsProfileDialogOpen] = useState(false)
@@ -100,8 +100,6 @@ function SupervisorDashboard() {
       setIsProfileDialogOpen(true)
     }
   }
-
-  const departmentWorkers = users.filter((u) => u.role === "worker" && u.department === user?.department)
 
   const departmentTasks = tasks.filter((task) => {
     const worker = users.find((u) => u.id === task.assigned_to_user_id)

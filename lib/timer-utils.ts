@@ -17,7 +17,7 @@ interface OfflineAction {
   taskId: string
   userId: string
   timestamp: string
-  data?: any
+  data?: Record<string, unknown>
 }
 
 const TIMER_STORAGE_KEY = "active_timer_state"

@@ -42,7 +42,7 @@ export function RejectionModal({ open, onOpenChange, onSubmit, taskId }: Rejecti
       }
       setStream(mediaStream)
       setShowCamera(true)
-    } catch (error) {
+  } catch {
       toast({
         title: "Camera Error",
         description: "Could not access camera",
@@ -76,7 +76,7 @@ export function RejectionModal({ open, onOpenChange, onSubmit, taskId }: Rejecti
         async (blob) => {
           if (!blob) return
 
-          const photoUrl = await uploadTaskPhoto(blob, taskId)
+          const photoUrl = await uploadTaskPhoto(taskId, blob)
           setProofPhoto(photoUrl)
           stopCamera()
           toast({
@@ -87,7 +87,7 @@ export function RejectionModal({ open, onOpenChange, onSubmit, taskId }: Rejecti
         "image/jpeg",
         0.8,
       )
-    } catch (error) {
+  } catch {
       toast({
         title: "Upload Failed",
         description: "Could not upload proof photo",
@@ -173,6 +173,7 @@ export function RejectionModal({ open, onOpenChange, onSubmit, taskId }: Rejecti
 
             {proofPhoto && (
               <div className="relative">
+                {/* eslint-disable-next-line @next/next/no-img-element -- Camera capture preview relies on data URLs for instant feedback */}
                 <img src={proofPhoto || "/placeholder.svg"} alt="Rejection proof" className="w-full rounded-lg" />
                 <Button
                   size="icon"

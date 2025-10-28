@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Camera, Loader2, AlertCircle, X, Plus, CheckCircle2 } from "lucide-react"
 import { compressImage, blobToDataURL } from "@/lib/image-utils"
 import { uploadTaskPhoto } from "@/lib/storage-utils"
+import type { PhotoBucket } from "@/lib/photo-utils"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Progress } from "@/components/ui/progress"
 import { triggerHaptic, triggerSuccessHaptic, triggerErrorHaptic } from "@/lib/haptics"
@@ -22,10 +23,10 @@ interface PhotoCategory {
 interface CategorizedPhotoCaptureModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  onSave: (photos: Record<string, string[]>) => void
+  onSave: (photos: PhotoBucket) => void
   taskId: string
   photoCategories: PhotoCategory[]
-  existingPhotos?: Record<string, string[]>
+  existingPhotos?: PhotoBucket
 }
 
 export function CategorizedPhotoCaptureModal({
@@ -36,8 +37,8 @@ export function CategorizedPhotoCaptureModal({
   photoCategories,
   existingPhotos,
 }: CategorizedPhotoCaptureModalProps) {
-  const [photos, setPhotos] = useState<Record<string, string[]>>(() => {
-    const initial: Record<string, string[]> = {}
+  const [photos, setPhotos] = useState<PhotoBucket>(() => {
+    const initial: PhotoBucket = {}
     photoCategories.forEach((cat) => {
       const key = cat.name.toLowerCase().replace(/\s+/g, "_")
       initial[key] = existingPhotos?.[key] || []
@@ -57,7 +58,7 @@ export function CategorizedPhotoCaptureModal({
 
   useEffect(() => {
     if (open && existingPhotos) {
-      const reloaded: Record<string, string[]> = {}
+    const reloaded: PhotoBucket = {}
       photoCategories.forEach((cat) => {
         const key = cat.name.toLowerCase().replace(/\s+/g, "_")
         reloaded[key] = existingPhotos[key] || []
@@ -79,7 +80,8 @@ export function CategorizedPhotoCaptureModal({
       setCurrentPhoto(dataUrl)
       triggerHaptic("light")
     } catch (err) {
-      setError("Failed to process image. Please try again.")
+      const error = err as Error
+      setError(error.message || "Failed to process image. Please try again.")
       triggerErrorHaptic()
       console.error("Image compression error:", err)
     }
@@ -117,8 +119,9 @@ export function CategorizedPhotoCaptureModal({
           fileInputRef.current.value = ""
         }
       }
-    } catch (err: any) {
-      setError(err.message || "Failed to upload photo. Please try again.")
+    } catch (err) {
+      const error = err as Error
+      setError(error.message || "Failed to upload photo. Please try again.")
       triggerErrorHaptic()
       console.error("Photo upload error:", err)
     } finally {
@@ -152,7 +155,7 @@ export function CategorizedPhotoCaptureModal({
     })
   }
 
-  const handleConfirm = () => {
+  const handleConfirm = async () => {
     if (!isValidForSubmission()) {
       const missingCategories = photoCategories
         .filter((cat) => {
@@ -167,12 +170,12 @@ export function CategorizedPhotoCaptureModal({
       return
     }
 
-    onSave(photos)
+    await Promise.resolve(onSave(photos))
     onOpenChange(false)
   }
 
-  const handleSaveAndContinue = () => {
-    onSave(photos)
+  const handleSaveAndContinue = async () => {
+    await Promise.resolve(onSave(photos))
     toast({
       title: "Photos Saved",
       description: "You can continue adding more photos later",
@@ -291,6 +294,7 @@ export function CategorizedPhotoCaptureModal({
               <div className="grid grid-cols-3 gap-2">
                 {currentPhotos.map((photo, index) => (
                   <div key={index} className="relative group">
+                    {/* eslint-disable-next-line @next/next/no-img-element -- Captured photos are stored as data URLs for instant preview */}
                     <img
                       src={photo || "/placeholder.svg"}
                       alt={`${activeCategoryConfig?.name} ${index + 1}`}
@@ -343,6 +347,7 @@ export function CategorizedPhotoCaptureModal({
           ) : (
             <div className="space-y-4">
               <div className="relative">
+                {/* eslint-disable-next-line @next/next/no-img-element -- Camera preview uses data URLs */}
                 <img src={currentPhoto || "/placeholder.svg"} alt="Preview" className="w-full rounded-lg border-2" />
                 <Badge className="absolute top-2 left-2 bg-primary text-white">{activeCategoryConfig?.name}</Badge>
               </div>

@@ -4,6 +4,7 @@ import { ProtectedRoute } from "@/components/protected-route"
 import { useAuth } from "@/lib/auth-context"
 import { useTasks } from "@/lib/task-context"
 import { TaskCard } from "@/components/task-card"
+import { TaskImage } from "@/components/task-image"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -19,12 +20,10 @@ import { BottomNav } from "@/components/mobile/bottom-nav"
 import { MaintenanceCalendar } from "@/components/maintenance/maintenance-calendar"
 import type { MaintenanceTask } from "@/lib/maintenance-types"
 import { TASK_TYPE_LABELS } from "@/lib/maintenance-types"
-import type { TaskCompletionData } from "@/components/maintenance/room-task-modal"
 import { formatDistanceToNow } from "@/lib/date-utils"
 import { cn } from "@/lib/utils"
 import { useToast } from "@/hooks/use-toast"
 import { formatShiftRange } from "@/lib/date-utils"
-import { ALL_ROOMS } from "@/lib/location-data"
 import { initializePauseMonitoring } from "@/lib/pause-monitoring"
 import { useWorkerNotes, type WorkerNote } from "@/hooks/use-worker-notes"
 
@@ -33,10 +32,10 @@ const REJECTION_QUOTA = 5 // Updated quota from 3 to 5 per month
 
 function WorkerDashboard() {
   const { user, logout } = useAuth()
-  const { tasks, dismissRejectedTask, updateMaintenanceTask, maintenanceTasks, users } = useTasks()
+  const { tasks, dismissRejectedTask, maintenanceTasks, users } = useTasks()
   const router = useRouter()
   const { toast } = useToast()
-  const { isConnected } = useRealtimeTasks({
+  useRealtimeTasks({
     enabled: true,
     filter: { userId: user?.id },
   })
@@ -58,9 +57,6 @@ function WorkerDashboard() {
   const [noteContent, setNoteContent] = useState("")
   const [noteSubmitting, setNoteSubmitting] = useState(false)
 
-  const [selectedRoom, setSelectedRoom] = useState<string | null>(null)
-  const [selectedTasks, setSelectedTasks] = useState<MaintenanceTask[]>([])
-
   const [searchQuery, setSearchQuery] = useState("")
 
   useEffect(() => {
@@ -81,7 +77,7 @@ function WorkerDashboard() {
   useEffect(() => {
     if (!user?.id) return
 
-    const cleanup = initializePauseMonitoring(tasks, maintenanceTasks, users, user.id)
+  const cleanup = initializePauseMonitoring(tasks, maintenanceTasks ?? [], users)
     return cleanup
   }, [tasks, maintenanceTasks, users, user?.id])
 
@@ -139,8 +135,6 @@ function WorkerDashboard() {
     (t) => t.status === "in_progress" || t.status === "paused",
   )
   const completedMaintenanceTasks = myMaintenanceAssignments.filter((t) => t.status === "completed")
-  const pendingMaintenanceTasks = myMaintenanceAssignments.filter((t) => t.status === "pending")
-
   const myCompletedMaintenanceTasks = (maintenanceTasks || []).filter(
     (t) => t.assigned_to === user?.id && t.status === "completed",
   )
@@ -183,13 +177,6 @@ function WorkerDashboard() {
         return getMaintenanceTaskTimestamp(b) - getMaintenanceTaskTimestamp(a)
       })[0]
     : null
-
-  const maintenanceTaskStatusLabel: Record<MaintenanceTask["status"], string> = {
-    pending: "Pending",
-    in_progress: "In Progress",
-    paused: "Paused",
-    completed: "Completed",
-  }
 
   const handleNavigateToMaintenanceTask = (task: MaintenanceTask) => {
     if (!task.room_number) return
@@ -258,51 +245,6 @@ function WorkerDashboard() {
     })
     .filter((room) => room.isPartial)
     .sort((a, b) => b.completedCount - a.completedCount)
-
-  const allMyMaintenanceRooms = (maintenanceTasks || [])
-    .filter((t) => t.assigned_to === user?.id)
-    .reduce(
-      (acc, task) => {
-        if (!acc[task.room_number]) {
-          acc[task.room_number] = []
-        }
-        acc[task.room_number].push(task)
-        return acc
-      },
-      {} as Record<string, MaintenanceTask[]>,
-    )
-
-  const totalRooms = Object.keys(allMyMaintenanceRooms).length
-  const completedRooms = Object.values(allMyMaintenanceRooms).filter((tasks) =>
-    tasks.every((t) => t.status === "completed"),
-  ).length
-
-  const getNearbyRooms = () => {
-    const inProgressRooms = Object.keys(activeMaintenanceByRoom)
-    if (inProgressRooms.length === 0) return []
-
-    const nearbyRooms: Array<{ roomNumber: string; floor: number; block: string }> = []
-
-    inProgressRooms.forEach((roomNum) => {
-      const room = ALL_ROOMS.find((r) => r.number === roomNum)
-      if (!room) return
-
-      const sameFloorRooms = ALL_ROOMS.filter(
-        (r) =>
-          r.floor === room.floor &&
-          r.block === room.block &&
-          r.number !== roomNum &&
-          !Object.keys(activeMaintenanceByRoom).includes(r.number) &&
-          !(activeMaintenanceByRoom[r.number]?.every((t) => t.status === "completed") ?? false),
-      ).slice(0, 3)
-
-      nearbyRooms.push(...sameFloorRooms.map((r) => ({ roomNumber: r.number, floor: r.floor, block: r.block })))
-    })
-
-    return nearbyRooms.slice(0, 6)
-  }
-
-  const nearbyRooms = getNearbyRooms()
 
   useEffect(() => {
     const urgentTask = pendingTasks.find((t) => t.priority_level === "GUEST_REQUEST")
@@ -391,36 +333,9 @@ function WorkerDashboard() {
   }
 
   const handleRoomClick = (roomNumber: string, tasks: MaintenanceTask[]) => {
+    void tasks
     console.log("[v0] Navigating to room:", roomNumber)
     router.push(`/worker/maintenance/${roomNumber}`)
-  }
-
-  const handleTaskComplete = async (taskId: string, data: TaskCompletionData) => {
-    try {
-      console.log("[v0] Task completed:", taskId, data)
-      updateMaintenanceTask(taskId, {
-        status: "completed",
-        ac_location: data.acLocation,
-        photos: [...(data.categorizedPhotos.room_photos || []), ...(data.categorizedPhotos.proof_photos || [])],
-        categorized_photos: {
-          before_photos: data.categorizedPhotos.room_photos,
-          after_photos: data.categorizedPhotos.proof_photos,
-        },
-        timer_duration: Math.max(data.timerDuration, 0),
-        completed_at: new Date().toISOString(),
-        notes: data.notes,
-      })
-      setSelectedTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, status: "completed" as const } : t)))
-    } catch (error) {
-      console.error("[v0] Error completing task:", error)
-      throw error
-    }
-  }
-
-  const handleCloseModal = () => {
-    console.log("[v0] Closing modal")
-    setSelectedRoom(null)
-    setSelectedTasks([])
   }
 
   const getStatusIcon = (status: string) => {
@@ -454,18 +369,6 @@ function WorkerDashboard() {
         return "bg-muted text-muted-foreground border-border"
     }
   }
-
-  const overdueTasks = myTasks.filter((t) => {
-    if (t.status !== "IN_PROGRESS" && t.status !== "PAUSED") return false
-    if (!t.started_at || !t.expected_duration_minutes) return false
-    const elapsed = Date.now() - new Date(t.started_at.client).getTime()
-    const pausedTime = t.pause_history.reduce((total, pause) => {
-      if (!pause.resumed_at) return total
-      return total + (new Date(pause.resumed_at.client).getTime() - new Date(pause.paused_at.client).getTime())
-    }, 0)
-    const activeTime = elapsed - pausedTime
-    return activeTime > t.expected_duration_minutes * 60 * 1000
-  })
 
   const onTimeTasks = completedTasks.filter((t) => {
     if (!t.actual_duration_minutes || !t.expected_duration_minutes) return false
@@ -1102,10 +1005,12 @@ function WorkerDashboard() {
                         {task.rejection_proof_photo_url && (
                           <div className="mt-2">
                             <p className="text-sm font-medium text-destructive mb-2">Proof Photo:</p>
-                            <img
-                              src={task.rejection_proof_photo_url || "/placeholder.svg"}
+                            <TaskImage
+                              src={task.rejection_proof_photo_url}
                               alt="Rejection proof"
-                              className="w-full max-w-sm rounded-lg border-2 border-destructive/50"
+                              width={640}
+                              height={480}
+                              className="w-full max-w-sm rounded-lg border-2 border-destructive/50 object-cover"
                             />
                           </div>
                         )}
@@ -1198,7 +1103,7 @@ function WorkerDashboard() {
                   <p className="text-muted-foreground">No tasks assigned</p>
                   {(completedTasks.length > 0 || myCompletedMaintenanceTasksForDisplay.length > 0) && (
                     <p className="text-sm text-muted-foreground">
-                      You've completed {completedTasks.length + myCompletedMaintenanceTasksForDisplay.length} task(s)
+                      You&apos;ve completed {completedTasks.length + myCompletedMaintenanceTasksForDisplay.length} task(s)
                       today
                     </p>
                   )}

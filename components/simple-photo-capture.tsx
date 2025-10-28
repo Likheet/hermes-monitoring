@@ -18,7 +18,7 @@ interface SimplePhotoCaptureProps {
 }
 
 export function SimplePhotoCapture({
-  taskId,
+  taskId: _taskId,
   existingPhotos = [],
   onPhotosChange,
   minPhotos,
@@ -70,7 +70,7 @@ export function SimplePhotoCapture({
   }
 
   return (
-    <Card>
+    <Card data-task-id={_taskId}>
       <CardHeader>
         <div className="flex items-center justify-between">
           <CardTitle className="text-base sm:text-lg">Photo Documentation</CardTitle>
@@ -85,6 +85,7 @@ export function SimplePhotoCapture({
           <div className="grid grid-cols-3 gap-2 sm:gap-3">
             {photos.map((photo, index) => (
               <div key={index} className="relative group">
+                {/* eslint-disable-next-line @next/next/no-img-element -- Captured images use in-memory URLs that require a standard <img> */}
                 <img
                   src={photo || "/placeholder.svg"}
                   alt={`Photo ${index + 1}`}

@@ -1,4 +1,5 @@
 import { createNotification } from "@/lib/notification-utils"
+import type { MaintenanceTask } from "@/lib/maintenance-types"
 import type { Task, User } from "@/lib/types"
 
 interface PauseMonitorState {
@@ -30,7 +31,7 @@ export function stopPauseMonitoring() {
   console.log("[v0] Stopped pause monitoring")
 }
 
-export function checkPausedTaskStatus(tasks: Task[], maintenanceTasks: any[], users: User[], currentUserId: string) {
+export function checkPausedTaskStatus(tasks: Task[], maintenanceTasks: MaintenanceTask[], users: User[]) {
   const stateStr = localStorage.getItem(PAUSE_MONITOR_KEY)
   if (!stateStr) return
 
@@ -117,18 +118,13 @@ export function checkPausedTaskStatus(tasks: Task[], maintenanceTasks: any[], us
 }
 
 // Initialize monitoring interval
-export function initializePauseMonitoring(
-  tasks: Task[],
-  maintenanceTasks: any[],
-  users: User[],
-  currentUserId: string,
-) {
+export function initializePauseMonitoring(tasks: Task[], maintenanceTasks: MaintenanceTask[], users: User[]) {
   // Check immediately
-  checkPausedTaskStatus(tasks, maintenanceTasks, users, currentUserId)
+  checkPausedTaskStatus(tasks, maintenanceTasks, users)
 
   // Set up interval
   const interval = setInterval(() => {
-    checkPausedTaskStatus(tasks, maintenanceTasks, users, currentUserId)
+    checkPausedTaskStatus(tasks, maintenanceTasks, users)
   }, CHECK_INTERVAL)
 
   return () => clearInterval(interval)

@@ -11,7 +11,7 @@ export function triggerHaptic(type: "light" | "medium" | "heavy" = "medium") {
 
   try {
     navigator.vibrate(patterns[type])
-  } catch (error) {
+  } catch {
     // Silently fail if vibration not supported
   }
 }
@@ -24,7 +24,8 @@ export function triggerSuccessHaptic() {
   try {
     // Double tap pattern for success
     navigator.vibrate([10, 50, 10])
-  } catch (error) {
+  } catch {
+    // Ignore vibration failures in unsupported browsers
   }
 }
 
@@ -36,7 +37,8 @@ export function triggerErrorHaptic() {
   try {
     // Triple tap pattern for error
     navigator.vibrate([20, 50, 20, 50, 20])
-  } catch (error) {
+  } catch {
+    // Ignore vibration failures in unsupported browsers
   }
 }
 

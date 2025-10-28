@@ -12,12 +12,21 @@ import { ArrowLeft, Clock, CheckCircle2, XCircle, AlertCircle } from "lucide-rea
 import { formatDistanceToNow } from "@/lib/date-utils"
 import { cn } from "@/lib/utils"
 
+type FilterOption = "all" | "active" | "completed" | "rejected"
+
+const FILTER_TABS: Array<{ value: FilterOption; label: string }> = [
+  { value: "all", label: "All" },
+  { value: "active", label: "Active" },
+  { value: "completed", label: "Completed" },
+  { value: "rejected", label: "Rejected" },
+]
+
 function TasksPage() {
 
   const router = useRouter()
   const { user } = useAuth()
   const { tasks } = useTasks()
-  const [filter, setFilter] = useState<"all" | "active" | "completed" | "rejected">("all")
+  const [filter, setFilter] = useState<FilterOption>("all")
 
   // Get all tasks for current worker
   const myTasks = tasks.filter((task) => task.assigned_to_user_id === user?.id)
@@ -80,17 +89,12 @@ function TasksPage() {
         {/* Filter tabs */}
         <div className="container mx-auto px-4 pb-3">
           <div className="flex gap-2 overflow-x-auto">
-            {[
-              { value: "all", label: "All" },
-              { value: "active", label: "Active" },
-              { value: "completed", label: "Completed" },
-              { value: "rejected", label: "Rejected" },
-            ].map((tab) => (
+            {FILTER_TABS.map((tab) => (
               <Button
                 key={tab.value}
                 variant={filter === tab.value ? "default" : "outline"}
                 size="sm"
-                onClick={() => setFilter(tab.value as any)}
+                onClick={() => setFilter(tab.value)}
                 className="whitespace-nowrap"
               >
                 {tab.label}
@@ -130,13 +134,13 @@ function TasksPage() {
                   </div>
 
                   <h3 className="font-semibold text-lg mb-1">{task.task_type}</h3>
-                  <p className="text-sm text-muted-foreground mb-2 line-clamp-2">{task.description}</p>
+                  <p className="text-sm text-muted-foreground mb-2 line-clamp-2">{task.worker_remark}</p>
 
                   <div className="flex items-center gap-4 text-xs text-muted-foreground">
                     <span>Room {task.room_number}</span>
                     {task.assigned_at && (
                       <span>
-                        Assigned {formatDistanceToNow(new Date(task.assigned_at.client), { addSuffix: true })}
+                        Assigned {formatDistanceToNow(new Date(task.assigned_at.client))}
                       </span>
                     )}
                   </div>

@@ -20,6 +20,8 @@ import { saveTimerState, getTimerState, clearTimerState, addToOfflineQueue, isOn
 import { formatExactTimestamp } from "@/lib/date-utils"
 import { startPauseMonitoring, stopPauseMonitoring } from "@/lib/pause-monitoring"
 import { getCategorizedPhotoSections } from "@/lib/image-utils"
+import type { CategorizedPhotos, Task } from "@/lib/types"
+import { bucketToCategorizedPhotos, categorizedPhotosToBucket } from "@/lib/photo-utils"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -31,10 +33,13 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { CategorizedPhotoCaptureModal } from "@/components/categorized-photo-capture-modal"
+import { TaskImage } from "@/components/task-image"
 
 interface TaskDetailProps {
   params: { taskId: string } | Promise<{ taskId: string }>
 }
+
+type PhotoCategoryRequirement = NonNullable<Task["photo_categories"]>[number]
 
 function TaskDetail({ params }: TaskDetailProps) {
   const resolvedParams = params instanceof Promise ? use(params) : params
@@ -51,6 +56,7 @@ function TaskDetail({ params }: TaskDetailProps) {
     tasks,
     maintenanceTasks,
     swapTasks,
+    updateTask,
   } = useTasks()
   const { toast } = useToast()
 
@@ -61,7 +67,7 @@ function TaskDetail({ params }: TaskDetailProps) {
   const [pausedTaskToSwap, setPausedTaskToSwap] = useState<{ id: string; name: string } | null>(null)
   const [photos, setPhotos] = useState<string[]>([])
   const [showCategorizedPhotoModal, setShowCategorizedPhotoModal] = useState(false)
-  const [categorizedPhotos, setCategorizedPhotos] = useState<any>(null)
+  const [categorizedPhotos, setCategorizedPhotos] = useState<CategorizedPhotos | null>(null)
   const [elapsedTime, setElapsedTime] = useState(0)
 
   useEffect(() => {
@@ -118,13 +124,65 @@ function TaskDetail({ params }: TaskDetailProps) {
   }, [task, user])
 
   useEffect(() => {
-    if (task?.photo_urls && task.photo_urls.length > 0) {
+    if (!task) {
+      setPhotos([])
+      setCategorizedPhotos(null)
+      return
+    }
+
+    if (task.photo_urls && task.photo_urls.length > 0) {
       setPhotos(task.photo_urls)
     }
-    if (task?.categorized_photos) {
+    if (task.categorized_photos) {
       setCategorizedPhotos(task.categorized_photos)
     }
-  }, [task?.id])
+  }, [task])
+
+  useEffect(() => {
+    if (!task || !task.photo_documentation_required) {
+      return
+    }
+
+    const hasPersistedPhotos = Boolean(
+      task.categorized_photos &&
+        Object.values(task.categorized_photos).some((value) => Array.isArray(value) && value.length > 0),
+    )
+
+    if (hasPersistedPhotos) {
+      return
+    }
+
+    let cancelled = false
+
+    const hydrateTask = async () => {
+      try {
+        const response = await fetch(`/api/tasks/${task.id}`, {
+          method: "GET",
+          cache: "no-store",
+          credentials: "include",
+        })
+
+        if (!response.ok) {
+          return
+        }
+
+        const payload = (await response.json()) as { task?: Task }
+        if (cancelled || !payload?.task?.categorized_photos) {
+          return
+        }
+
+        setCategorizedPhotos(payload.task.categorized_photos)
+      } catch (error) {
+        console.error("[worker] Failed to hydrate categorized photos", error)
+      }
+    }
+
+    void hydrateTask()
+
+    return () => {
+      cancelled = true
+    }
+  }, [task?.id, task?.photo_documentation_required])
 
 
   if (!task || !user) {
@@ -253,9 +311,15 @@ function TaskDetail({ params }: TaskDetailProps) {
 
   const handleComplete = async () => {
     if (task.photo_documentation_required && task.photo_categories) {
-      const allCategoriesFilled = task.photo_categories.every((cat: any) => {
-        const categoryPhotos = categorizedPhotos?.[cat.name.toLowerCase().replace(/\s+/g, "_")] || []
-        return categoryPhotos.length >= cat.count
+      const requiredCategories = task.photo_categories.filter(
+        (category): category is PhotoCategoryRequirement => Boolean(category),
+      )
+
+      const allCategoriesFilled = requiredCategories.every((category) => {
+        const key = category.name.toLowerCase().replace(/\s+/g, "_")
+        const categoryPhotos = categorizedPhotos?.[key as keyof CategorizedPhotos]
+        const photoCount = Array.isArray(categoryPhotos) ? categoryPhotos.length : 0
+        return photoCount >= category.count
       })
 
       if (!allCategoriesFilled) {
@@ -347,8 +411,11 @@ function TaskDetail({ params }: TaskDetailProps) {
 
   const getPhotoRequirementText = () => {
     if (task.photo_documentation_required && task.photo_categories) {
-      const totalPhotos = task.photo_categories.reduce((sum: number, cat: any) => sum + cat.count, 0)
-      const types = task.photo_categories.length
+      const requiredCategories = task.photo_categories.filter(
+        (category): category is PhotoCategoryRequirement => Boolean(category),
+      )
+      const totalPhotos = requiredCategories.reduce((sum, category) => sum + category.count, 0)
+      const types = requiredCategories.length
       return `${totalPhotos} photo${totalPhotos > 1 ? "s" : ""} (${types} type${types > 1 ? "s" : ""}) required`
     }
     if (task.photo_required) {
@@ -471,7 +538,11 @@ function TaskDetail({ params }: TaskDetailProps) {
               <CardContent className="space-y-4">
                 <Button onClick={() => setShowCategorizedPhotoModal(true)} variant="outline" className="w-full">
                   <Camera className="mr-2 h-4 w-4" />
-                  Capture Photos ({task.photo_categories.reduce((sum: number, cat: any) => sum + cat.count, 0)}{" "}
+                  Capture Photos ({
+                    task.photo_categories
+                      .filter((category): category is PhotoCategoryRequirement => Boolean(category))
+                      .reduce((sum, category) => sum + category.count, 0)
+                  }{" "}
                   required)
                 </Button>
 
@@ -482,12 +553,15 @@ function TaskDetail({ params }: TaskDetailProps) {
                         <p className="text-sm font-semibold text-muted-foreground">{section.label}</p>
                         <div className="grid grid-cols-3 gap-2 sm:gap-3">
                           {section.urls.map((url, index) => (
-                            <img
-                              key={`${section.key}-${index}`}
-                              src={url || "/placeholder.svg"}
-                              alt={`${section.label} ${index + 1}`}
-                              className="w-full aspect-square rounded-lg object-cover border border-border"
-                            />
+                            <div key={`${section.key}-${index}`} className="relative w-full aspect-square">
+                              <TaskImage
+                                src={url}
+                                alt={`${section.label} ${index + 1}`}
+                                fill
+                                className="rounded-lg object-cover border border-border"
+                                sizes="(max-width: 768px) 28vw, 160px"
+                              />
+                            </div>
                           ))}
                         </div>
                       </div>
@@ -521,12 +595,15 @@ function TaskDetail({ params }: TaskDetailProps) {
             <CardContent>
               <div className="grid grid-cols-3 gap-2">
                 {photos.map((photo, index) => (
-                  <img
-                    key={index}
-                    src={photo || "/placeholder.svg"}
-                    alt={`Photo ${index + 1}`}
-                    className="w-full aspect-square object-cover rounded-lg border"
-                  />
+                  <div key={index} className="relative w-full aspect-square">
+                    <TaskImage
+                      src={photo}
+                      alt={`Photo ${index + 1}`}
+                      fill
+                      className="rounded-lg border object-cover"
+                      sizes="(max-width: 768px) 28vw, 160px"
+                    />
+                  </div>
                 ))}
               </div>
             </CardContent>
@@ -635,14 +712,34 @@ function TaskDetail({ params }: TaskDetailProps) {
           onOpenChange={setShowCategorizedPhotoModal}
           taskId={taskId}
           photoCategories={task.photo_categories}
-          existingPhotos={categorizedPhotos}
-          onSave={(photos) => {
-            setCategorizedPhotos(photos)
+          existingPhotos={categorizedPhotos ? categorizedPhotosToBucket(categorizedPhotos) : undefined}
+          onSave={async (photoBucket) => {
+            const nextCategorized = bucketToCategorizedPhotos(photoBucket)
+            setCategorizedPhotos(nextCategorized)
             setShowCategorizedPhotoModal(false)
-            toast({
-              title: "Photos Saved",
-              description: "Your photos have been saved",
-            })
+
+            if (!isOnline()) {
+              toast({
+                title: "Offline Mode",
+                description: "Photos saved locally. They will sync when you're back online.",
+              })
+              return
+            }
+
+            const success = await updateTask(task.id, { categorized_photos: nextCategorized })
+
+            if (success) {
+              toast({
+                title: "Photos Saved",
+                description: "Your photo documentation is stored safely.",
+              })
+            } else {
+              toast({
+                title: "Save Failed",
+                description: "Unable to persist photos. Please try again when connection stabilises.",
+                variant: "destructive",
+              })
+            }
           }}
         />
       )}
@@ -652,7 +749,7 @@ function TaskDetail({ params }: TaskDetailProps) {
       <AlertDialog open={swapDialogOpen} onOpenChange={setSwapDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Can't Pause Multiple Tasks</AlertDialogTitle>
+            <AlertDialogTitle>Can&apos;t Pause Multiple Tasks</AlertDialogTitle>
             <AlertDialogDescription>
               You already have a paused task: <strong>{pausedTaskToSwap?.name}</strong>
               <br />

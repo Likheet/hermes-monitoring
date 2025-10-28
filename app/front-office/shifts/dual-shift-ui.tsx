@@ -100,7 +100,7 @@ export function DualShiftUI({ workerId, workerName, initialShift, onSave, onCanc
       form.shift1BreakEnd || undefined,
     )
     return shift1.formatted
-  }, [form])
+  }, [form, secondShiftEnabled])
 
   const interShiftBreakSummary =
     secondShiftEnabled && isSecondShiftSameDay && form.shift1End && form.shift2Start

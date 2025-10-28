@@ -4,6 +4,7 @@ import type { Task } from "@/lib/types"
 import { Clock, MapPin, Camera, CalendarClock } from "lucide-react"
 import Link from "next/link"
 import { formatTimestamp, calculateDuration } from "@/lib/date-utils"
+import { TaskImage } from "@/components/task-image"
 
 const priorityColors = {
   GUEST_REQUEST: "bg-destructive text-destructive-foreground",
@@ -28,7 +29,10 @@ interface TaskCardProps {
 export function TaskCard({ task, href }: TaskCardProps) {
   const getPhotoRequirementText = () => {
     if (task.photo_documentation_required && task.photo_categories) {
-      const totalPhotos = task.photo_categories.reduce((sum: number, cat: any) => sum + cat.count, 0)
+      const totalPhotos = task.photo_categories.reduce(
+        (sum: number, cat: NonNullable<Task["photo_categories"]>[number]) => sum + cat.count,
+        0,
+      )
       const types = task.photo_categories.length
       return `${totalPhotos} photo${totalPhotos > 1 ? "s" : ""} (${types} type${types > 1 ? "s" : ""})`
     }
@@ -61,12 +65,12 @@ export function TaskCard({ task, href }: TaskCardProps) {
           {/* Display both worker and supervisor remarks */}
           {task.worker_remark && (
             <p className="text-sm text-blue-600 mt-2 line-clamp-2 italic">
-              <span className="font-medium">Remark:</span> "{task.worker_remark}"
+              <span className="font-medium">Remark:</span> &quot;{task.worker_remark}&quot;
             </p>
           )}
           {task.supervisor_remark && (
             <p className="text-sm text-orange-600 mt-2 line-clamp-2 italic">
-              <span className="font-medium">Supervisor:</span> "{task.supervisor_remark}"
+              <span className="font-medium">Supervisor:</span> &quot;{task.supervisor_remark}&quot;
             </p>
           )}
           {/* </CHANGE> */}
@@ -101,12 +105,14 @@ export function TaskCard({ task, href }: TaskCardProps) {
               </div>
               <div className="flex gap-1">
                 {task.categorized_photos.room_photos?.slice(0, 3).map((url, index) => (
-                  <img
+                  <TaskImage
                     key={`room-${index}`}
                     src={url}
                     alt="Room photo"
+                    width={48}
+                    height={48}
                     className="w-12 h-12 object-cover rounded border cursor-pointer hover:opacity-80"
-                    onClick={() => console.log('Room photo clicked:', url)}
+                    onClick={() => console.log("Room photo clicked:", url)}
                   />
                 ))}
                 {task.categorized_photos.room_photos?.length > 3 && (
@@ -124,12 +130,14 @@ export function TaskCard({ task, href }: TaskCardProps) {
                   </div>
                   <div className="flex gap-1">
                     {task.categorized_photos.proof_photos.slice(0, 2).map((url, index) => (
-                      <img
+                      <TaskImage
                         key={`proof-${index}`}
                         src={url}
                         alt="Proof photo"
+                        width={64}
+                        height={64}
                         className="w-16 h-16 object-cover rounded border cursor-pointer hover:opacity-80"
-                        onClick={() => console.log('Proof photo clicked:', url)}
+                        onClick={() => console.log("Proof photo clicked:", url)}
                       />
                     ))}
                     {task.categorized_photos.proof_photos.length > 2 && (

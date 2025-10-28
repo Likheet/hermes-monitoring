@@ -2,7 +2,19 @@ import { createClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
 import { cookies } from "next/headers"
 import { databaseUserToApp } from "@/lib/database-types"
+import type { DatabaseUser, DatabaseShiftSchedule } from "@/lib/database-types"
 import { isWorkerOnShiftWithSchedule, formatDateKeyForTimezone } from "@/lib/shift-utils"
+
+type ActiveTaskSummary = {
+  id: string
+  task_type: string
+  status: string
+  room_number: string | null
+  assigned_to_user_id: string | null
+  created_at: string
+  updated_at: string
+  expected_duration: number | null
+}
 
 export async function GET() {
   try {
@@ -16,21 +28,22 @@ export async function GET() {
     const supabase = await createClient()
 
     // Get all workers
-    const { data: workers, error: workersError } = await supabase.from("users").select("*").eq("role", "worker")
+  const { data: workers, error: workersError } = await supabase.from("users").select("*").eq("role", "worker")
 
     if (workersError) {
       console.error("Workers fetch error:", workersError)
       return NextResponse.json({ error: workersError.message }, { status: 400 })
     }
 
-    const workerIds = workers.map((worker) => worker.id)
+  const workerRows = (workers ?? []) as DatabaseUser[]
+  const workerIds = workerRows.map((worker) => worker.id)
 
     // Get today's date in YYYY-MM-DD format
     const today = formatDateKeyForTimezone(new Date())
     console.log("[WorkersStatus] Fetching shift schedules for today:", today)
 
     // Fetch shift schedules for all workers for today
-    const { data: shiftSchedules, error: schedulesError } = await supabase
+    const { data: shiftScheduleRows, error: schedulesError } = await supabase
       .from("shift_schedules")
       .select("*")
       .eq("schedule_date", today)
@@ -41,13 +54,44 @@ export async function GET() {
       return NextResponse.json({ error: schedulesError.message }, { status: 400 })
     }
 
+    const shiftSchedules = (shiftScheduleRows ?? []) as DatabaseShiftSchedule[]
+    const shiftSchedulesForAvailability = shiftSchedules.map((schedule) => ({
+      worker_id: schedule.worker_id,
+      schedule_date: schedule.schedule_date,
+      shift_start: schedule.shift_start ?? "",
+      shift_end: schedule.shift_end ?? "",
+      has_break:
+        "has_break" in schedule
+          ? Boolean((schedule as DatabaseShiftSchedule & { has_break?: boolean }).has_break)
+          : Boolean(schedule.break_start && schedule.break_end),
+      break_start: schedule.break_start ?? undefined,
+      break_end: schedule.break_end ?? undefined,
+      is_override: schedule.is_override,
+      override_reason: schedule.override_reason ?? undefined,
+      has_shift_2: schedule.has_shift_2,
+      is_dual_shift: schedule.is_dual_shift,
+      shift_1_start: schedule.shift_1_start ?? undefined,
+      shift_1_end: schedule.shift_1_end ?? undefined,
+      shift_1_break_start: schedule.shift_1_break_start ?? undefined,
+      shift_1_break_end: schedule.shift_1_break_end ?? undefined,
+      shift_2_start: schedule.shift_2_start ?? undefined,
+      shift_2_end: schedule.shift_2_end ?? undefined,
+      shift_2_break_start: schedule.shift_2_break_start ?? undefined,
+      shift_2_break_end: schedule.shift_2_break_end ?? undefined,
+    }))
+
     console.log("[WorkersStatus] Fetched shift schedules:", {
-      total: shiftSchedules?.length || 0,
+      total: shiftSchedules.length,
       workers: workerIds.length,
-      schedules: shiftSchedules?.map(s => ({ worker: s.worker_id, start: s.shift_start, end: s.shift_end, override: s.is_override }))
+      schedules: shiftSchedules.map((schedule) => ({
+        worker: schedule.worker_id,
+        start: schedule.shift_start,
+        end: schedule.shift_end,
+        override: schedule.is_override,
+      })),
     })
 
-    let activeTasksByWorker: Record<string, any[]> = {}
+    let activeTasksByWorker: Record<string, ActiveTaskSummary[]> = {}
 
     if (workerIds.length > 0) {
       const { data: activeTasks, error: tasksError } = await supabase
@@ -73,7 +117,10 @@ export async function GET() {
         return NextResponse.json({ error: tasksError.message }, { status: 400 })
       }
 
-      activeTasksByWorker = (activeTasks ?? []).reduce<Record<string, any[]>>((acc, task) => {
+      const activeTaskRows = Array.isArray(activeTasks)
+        ? ((activeTasks as unknown) as ActiveTaskSummary[])
+        : []
+      activeTasksByWorker = activeTaskRows.reduce<Record<string, ActiveTaskSummary[]>>((acc, task) => {
         const assignedId = task.assigned_to_user_id
         if (!assignedId) {
           return acc
@@ -86,12 +133,12 @@ export async function GET() {
       }, {})
     }
 
-    const workersWithStatus = workers.map((worker) => {
+    const workersWithStatus = workerRows.map((worker) => {
       const appWorker = databaseUserToApp(worker)
       const activeTasks = activeTasksByWorker[worker.id] ?? []
       
       // Check if worker is on shift using shift schedules
-      const availability = isWorkerOnShiftWithSchedule(worker, shiftSchedules || [])
+  const availability = isWorkerOnShiftWithSchedule(appWorker, shiftSchedulesForAvailability)
       
       console.log(`[WorkersStatus] Worker ${worker.name}:`, {
         workerId: worker.id,
@@ -99,7 +146,7 @@ export async function GET() {
         activeTasksCount: activeTasks.length,
         shiftStart: availability.shiftStart,
         shiftEnd: availability.shiftEnd,
-        isOverride: shiftSchedules?.find(s => s.worker_id === worker.id)?.is_override
+        isOverride: shiftSchedules.find((schedule) => schedule.worker_id === worker.id)?.is_override,
       })
 
       // Determine availability based on shift schedule and active tasks
@@ -126,8 +173,8 @@ export async function GET() {
       return {
         ...appWorker,
         is_available: isAvailable,
-        status: status,
-        availability: availability,
+        status,
+        availability,
         current_task: activeTasks.length > 0 ? activeTasks[0] : null,
       }
     })

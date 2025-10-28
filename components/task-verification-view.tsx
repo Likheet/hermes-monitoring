@@ -11,6 +11,7 @@ import { PhotoZoomModal } from "@/components/photo-zoom-modal"
 import { VerificationChecklist } from "@/components/verification-checklist"
 import { RatingModal } from "@/components/rating-modal"
 import { RejectionModal } from "@/components/rejection-modal"
+import { TaskImage } from "@/components/task-image"
 import { useAuth } from "@/lib/auth-context"
 import { useTasks } from "@/lib/task-context"
 import { useToast } from "@/hooks/use-toast"
@@ -333,12 +334,14 @@ export function TaskVerificationView({ taskId, returnPath }: TaskVerificationVie
                     setSelectedPhoto(url)
                     setPhotoZoomOpen(true)
                   }}
-                  className="group relative overflow-hidden rounded-lg border border-border focus:outline-none focus:ring-2 focus:ring-primary"
+                  className="group relative aspect-[4/3] overflow-hidden rounded-lg border border-border focus:outline-none focus:ring-2 focus:ring-primary"
                 >
-                  <img
-                    src={url || "/placeholder.svg"}
+                  <TaskImage
+                    src={url}
                     alt={`Proof Photo ${index + 1}`}
-                    className="w-full aspect-[4/3] object-cover"
+                    fill
+                    className="object-cover"
+                    sizes="(max-width: 768px) 45vw, 320px"
                   />
                   <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors group-hover:bg-black/40">
                     <ZoomIn className="h-6 w-6 text-white opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
@@ -371,12 +374,14 @@ export function TaskVerificationView({ taskId, returnPath }: TaskVerificationVie
                           setSelectedPhoto(url)
                           setPhotoZoomOpen(true)
                         }}
-                        className="group relative overflow-hidden rounded-lg border border-border focus:outline-none focus:ring-2 focus:ring-primary"
+                        className="group relative aspect-square overflow-hidden rounded-lg border border-border focus:outline-none focus:ring-2 focus:ring-primary"
                       >
-                        <img
-                          src={url || "/placeholder.svg"}
+                        <TaskImage
+                          src={url}
                           alt={`${section.label} ${index + 1}`}
-                          className="w-full aspect-square object-cover"
+                          fill
+                          className="object-cover"
+                          sizes="(max-width: 768px) 28vw, 160px"
                         />
                         <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors group-hover:bg-black/40">
                           <ZoomIn className="h-6 w-6 text-white opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
@@ -399,10 +404,16 @@ export function TaskVerificationView({ taskId, returnPath }: TaskVerificationVie
                           setSelectedPhoto(url)
                           setPhotoZoomOpen(true)
                         }}
-                        className="relative overflow-hidden rounded-lg border border-border focus:outline-none focus:ring-2 focus:ring-primary"
+                        className="group relative aspect-square overflow-hidden rounded-lg border border-border focus:outline-none focus:ring-2 focus:ring-primary"
                       >
-                        <img src={url || "/placeholder.svg"} alt={`Task Photo ${index + 1}`} className="w-full aspect-square object-cover" />
-                        <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors hover:bg-black/40">
+                        <TaskImage
+                          src={url}
+                          alt={`Task Photo ${index + 1}`}
+                          fill
+                          className="object-cover"
+                          sizes="(max-width: 768px) 28vw, 160px"
+                        />
+                        <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors group-hover:bg-black/40">
                           <ZoomIn className="h-6 w-6 text-white opacity-0 group-hover:opacity-100" />
                         </div>
                       </button>

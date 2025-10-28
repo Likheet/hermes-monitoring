@@ -78,13 +78,14 @@ export function CameraOnlyCapture({
 
       // Check if flash is supported
       const videoTrack = mediaStream.getVideoTracks()[0]
-      const capabilities = videoTrack.getCapabilities() as any
-      setHasFlash(capabilities.torch === true)
+  const capabilities = videoTrack.getCapabilities() as MediaTrackCapabilities & { torch?: boolean }
+  const torchSupported = capabilities.torch === true
+      setHasFlash(torchSupported)
 
       // Apply flash mode if supported
-      if (capabilities.torch && flashMode !== "auto") {
+      if (torchSupported && flashMode !== "auto") {
         await videoTrack.applyConstraints({
-          advanced: [{ torch: flashMode === "on" }] as any,
+          advanced: [{ torch: flashMode === "on" } as MediaTrackConstraintSet & { torch: boolean }],
         })
       }
 
@@ -97,12 +98,13 @@ export function CameraOnlyCapture({
           triggerHaptic("light")
         }
       }
-    } catch (err: any) {
+    } catch (err) {
       console.error("Camera error:", err)
+      const error = err as DOMException | Error
       setError(
-        err.name === "NotAllowedError"
+        error.name === "NotAllowedError"
           ? "Camera access denied. Please allow camera permissions in your browser settings."
-          : err.name === "NotFoundError"
+          : error.name === "NotFoundError"
             ? "No camera found on this device."
             : "Failed to access camera. Please try again.",
       )
@@ -134,7 +136,7 @@ export function CameraOnlyCapture({
       const videoTrack = stream.getVideoTracks()[0]
       if (nextMode !== "auto") {
         await videoTrack.applyConstraints({
-          advanced: [{ torch: nextMode === "on" }] as any,
+          advanced: [{ torch: nextMode === "on" } as MediaTrackConstraintSet & { torch: boolean }],
         })
       }
     } catch (err) {
@@ -210,8 +212,9 @@ export function CameraOnlyCapture({
         setCapturedPhoto(null)
         onOpenChange(false)
       }
-    } catch (err: any) {
-      setError(err.message || "Failed to upload photo. Please try again.")
+    } catch (err) {
+      const error = err as Error
+      setError(error.message || "Failed to upload photo. Please try again.")
       triggerErrorHaptic()
       console.error("Photo upload error:", err)
     } finally {
@@ -354,6 +357,7 @@ export function CameraOnlyCapture({
             ) : (
               <>
                 {/* Captured Photo Preview */}
+                {/* eslint-disable-next-line @next/next/no-img-element -- Captured photo is a blob/data URL that requires a native <img> */}
                 <img
                   src={capturedPhoto || "/placeholder.svg"}
                   alt="Captured"

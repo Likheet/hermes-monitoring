@@ -23,11 +23,14 @@ import {
   type DatabaseTask,
   type DatabaseUser,
   type DatabaseMaintenanceSchedule,
+  type DatabaseMaintenanceTask,
   type DatabaseShiftSchedule,
+  type Json,
 } from "./database-types"
 
 const CACHE_TTL_MS = 30_000
 const TASK_FETCH_LIMIT = 200
+const TASK_FETCH_LIMIT_WITH_PHOTOS = 60
 
 type DatabaseTaskSummaryBase = Pick<
   DatabaseTask,
@@ -154,6 +157,119 @@ function normalizeMaintenanceStatus(status: MaintenanceTask["status"]): "pending
   }
 }
 
+type TimestampRecord = { client?: string | null; server?: string | null }
+type TimerRecord = { client?: number | null; server?: number | null }
+type TimestampValue = string | null | TimestampRecord
+type TimerValue = number | null | TimerRecord
+
+type MaintenanceTaskRow = Omit<DatabaseMaintenanceTask, "started_at" | "completed_at" | "timer_duration" | "photos"> & {
+  started_at: TimestampValue
+  completed_at: TimestampValue
+  timer_duration: TimerValue
+  photos: Json
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null
+}
+
+function isTimestampRecord(value: unknown): value is TimestampRecord {
+  if (!isRecord(value)) {
+    return false
+  }
+
+  const client = value.client
+  const server = value.server
+
+  return (typeof client === "string" && client.length > 0) || (typeof server === "string" && server.length > 0)
+}
+
+function extractTimestamp(value: TimestampValue): string | undefined {
+  if (typeof value === "string") {
+    return value
+  }
+
+  if (value === null) {
+    return undefined
+  }
+
+  if (isTimestampRecord(value)) {
+    if (typeof value.server === "string" && value.server.length > 0) {
+      return value.server
+    }
+
+    if (typeof value.client === "string" && value.client.length > 0) {
+      return value.client
+    }
+  }
+
+  return undefined
+}
+
+function isTimerRecord(value: unknown): value is TimerRecord {
+  if (!isRecord(value)) {
+    return false
+  }
+
+  return typeof value.client === "number" || typeof value.server === "number"
+}
+
+function extractTimerDuration(value: TimerValue): number | undefined {
+  if (typeof value === "number") {
+    return value
+  }
+
+  if (isTimerRecord(value)) {
+    if (typeof value.client === "number") {
+      return value.client
+    }
+
+    if (typeof value.server === "number") {
+      return value.server
+    }
+  }
+
+  return undefined
+}
+
+function extractStringArray(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined
+  }
+
+  return value.filter((item): item is string => typeof item === "string")
+}
+
+function buildCategorizedPhotos(value: Record<string, unknown>): MaintenanceTask["categorized_photos"] | undefined {
+  const before = extractStringArray(value["before_photos"])
+  const during = extractStringArray(value["during_photos"])
+  const after = extractStringArray(value["after_photos"])
+
+  if (!before && !during && !after) {
+    return undefined
+  }
+
+  const categorized: MaintenanceTask["categorized_photos"] = {}
+
+  if (before && before.length > 0) {
+    categorized.before_photos = before
+  }
+
+  if (during && during.length > 0) {
+    categorized.during_photos = during
+  }
+
+  if (after && after.length > 0) {
+    categorized.after_photos = after
+  }
+
+  return categorized
+}
+
+function toMaintenanceTaskType(value: string): MaintenanceTaskType {
+  return MAINTENANCE_TASK_TYPES.includes(value as MaintenanceTaskType) ? (value as MaintenanceTaskType) : "all"
+}
+
 export async function loadTasksFromSupabase(
   options: LoadOptions = {},
   supabaseOverride?: SupabaseClient,
@@ -204,11 +320,13 @@ export async function loadTasksFromSupabase(
       columns.push("categorized_photos")
     }
 
+    const limit = options.includePhotos ? TASK_FETCH_LIMIT_WITH_PHOTOS : TASK_FETCH_LIMIT
+
     const { data, error } = await supabase
       .from("tasks")
       .select(columns.join(","))
       .order("updated_at", { ascending: false })
-      .limit(TASK_FETCH_LIMIT)
+      .limit(limit)
 
     if (error) {
       console.error("[v0] Error loading tasks from Supabase:", error)
@@ -646,7 +764,8 @@ export async function loadMaintenanceTasksFromSupabase(options: LoadOptions = {}
       throw new Error(`Failed to load maintenance tasks: ${error.message}`)
     }
 
-    const mapped = (data || []).map(databaseToMaintenanceTask)
+  const rows = Array.isArray(data) ? (data as MaintenanceTaskRow[]) : []
+  const mapped = rows.map(databaseToMaintenanceTask)
     setCachedValue("maintenance_tasks", mapped)
 
     console.log(`[v0] Loaded ${mapped.length} maintenance tasks from Supabase`)
@@ -904,7 +1023,7 @@ function databaseToMaintenanceSchedule(dbSchedule: DatabaseMaintenanceSchedule):
   }
 }
 
-function maintenanceTaskToDatabase(task: MaintenanceTask): any {
+function maintenanceTaskToDatabase(task: MaintenanceTask): DatabaseMaintenanceTask {
   if (!isValidUuid(task.id)) {
     throw new Error(`Maintenance task id must be a UUID. Received: ${task.id}`)
   }
@@ -915,23 +1034,22 @@ function maintenanceTaskToDatabase(task: MaintenanceTask): any {
   const completedAt = task.completed_at ? new Date(task.completed_at).toISOString() : null
   const timerDuration =
     typeof task.timer_duration === "number" ? Math.max(Math.round(task.timer_duration), 0) : null
-  const photosPayload =
+  const photosPayload: Json =
     task.categorized_photos && Object.keys(task.categorized_photos).length > 0
-      ? task.categorized_photos
-      : Array.isArray(task.photos)
-        ? task.photos
-        : []
+      ? (task.categorized_photos as Json)
+      : (task.photos as Json)
   const sanitizedNotes =
     typeof task.notes === "string" && task.notes.trim().length > 0 ? task.notes.trim() : null
+  const createdAt = task.created_at ? new Date(task.created_at).toISOString() : new Date().toISOString()
 
   return {
     id: task.id,
     schedule_id: scheduleId,
     task_type: task.task_type,
     room_number: task.room_number || null,
-    ac_location: task.location,
     status: normalizeMaintenanceStatus(task.status),
     assigned_to: assignedTo,
+    ac_location: task.location,
     started_at: startedAt,
     completed_at: completedAt,
     timer_duration: timerDuration,
@@ -939,52 +1057,50 @@ function maintenanceTaskToDatabase(task: MaintenanceTask): any {
     notes: sanitizedNotes,
     period_month: task.period_month ?? null,
     period_year: task.period_year ?? null,
-    created_at: task.created_at ? new Date(task.created_at).toISOString() : new Date().toISOString(),
+    created_at: createdAt,
   }
 }
 
-function databaseToMaintenanceTask(dbTask: any): MaintenanceTask {
-  const startedAt =
-    typeof dbTask.started_at === "string"
-      ? dbTask.started_at
-      : dbTask.started_at?.client ?? dbTask.started_at?.server ?? undefined
-
-  const completedAt =
-    typeof dbTask.completed_at === "string"
-      ? dbTask.completed_at
-      : dbTask.completed_at?.client ?? dbTask.completed_at?.server ?? undefined
-
-  const rawTimerDuration =
-    typeof dbTask.timer_duration === "number"
-      ? dbTask.timer_duration
-      : typeof dbTask.timer_duration?.client === "number"
-        ? dbTask.timer_duration.client
-        : undefined
+function databaseToMaintenanceTask(dbTask: MaintenanceTaskRow): MaintenanceTask {
+  const startedAt = extractTimestamp(dbTask.started_at)
+  const completedAt = extractTimestamp(dbTask.completed_at)
+  const rawTimerDuration = extractTimerDuration(dbTask.timer_duration)
   const timerDuration = typeof rawTimerDuration === "number" ? Math.max(rawTimerDuration, 0) : undefined
 
-  const photos = Array.isArray(dbTask.photos) ? dbTask.photos : undefined
+  const photosValue = dbTask.photos
+  const photos = extractStringArray(photosValue) ?? []
+
   const categorizedPhotos =
-    dbTask.photos && !Array.isArray(dbTask.photos) && typeof dbTask.photos === "object"
-      ? dbTask.photos
+    !Array.isArray(photosValue) && isRecord(photosValue)
+      ? buildCategorizedPhotos(photosValue)
       : undefined
-  const notes = typeof dbTask.notes === "string" ? dbTask.notes : undefined
+
+  const notes = typeof dbTask.notes === "string" && dbTask.notes.length > 0 ? dbTask.notes : undefined
+  const assignedTo = typeof dbTask.assigned_to === "string" && dbTask.assigned_to.length > 0 ? dbTask.assigned_to : undefined
+  const roomNumber = typeof dbTask.room_number === "string" && dbTask.room_number.length > 0 ? dbTask.room_number : undefined
+  const location = typeof dbTask.ac_location === "string" && dbTask.ac_location.length > 0 ? dbTask.ac_location : ""
+  const status: MaintenanceTask["status"] = dbTask.status === "verified" ? "completed" : dbTask.status
+  const periodMonth = typeof dbTask.period_month === "number" ? dbTask.period_month : 0
+  const periodYear = typeof dbTask.period_year === "number" ? dbTask.period_year : 0
+  const scheduleId = typeof dbTask.schedule_id === "string" ? dbTask.schedule_id : ""
+  const taskType = toMaintenanceTaskType(dbTask.task_type)
 
   return {
     id: dbTask.id,
-    schedule_id: dbTask.schedule_id,
-    task_type: dbTask.task_type,
-    room_number: dbTask.room_number || undefined,
-    location: dbTask.ac_location || "",
-    description: `${dbTask.task_type} - ${dbTask.room_number || "N/A"}`,
-    status: dbTask.status,
-    assigned_to: dbTask.assigned_to || undefined,
+    schedule_id: scheduleId,
+    task_type: taskType,
+    room_number: roomNumber,
+    location,
+    description: `${taskType} - ${roomNumber ?? "N/A"}`,
+    status,
+    assigned_to: assignedTo,
     started_at: startedAt,
     completed_at: completedAt,
     timer_duration: timerDuration,
-    photos: photos ?? [],
+    photos,
     categorized_photos: categorizedPhotos,
-    period_month: dbTask.period_month,
-    period_year: dbTask.period_year,
+    period_month: periodMonth,
+    period_year: periodYear,
     created_at: dbTask.created_at,
     notes,
   }

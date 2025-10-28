@@ -7,6 +7,7 @@ import { useAuth } from "@/lib/auth-context"
 import { TASK_TYPE_LABELS } from "@/lib/maintenance-types"
 import { CategorizedPhotoCaptureModal } from "@/components/categorized-photo-capture-modal"
 import { RaiseIssueModal } from "@/components/raise-issue-modal"
+import { TaskImage } from "@/components/task-image"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -33,14 +34,20 @@ import {
 import { ArrowLeft, Play, CheckCircle, Clock, MapPin, Camera, AlertTriangle, CheckCheck } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { OfflineIndicator } from "@/components/timer/offline-indicator"
-import type { CategorizedPhotos } from "@/lib/types"
+import type { CategorizedPhotos, Task } from "@/lib/types"
 import { startPauseMonitoring, stopPauseMonitoring } from "@/lib/pause-monitoring"
+import { bucketToCategorizedPhotos, categorizedPhotosToBucket, type PhotoBucket } from "@/lib/photo-utils"
 
 interface MaintenanceTaskPageProps {
   params:
     | { roomNumber: string; taskType: string; location: string }
     | Promise<{ roomNumber: string; taskType: string; location: string }>
 }
+
+const MAINTENANCE_PHOTO_CATEGORIES = [
+  { name: "Before Photos", count: 1, description: "Capture the area before maintenance" },
+  { name: "After Photos", count: 1, description: "Capture the area after maintenance" },
+]
 
 function MaintenanceTaskPage({ params }: MaintenanceTaskPageProps) {
   const resolvedParams = params instanceof Promise ? use(params) : params
@@ -49,7 +56,7 @@ function MaintenanceTaskPage({ params }: MaintenanceTaskPageProps) {
 
   const router = useRouter()
   const { user } = useAuth()
-  const { maintenanceTasks, updateMaintenanceTask, tasks } = useTasks()
+  const { maintenanceTasks, updateMaintenanceTask, tasks, updateTask } = useTasks()
   const { toast } = useToast()
 
   const task = maintenanceTasks.find(
@@ -73,12 +80,14 @@ function MaintenanceTaskPage({ params }: MaintenanceTaskPageProps) {
   const [ongoingTask, setOngoingTask] = useState<typeof task | null>(null)
   const [swapDialogOpen, setSwapDialogOpen] = useState(false)
   const [taskToSwap, setTaskToSwap] = useState<typeof task | null>(null)
-  const [categorizedPhotos, setCategorizedPhotos] = useState<CategorizedPhotos>({
-    room_photos: [],
-    proof_photos: [],
-    before_photos: [],
-    after_photos: [],
-  })
+  const [categorizedPhotos, setCategorizedPhotos] = useState<CategorizedPhotos>(
+    task?.categorized_photos ?? {
+      room_photos: [],
+      proof_photos: [],
+      before_photos: [],
+      after_photos: [],
+    },
+  )
   const [elapsedTime, setElapsedTime] = useState(0)
   const [isRunning, setIsRunning] = useState(false)
 
@@ -102,12 +111,7 @@ function MaintenanceTaskPage({ params }: MaintenanceTaskPageProps) {
     })
 
     if (task.categorized_photos) {
-      setCategorizedPhotos({
-        room_photos: [],
-        proof_photos: [],
-        before_photos: task.categorized_photos.before_photos || [],
-        after_photos: task.categorized_photos.after_photos || [],
-      })
+      setCategorizedPhotos(task.categorized_photos)
       console.log("[v0] Loaded categorized photos from task:", {
         before: task.categorized_photos.before_photos?.length || 0,
         after: task.categorized_photos.after_photos?.length || 0,
@@ -135,6 +139,51 @@ function MaintenanceTaskPage({ params }: MaintenanceTaskPageProps) {
   }, [task, maintenanceTasks, roomNumber])
 
   useEffect(() => {
+    if (!task) return
+
+    const hasPersistedPhotos = Boolean(
+      task.categorized_photos &&
+        Object.values(task.categorized_photos).some((value) => Array.isArray(value) && value.length > 0),
+    )
+
+    if (hasPersistedPhotos) {
+      return
+    }
+
+    let cancelled = false
+
+    const hydrate = async () => {
+      try {
+        const response = await fetch(`/api/tasks/${task.id}`, {
+          method: "GET",
+          cache: "no-store",
+          credentials: "include",
+        })
+
+        if (!response.ok) {
+          return
+        }
+
+        const payload = await response.json()
+        if (cancelled) return
+
+        const fetchedTask = payload?.task as Task | undefined
+        if (fetchedTask?.categorized_photos) {
+          setCategorizedPhotos(fetchedTask.categorized_photos)
+        }
+      } catch (error) {
+        console.error("[maintenance] Failed to hydrate task photos", error)
+      }
+    }
+
+    void hydrate()
+
+    return () => {
+      cancelled = true
+    }
+  }, [task?.id])
+
+  useEffect(() => {
     if (!isRunning || !task?.started_at) return
 
     const interval = setInterval(() => {
@@ -152,7 +201,7 @@ function MaintenanceTaskPage({ params }: MaintenanceTaskPageProps) {
       <div className="flex min-h-screen flex-col items-center justify-center gap-4 p-4">
         <p className="text-lg font-semibold text-foreground">Task Not Found</p>
         <p className="text-muted-foreground text-center max-w-md">
-          This maintenance task doesn't exist or hasn't been scheduled yet. Please check the maintenance calendar for
+          This maintenance task doesn&apos;t exist or hasn&apos;t been scheduled yet. Please check the maintenance calendar for
           available tasks.
         </p>
         <Button onClick={() => router.push("/worker")} variant="default" size="lg">
@@ -236,22 +285,6 @@ function MaintenanceTaskPage({ params }: MaintenanceTaskPageProps) {
     })
   }
 
-  const handlePause = () => {
-    const now = new Date().toISOString()
-    updateMaintenanceTask(task.id, {
-      status: "paused",
-      paused_at: now,
-      timer_duration: Math.max(elapsedTime, 0),
-    })
-    setIsRunning(false)
-    startPauseMonitoring(task.id, user!.id)
-    console.log("[v0] Task paused:", task.id, "duration:", elapsedTime)
-    toast({
-      title: "Task Paused",
-      description: "Timer has been paused",
-    })
-  }
-
   const handleResume = () => {
     const blockingRegularTask = tasks.find((t) => t.assigned_to_user_id === user?.id && t.status === "IN_PROGRESS")
 
@@ -323,8 +356,9 @@ function MaintenanceTaskPage({ params }: MaintenanceTaskPageProps) {
     router.back()
   }
 
-  const handlePhotosCapture = (photos: CategorizedPhotos) => {
-    const updatedPhotos = {
+  const handlePhotosCapture = async (bucket: PhotoBucket) => {
+    const photos = bucketToCategorizedPhotos(bucket)
+    const updatedPhotos: CategorizedPhotos = {
       room_photos: [],
       proof_photos: [],
       before_photos: photos.before_photos || categorizedPhotos.before_photos || [],
@@ -335,6 +369,17 @@ function MaintenanceTaskPage({ params }: MaintenanceTaskPageProps) {
     updateMaintenanceTask(task.id, {
       categorized_photos: updatedPhotos,
     })
+
+    if (isOnline()) {
+      const success = await updateTask(task.id, { categorized_photos: updatedPhotos })
+      if (!success) {
+        toast({
+          title: "Sync failed",
+          description: "Could not persist photos to the server. They remain saved locally.",
+          variant: "destructive",
+        })
+      }
+    }
 
     const totalPhotos = (updatedPhotos.before_photos?.length || 0) + (updatedPhotos.after_photos?.length || 0)
 
@@ -352,6 +397,7 @@ function MaintenanceTaskPage({ params }: MaintenanceTaskPageProps) {
   }
 
   const handleRaiseIssue = (issueDescription: string, issuePhotos: string[]) => {
+    void issuePhotos
     setRemark((prev) => prev + (prev ? "\n" : "") + `[ISSUE] ${issueDescription}`)
     updateMaintenanceTask(task.id, {
       notes: remark + (remark ? "\n" : "") + `[ISSUE] ${issueDescription}`,
@@ -532,11 +578,13 @@ function MaintenanceTaskPage({ params }: MaintenanceTaskPageProps) {
                   </div>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                     {categorizedPhotos.before_photos.map((photo, index) => (
-                      <div key={index} className="relative">
-                        <img
-                          src={photo || "/placeholder.svg"}
+                      <div key={index} className="relative w-full aspect-square">
+                        <TaskImage
+                          src={photo}
                           alt={`Before photo ${index + 1}`}
-                          className="w-full aspect-square object-cover rounded-lg border-2 border-blue-500"
+                          fill
+                          className="rounded-lg border-2 border-blue-500 object-cover"
+                          sizes="(max-width: 768px) 45vw, 200px"
                         />
                         <div className="absolute bottom-1 left-1 bg-blue-500 text-white text-xs px-2 py-0.5 rounded">
                           Before {index + 1}
@@ -557,11 +605,13 @@ function MaintenanceTaskPage({ params }: MaintenanceTaskPageProps) {
                   </div>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                     {categorizedPhotos.after_photos.map((photo, index) => (
-                      <div key={index} className="relative">
-                        <img
-                          src={photo || "/placeholder.svg"}
+                      <div key={index} className="relative w-full aspect-square">
+                        <TaskImage
+                          src={photo}
                           alt={`After photo ${index + 1}`}
-                          className="w-full aspect-square object-cover rounded-lg border-2 border-primary"
+                          fill
+                          className="rounded-lg border-2 border-primary object-cover"
+                          sizes="(max-width: 768px) 45vw, 200px"
                         />
                         <div className="absolute bottom-1 left-1 bg-primary text-primary-foreground text-xs px-2 py-0.5 rounded">
                           After {index + 1}
@@ -687,10 +737,10 @@ function MaintenanceTaskPage({ params }: MaintenanceTaskPageProps) {
       <CategorizedPhotoCaptureModal
         open={photoModalOpen}
         onOpenChange={setPhotoModalOpen}
-        onPhotosCapture={handlePhotosCapture}
         taskId={task.id}
-        existingPhotos={categorizedPhotos}
-        mode="maintenance"
+        photoCategories={MAINTENANCE_PHOTO_CATEGORIES}
+        existingPhotos={categorizedPhotosToBucket(categorizedPhotos)}
+        onSave={handlePhotosCapture}
       />
 
       <RaiseIssueModal open={issueModalOpen} onOpenChange={setIssueModalOpen} onSubmit={handleRaiseIssue} />

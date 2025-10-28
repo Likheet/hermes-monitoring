@@ -94,54 +94,39 @@ function AdminDashboard() {
     users,
     maintenanceTasks,
     createTask,
-    updateWorkerShift,
     shiftSchedules,
-    workers,
-    customTaskRequests,
     updateShiftSchedule,
     usersLoaded,
     usersLoadError,
   } = useTasks()
   const router = useRouter()
-  const { isConnected } = useRealtimeTasks({ enabled: true })
+  useRealtimeTasks({ enabled: true })
   const { toast } = useToast()
 
   const [activeTab, setActiveTab] = useState<"home" | "staff" | "tasks" | "operations">("home")
   const [analyticsTab, setAnalyticsTab] = useState<"peak" | "trends">("peak")
 
-  // Task filter status renamed to taskFilterStatus and type changed to string | null
   const [taskFilterStatus, setTaskFilterStatus] = useState<string | null>(null)
 
   const [selectedTaskDef, setSelectedTaskDef] = useState<TaskDefinition | null>(null)
 
-  const [timeRange, setTimeRange] = useState<"week" | "month" | "all" | "custom">("all")
-  const [customStartDate, setCustomStartDate] = useState("")
-  const [customEndDate, setCustomEndDate] = useState("")
-  const [showCustomDatePicker, setShowCustomDatePicker] = useState(false)
+  const timeRange: "week" | "month" | "all" | "custom" = "all"
+  const customStartDate = ""
+  const customEndDate = ""
   const [selectedWorker, setSelectedWorker] = useState<User | null>(null)
   const [isProfileDialogOpen, setIsProfileDialogOpen] = useState(false)
 
   const [showTasksModal, setShowTasksModal] = useState(false)
   const [showWorkersModal, setShowWorkersModal] = useState(false)
-  const [showCustomRequestsModal, setShowCustomRequestsModal] = useState(false)
   const [selectedWorkerDetail, setSelectedWorkerDetail] = useState<User | null>(null)
 
   const [showShiftManagement, setShowShiftManagement] = useState(false)
-  // Renamed editingWorkerShift to editingShift and changed its type to accommodate start_time and end_time
   const [editingShift, setEditingShift] = useState<{
     workerId: string
     start_time: string
     end_time: string
   } | null>(null)
-  const [shiftEditForm, setShiftEditForm] = useState<{
-    start: string
-    end: string
-  }>({ start: "", end: "" })
   const [shiftSortOption, setShiftSortOption] = useState<ShiftSortOption>("status")
-
-  // Added selectedTask and showTaskForm states
-  const [selectedTask, setSelectedTask] = useState<any>(null)
-  const [showTaskForm, setShowTaskForm] = useState(false)
 
   const [showPendingModal, setShowPendingModal] = useState(false)
   const [pendingModalTab, setPendingModalTab] = useState<"tasks" | "verifications">("tasks")
@@ -154,17 +139,6 @@ function AdminDashboard() {
   const handleWorkerClick = (worker: User) => {
     setSelectedWorker(worker)
     setIsProfileDialogOpen(true)
-  }
-
-  // Modified handleEditShift to set editingShift state
-  const handleEditShift = (worker: User) => {
-    const today = new Date()
-    const todayShift = getWorkerShiftForDate(worker, today, shiftSchedules)
-    setEditingShift({
-      workerId: worker.id,
-      start_time: todayShift.shift_start,
-      end_time: todayShift.shift_end,
-    })
   }
 
   // Modified handleSaveShift to use the new editingShift state and updateShiftSchedule
@@ -183,7 +157,7 @@ function AdminDashboard() {
         description: "Shift schedule updated successfully",
       })
       setEditingShift(null)
-    } catch (error) {
+  } catch {
       toast({
         title: "Error",
         description: "Failed to update shift schedule",
@@ -192,16 +166,11 @@ function AdminDashboard() {
     }
   }
 
-  const handleCancelShiftEdit = () => {
-    setEditingShift(null)
-    setShiftEditForm({ start: "", end: "" }) // This line might be redundant if using editingShift directly
-  }
-
   const isManagedStaff = (user: User) => user.role === "worker" || user.role === "front_office"
 
   const workersList = useMemo(() => users.filter(isManagedStaff), [users]) // Renamed to workersList for clarity
 
-  const today = new Date()
+  const today = useMemo(() => new Date(), [])
 
   const sortedManagedStaff = useMemo(() => {
     const getStatusRank = (worker: User) => {
@@ -273,22 +242,7 @@ function AdminDashboard() {
 
   const totalTasks = filteredTasks.length
   const pendingTasks = filteredTasks.filter((t) => t.status === "PENDING").length
-  const inProgressTasks = filteredTasks.filter((t) => t.status === "IN_PROGRESS").length
   const completedTasks = filteredTasks.filter((t) => t.status === "COMPLETED").length
-  const rejectedTasks = filteredTasks.filter((t) => t.status === "REJECTED").length
-
-  const completedTasksWithDuration = filteredTasks.filter((t) => t.status === "COMPLETED" && t.actual_duration_minutes)
-  const avgCompletionTime =
-    completedTasksWithDuration.length > 0
-      ? Math.round(
-          completedTasksWithDuration.reduce((sum, t) => sum + (t.actual_duration_minutes || 0), 0) /
-            completedTasksWithDuration.length,
-        )
-      : 0
-
-  const overtimeTasks = completedTasksWithDuration.filter(
-    (t) => (t.actual_duration_minutes || 0) > t.expected_duration_minutes,
-  ).length
 
   const getWorkerCurrentTask = (workerId: string) => {
     const regularTask = tasks.find(
@@ -300,24 +254,6 @@ function AdminDashboard() {
       (t) => t.assigned_to === workerId && (t.status === "in_progress" || t.status === "paused"),
     )
     return maintenanceTask
-  }
-
-  const getWorkerStats = (workerId: string) => {
-    const workerTasks = filteredTasks.filter((t) => t.assigned_to_user_id === workerId)
-    const workerMaintenanceTasks = (maintenanceTasks || []).filter((t) => t.assigned_to === workerId)
-
-    return {
-      totalTasks: workerTasks.length + workerMaintenanceTasks.length,
-      completedTasks:
-        workerTasks.filter((t) => t.status === "COMPLETED").length +
-        workerMaintenanceTasks.filter((t) => t.status === "completed").length,
-      rejectedTasks:
-        workerTasks.filter((t) => t.status === "REJECTED").length +
-        workerMaintenanceTasks.filter((t) => t.status === "rejected").length,
-      inProgressTasks:
-        workerTasks.filter((t) => t.status === "IN_PROGRESS").length +
-        maintenanceTasks.filter((t) => t.status === "in_progress").length,
-    }
   }
 
   type StaffStatusEntry = {
@@ -380,49 +316,6 @@ function AdminDashboard() {
   )
 
   const recentCustomTasks = customTasks.slice(0, 10)
-
-  const calculateWorkerPerformance = (workerId: string) => {
-    const worker = users.find((u) => u.id === workerId)
-    if (!worker) return null
-
-    const [startHour, startMin] = worker.shift_start.split(":").map(Number)
-    const [endHour, endMin] = worker.shift_end.split(":").map(Number)
-    const shiftMinutes = endHour * 60 + endMin - (startHour * 60 + startMin)
-    const shiftHours = (shiftMinutes / 60).toFixed(1)
-
-    const workerCompletedTasks = filteredTasks.filter(
-      (t) => t.assigned_to_user_id === workerId && t.status === "COMPLETED",
-    )
-    const workerCompletedMaintenanceTasks = (maintenanceTasks || []).filter(
-      (t) => t.assigned_to === workerId && t.status === "completed",
-    )
-
-    const totalWorkMinutes =
-      workerCompletedTasks.reduce((sum, t) => sum + (t.actual_duration_minutes || 0), 0) +
-      workerCompletedMaintenanceTasks.reduce((sum, t) => sum + (t.duration || 0), 0)
-    const actualWorkHours = (totalWorkMinutes / 60).toFixed(1)
-
-    const idleMinutes = shiftMinutes - totalWorkMinutes
-    const idleHours = (idleMinutes / 60).toFixed(1)
-
-    const discrepancyPercent = shiftMinutes > 0 ? ((idleMinutes / shiftMinutes) * 100).toFixed(1) : "0.0"
-
-    const ratedTasks = workerCompletedTasks.filter((t) => t.rating && t.rating > 0)
-    const avgRating =
-      ratedTasks.length > 0
-        ? (ratedTasks.reduce((sum, t) => sum + (t.rating || 0), 0) / ratedTasks.length).toFixed(1)
-        : "N/A"
-    const totalRatings = ratedTasks.length
-
-    return {
-      shiftHours,
-      actualWorkHours,
-      idleHours,
-      discrepancyPercent,
-      avgRating,
-      totalRatings,
-    }
-  }
 
   const discrepancyTasks = filteredTasks.filter((t) => {
     const isOvertime =
@@ -509,221 +402,6 @@ function AdminDashboard() {
   const maintenanceStats = calculateDepartmentStats("maintenance")
   const frontDeskStats = calculateDepartmentStats("front_desk")
 
-  const exportToExcel = () => {
-    import("xlsx").then((XLSX) => {
-      const workersData = workersList.map((worker) => {
-        const performance = calculateWorkerPerformance(worker.id)
-        const currentTask = getWorkerCurrentTask(worker.id)
-        const stats = getWorkerStats(worker.id)
-
-        return {
-          Name: worker.name,
-          Department: worker.department,
-          "Shift Hours": performance?.shiftHours || "0",
-          "Worked Hours": performance?.actualWorkHours || "0",
-          "Idle Hours": performance?.idleHours || "0",
-          "Discrepancy %": performance?.discrepancyPercent || "0",
-          "Avg Rating": performance?.avgRating || "N/A",
-          "Total Ratings": performance?.totalRatings || 0,
-          Status: currentTask ? "Working" : "Available",
-          "Total Tasks": stats.totalTasks,
-          "Completed Tasks": stats.completedTasks,
-          "Rejected Tasks": stats.rejectedTasks,
-        }
-      })
-
-      const ws = XLSX.utils.json_to_sheet(workersData)
-      const wb = XLSX.utils.book_new()
-      XLSX.utils.book_append_sheet(wb, ws, "Staff Performance")
-
-      // Add department summary sheet
-      const deptData = [
-        {
-          Department: "Housekeeping",
-          "Total Workers": housekeepingStats.totalWorkers,
-          "Total Tasks": housekeepingStats.totalTasks,
-          "Completed Tasks": housekeepingStats.completedTasks,
-          "Completion Rate": `${housekeepingStats.completionRate}%`,
-          "Avg Rating": housekeepingStats.avgRating,
-          "Avg Duration": `${housekeepingStats.avgDuration} min`,
-          "Available Staff": housekeepingStats.availableWorkers,
-        },
-        {
-          Department: "Maintenance",
-          "Total Workers": maintenanceStats.totalWorkers,
-          "Total Tasks": maintenanceStats.totalTasks,
-          "Completed Tasks": maintenanceStats.completedTasks,
-          "Completion Rate": `${maintenanceStats.completionRate}%`,
-          "Avg Rating": maintenanceStats.avgRating,
-          "Avg Duration": `${maintenanceStats.avgDuration} min`,
-          "Available Staff": maintenanceStats.availableWorkers,
-        },
-        {
-          Department: "Front Desk",
-          "Total Workers": frontDeskStats.totalWorkers,
-          "Total Tasks": frontDeskStats.totalTasks,
-          "Completed Tasks": frontDeskStats.completedTasks,
-          "Completion Rate": `${frontDeskStats.completionRate}%`,
-          "Avg Rating": frontDeskStats.avgRating,
-          "Avg Duration": `${frontDeskStats.avgDuration} min`,
-          "Available Staff": frontDeskStats.availableWorkers,
-        },
-      ]
-
-      const deptWs = XLSX.utils.json_to_sheet(deptData)
-      XLSX.utils.book_append_sheet(wb, deptWs, "Department Summary")
-
-      const dateRange =
-        timeRange === "custom" && customStartDate && customEndDate
-          ? `${customStartDate}_to_${customEndDate}`
-          : timeRange
-      XLSX.writeFile(wb, `staff_performance_${dateRange}_${new Date().toISOString().split("T")[0]}.xlsx`)
-    })
-  }
-
-  const exportToPDF = () => {
-    import("jspdf").then((jsPDFModule) => {
-      const { jsPDF } = jsPDFModule
-      const doc = new jsPDF()
-
-      // Add title
-      doc.setFontSize(18)
-      doc.setFont("helvetica", "bold")
-      doc.text("Staff Performance Report", 14, 20)
-
-      // Add date range
-      doc.setFontSize(10)
-      doc.setFont("helvetica", "normal")
-      const dateRangeText =
-        timeRange === "custom" && customStartDate && customEndDate
-          ? `${customStartDate} to ${customEndDate}`
-          : timeRange === "week"
-            ? "Last 7 Days"
-            : timeRange === "month"
-              ? "Last 30 Days"
-              : "All Time"
-      doc.text(`Period: ${dateRangeText}`, 14, 28)
-      doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 34)
-
-      // Add department summary section
-      doc.setFontSize(14)
-      doc.setFont("helvetica", "bold")
-      doc.text("Department Summary", 14, 45)
-
-      // Draw department summary table
-      doc.setFontSize(9)
-      doc.setFont("helvetica", "normal")
-      let yPos = 52
-
-      // Table headers
-      doc.setFillColor(59, 130, 246)
-      doc.rect(14, yPos, 182, 8, "F")
-      doc.setTextColor(255, 255, 255)
-      doc.setFont("helvetica", "bold")
-      doc.text("Department", 16, yPos + 5)
-      doc.text("Workers", 60, yPos + 5)
-      doc.text("Tasks", 85, yPos + 5)
-      doc.text("Completion", 110, yPos + 5)
-      doc.text("Rating", 145, yPos + 5)
-      doc.text("Avg Duration", 170, yPos + 5)
-
-      // Reset text color
-      doc.setTextColor(0, 0, 0)
-      doc.setFont("helvetica", "normal")
-      yPos += 8
-
-      // Housekeeping row
-      doc.rect(14, yPos, 182, 7)
-      doc.text("Housekeeping", 16, yPos + 5)
-      doc.text(housekeepingStats.totalWorkers.toString(), 60, yPos + 5)
-      doc.text(housekeepingStats.totalTasks.toString(), 85, yPos + 5)
-      doc.text(`${housekeepingStats.completionRate}%`, 110, yPos + 5)
-      doc.text(housekeepingStats.avgRating, 145, yPos + 5)
-      doc.text(`${housekeepingStats.avgDuration} min`, 170, yPos + 5)
-      yPos += 7
-
-      // Maintenance row
-      doc.rect(14, yPos, 182, 7)
-      doc.text("Maintenance", 16, yPos + 5)
-      doc.text(maintenanceStats.totalWorkers.toString(), 60, yPos + 5)
-      doc.text(maintenanceStats.totalTasks.toString(), 85, yPos + 5)
-      doc.text(`${maintenanceStats.completionRate}%`, 110, yPos + 5)
-      doc.text(maintenanceStats.avgRating, 145, yPos + 5)
-      doc.text(`${maintenanceStats.avgDuration} min`, 170, yPos + 5)
-      yPos += 7
-
-      // Front Desk row
-      doc.rect(14, yPos, 182, 7)
-      doc.text("Front Desk", 16, yPos + 5)
-      doc.text(frontDeskStats.totalWorkers.toString(), 60, yPos + 5)
-      doc.text(frontDeskStats.totalTasks.toString(), 85, yPos + 5)
-      doc.text(`${frontDeskStats.completionRate}%`, 110, yPos + 5)
-      doc.text(frontDeskStats.avgRating, 145, yPos + 5)
-      doc.text(`${frontDeskStats.avgDuration} min`, 170, yPos + 5)
-      yPos += 15
-
-      // Add worker performance section
-      doc.setFontSize(14)
-      doc.setFont("helvetica", "bold")
-      doc.text("Worker Performance", 14, yPos)
-      yPos += 7
-
-      // Worker performance table headers
-      doc.setFontSize(8)
-      doc.setFillColor(59, 130, 246)
-      doc.rect(14, yPos, 182, 7, "F")
-      doc.setTextColor(255, 255, 255)
-      doc.setFont("helvetica", "bold")
-      doc.text("Name", 16, yPos + 4.5)
-      doc.text("Dept", 50, yPos + 4.5)
-      doc.text("Shift", 75, yPos + 4.5)
-      doc.text("Worked", 95, yPos + 4.5)
-      doc.text("Idle", 120, yPos + 4.5)
-      doc.text("Disc%", 140, yPos + 4.5)
-      doc.text("Rating", 160, yPos + 4.5)
-      doc.text("Status", 180, yPos + 4.5)
-
-      doc.setTextColor(0, 0, 0)
-      doc.setFont("helvetica", "normal")
-      yPos += 7
-
-      // Worker rows
-      workersList.forEach((worker, index) => {
-        const performance = calculateWorkerPerformance(worker.id)
-        const currentTask = getWorkerCurrentTask(worker.id)
-
-        if (!performance) return
-
-        // Check if we need a new page
-        if (yPos > 270) {
-          doc.addPage()
-          yPos = 20
-        }
-
-        // Alternate row colors
-        if (index % 2 === 0) {
-          doc.setFillColor(245, 245, 245)
-          doc.rect(14, yPos, 182, 6, "F")
-        }
-
-        doc.text(worker.name.substring(0, 15), 16, yPos + 4)
-        doc.text(worker.department.substring(0, 8), 50, yPos + 4)
-        doc.text(`${performance.shiftHours}h`, 75, yPos + 4)
-        doc.text(`${performance.actualWorkHours}h`, 95, yPos + 4)
-        doc.text(`${performance.idleHours}h`, 120, yPos + 4)
-        doc.text(`${performance.discrepancyPercent}%`, 140, yPos + 4)
-        doc.text(performance.avgRating, 160, yPos + 4)
-        doc.text(currentTask ? "Working" : "Available", 180, yPos + 4)
-
-        yPos += 6
-      })
-
-      // Save the PDF
-      const filename = `staff_performance_${dateRangeText.replace(/\s+/g, "_")}_${new Date().toISOString().split("T")[0]}.pdf`
-      doc.save(filename)
-    })
-  }
-
   const getHourlyDistribution = () => {
     const hourCounts = Array(24).fill(0)
     const hourCompletions = Array(24).fill(0)
@@ -786,54 +464,6 @@ function AdminDashboard() {
       }))
   }
 
-  const getWorkerRejectionTrends = () => {
-    const now = new Date()
-    const currentMonth = now.getMonth()
-    const currentYear = now.getFullYear()
-
-    return workersList.map((worker) => {
-      const workerTasks = filteredTasks.filter((t) => t.assigned_to_user_id === worker.id)
-      const currentMonthTasks = workerTasks.filter((t) => {
-        const taskDate = new Date(t.assigned_at.client)
-        return taskDate.getMonth() === currentMonth && taskDate.getFullYear() === currentYear
-      })
-
-      const rejections = currentMonthTasks.filter((t) => t.status === "REJECTED").length
-      const completionRate =
-        currentMonthTasks.length > 0
-          ? Math.round(
-              (currentMonthTasks.filter((t) => t.status === "COMPLETED").length / currentMonthTasks.length) * 100,
-            )
-          : 0
-
-      const previousMonthTasks = workerTasks.filter((t) => {
-        const taskDate = new Date(t.assigned_at.client)
-        const prevMonth = currentMonth === 0 ? 11 : currentMonth - 1
-        const prevYear = currentMonth === 0 ? currentYear - 1 : currentYear
-        return taskDate.getMonth() === prevMonth && taskDate.getFullYear() === prevYear
-      })
-
-      const prevCompletionRate =
-        previousMonthTasks.length > 0
-          ? Math.round(
-              (previousMonthTasks.filter((t) => t.status === "COMPLETED").length / previousMonthTasks.length) * 100,
-            )
-          : 0
-
-      const trend = completionRate - prevCompletionRate
-
-      return {
-        name: worker.name,
-        rejections,
-        completionRate,
-        trend,
-        isAtRisk: rejections >= 4,
-        isImproving: trend > 10,
-        isDeclining: trend < -10,
-      }
-    })
-  }
-
   const getPeakHours = () => {
     const hourlyData = getHourlyDistribution()
     const sorted = [...hourlyData].sort((a, b) => b.created - a.created)
@@ -842,7 +472,6 @@ function AdminDashboard() {
 
   const hourlyData = getHourlyDistribution()
   const monthlyTrends = getMonthlyTrends()
-  const workerRejectionData = getWorkerRejectionTrends()
   const peakHours = getPeakHours()
 
   // Renamed pendingVerificationTasks to pendingVerificationsList for consistency
@@ -933,6 +562,14 @@ function AdminDashboard() {
     setSelectedTaskDef(null)
   }
 
+  const handleAnalyticsTabChange = (value: "peak" | "trends") => {
+    setAnalyticsTab(value)
+  }
+
+  const handlePendingModalTabChange = (value: "tasks" | "verifications") => {
+    setPendingModalTab(value)
+  }
+
   return (
     <div className="min-h-screen bg-background pb-20">
       <WorkerProfileDialog worker={selectedWorker} open={isProfileDialogOpen} onOpenChange={setIsProfileDialogOpen} />
@@ -1014,7 +651,9 @@ function AdminDashboard() {
                               Priority: {displayPriority} • Created by {getUserName(task.assigned_by_user_id)}
                             </p>
                             {task.worker_remark && (
-                              <p className="text-xs text-muted-foreground italic mt-1">"{task.worker_remark}"</p>
+                              <p className="text-xs text-muted-foreground italic mt-1">
+                                &ldquo;{task.worker_remark}&rdquo;
+                              </p>
                             )}
                           </div>
                           <Link href="/admin/task-management">
@@ -1101,7 +740,6 @@ function AdminDashboard() {
                         t.assigned_to_user_id === worker.id && (t.status === "IN_PROGRESS" || t.status === "PAUSED"),
                     )
                     const isWorking = !!currentTask
-                    const isBusy = busyWorkers.some((w) => w.id === worker.id)
 
                     return (
                       <Card
@@ -1369,7 +1007,7 @@ function AdminDashboard() {
                                   </p>
                                   {task.worker_remark && (
                                     <p className="text-xs text-muted-foreground italic mt-1">
-                                      Details: "{task.worker_remark}"
+                                      Details: &ldquo;{task.worker_remark}&rdquo;
                                     </p>
                                   )}
                                   <p className="text-xs text-muted-foreground">
@@ -1926,7 +1564,7 @@ function AdminDashboard() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <Tabs value={analyticsTab} onValueChange={(v) => setAnalyticsTab(v as any)} className="space-y-6">
+                <Tabs value={analyticsTab} onValueChange={handleAnalyticsTabChange} className="space-y-6">
                   <TabsList className="w-full justify-start overflow-x-auto bg-muted/50">
                     <TabsTrigger value="peak" className="whitespace-nowrap">
                       Peak Time Analysis
@@ -2349,7 +1987,7 @@ function AdminDashboard() {
                   </CardHeader>
                   <CardContent className="space-y-2 text-sm">
                     <div className="flex justify-between">
-                      <span className="text-muted-foreground">Today's Shift:</span>
+                      <span className="text-muted-foreground">Today&rsquo;s Shift:</span>
                       <span className="font-medium">
                         {(() => {
                           const today = new Date()
@@ -2486,7 +2124,7 @@ function AdminDashboard() {
 
           <Tabs
             value={pendingModalTab}
-            onValueChange={(v) => setPendingModalTab(v as any)}
+            onValueChange={handlePendingModalTabChange}
             className="flex-1 flex flex-col overflow-hidden"
           >
             <TabsList className="grid w-full grid-cols-2">
