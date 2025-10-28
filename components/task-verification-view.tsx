@@ -1,12 +1,12 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
-import { ArrowLeft, CheckCircle, XCircle, Clock, MapPin, User, Camera, ZoomIn, Loader2, AlertCircle } from "lucide-react"
+import { ArrowLeft, CheckCircle, XCircle, Clock, MapPin, User, Camera, ZoomIn } from "lucide-react"
 import { PhotoZoomModal } from "@/components/photo-zoom-modal"
 import { VerificationChecklist } from "@/components/verification-checklist"
 import { RatingModal } from "@/components/rating-modal"
@@ -15,6 +15,7 @@ import { useAuth } from "@/lib/auth-context"
 import { useTasks } from "@/lib/task-context"
 import { useToast } from "@/hooks/use-toast"
 import { formatExactTimestamp } from "@/lib/date-utils"
+import { getCategorizedPhotoSections } from "@/lib/image-utils"
 import type { Task } from "@/lib/types"
 
 const priorityColors: Record<string, string> = {
@@ -31,20 +32,147 @@ interface TaskVerificationViewProps {
 
 type TaskWithLegacyPhoto = Task & { photo_url?: string | null }
 
+type PhotoState = {
+  proofPhotos: string[]
+  documentationSections: ReturnType<typeof getCategorizedPhotoSections>
+  simplePhotos: string[]
+  totalPhotoCount: number
+}
+
+function derivePhotoState(task: TaskWithLegacyPhoto | null | undefined): PhotoState {
+  if (!task) {
+    return {
+      proofPhotos: [],
+      documentationSections: [],
+      simplePhotos: [],
+      totalPhotoCount: 0,
+    }
+  }
+
+  const categorizedSections = getCategorizedPhotoSections(task.categorized_photos)
+  const proofSection = categorizedSections.find((section) => section.key === "proof_photos")
+  const proofPhotos = proofSection?.urls ?? []
+  const documentationSections = categorizedSections.filter((section) => section.key !== "proof_photos")
+  const documentationCount = documentationSections.reduce((total, section) => total + section.urls.length, 0)
+  const simplePhotos = (task.photo_urls ?? []).filter((url): url is string => typeof url === "string" && url.length > 0)
+  if (!simplePhotos.length && task.photo_url) {
+    simplePhotos.push(task.photo_url)
+  }
+
+  return {
+    proofPhotos,
+    documentationSections,
+    simplePhotos,
+    totalPhotoCount: proofPhotos.length + documentationCount + simplePhotos.length,
+  }
+}
+
 export function TaskVerificationView({ taskId, returnPath }: TaskVerificationViewProps) {
   const router = useRouter()
   const { user } = useAuth()
   const { getTaskById, verifyTask, users } = useTasks()
   const { toast } = useToast()
 
-  const task = getTaskById(taskId) as TaskWithLegacyPhoto | undefined
+  const baseTask = getTaskById(taskId) as TaskWithLegacyPhoto | undefined
+  const [task, setTask] = useState<TaskWithLegacyPhoto | null>(baseTask ?? null)
+  const initialPhotoState = useMemo(() => derivePhotoState(baseTask), [baseTask])
+  const [photoState, setPhotoState] = useState<PhotoState>(initialPhotoState)
+  const [isLoadingPhotos, setIsLoadingPhotos] = useState(initialPhotoState.totalPhotoCount === 0)
+  const [photoError, setPhotoError] = useState<string | null>(null)
 
+  const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null)
   const [photoZoomOpen, setPhotoZoomOpen] = useState(false)
-  const [photoLoading, setPhotoLoading] = useState(true)
-  const [photoError, setPhotoError] = useState(false)
   const [checklistComplete, setChecklistComplete] = useState(false)
   const [showRatingModal, setShowRatingModal] = useState(false)
   const [showRejectionModal, setShowRejectionModal] = useState(false)
+
+  useEffect(() => {
+    if (baseTask) {
+      setTask((previous) => {
+        if (!previous || previous.id !== baseTask.id) {
+          return baseTask
+        }
+        return previous
+      })
+    } else {
+      setTask((previous) => previous ?? null)
+    }
+  }, [baseTask])
+
+  useEffect(() => {
+    const derived = derivePhotoState(baseTask)
+    setPhotoState(derived)
+    setIsLoadingPhotos(derived.totalPhotoCount === 0)
+    setPhotoError(null)
+    setTask(baseTask ?? null)
+  }, [taskId])
+
+  useEffect(() => {
+    if (initialPhotoState.totalPhotoCount > 0) {
+      setPhotoState(initialPhotoState)
+      setIsLoadingPhotos(false)
+      setPhotoError(null)
+    }
+  }, [initialPhotoState])
+
+  useEffect(() => {
+    if (photoState.totalPhotoCount > 0) {
+      return
+    }
+
+    let isCancelled = false
+
+    const fetchTaskWithPhotos = async () => {
+      setIsLoadingPhotos(true)
+      setPhotoError(null)
+
+      try {
+        const response = await fetch(`/api/tasks/${taskId}`, {
+          method: "GET",
+          cache: "no-store",
+          headers: { "Cache-Control": "no-cache" },
+          credentials: "include",
+        })
+
+        if (!response.ok) {
+          throw new Error(`Failed to load task: ${response.status}`)
+        }
+
+        const payload = (await response.json()) as { task?: TaskWithLegacyPhoto }
+        if (!isCancelled && payload?.task) {
+          setTask(payload.task)
+          const derived = derivePhotoState(payload.task)
+          setPhotoState(derived)
+          if (derived.totalPhotoCount > 0) {
+            setPhotoError(null)
+          }
+        }
+      } catch (error) {
+        console.error("[TaskVerificationView] Unable to fetch task photos:", error)
+        if (!isCancelled) {
+          setPhotoError("Unable to load photo documentation. Please refresh and try again.")
+        }
+      } finally {
+        if (!isCancelled) {
+          setIsLoadingPhotos(false)
+        }
+      }
+    }
+
+    void fetchTaskWithPhotos()
+
+    return () => {
+      isCancelled = true
+    }
+  }, [photoState.totalPhotoCount, taskId])
+
+  if ((!task || !user) && isLoadingPhotos) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <p className="text-muted-foreground">Loading task details…</p>
+      </div>
+    )
+  }
 
   if (!task || !user) {
     return (
@@ -54,10 +182,28 @@ export function TaskVerificationView({ taskId, returnPath }: TaskVerificationVie
     )
   }
 
+  const { proofPhotos, documentationSections, simplePhotos, totalPhotoCount } = photoState
+  const documentationCount = documentationSections.reduce((total, section) => total + section.urls.length, 0)
+  const hasPhotos = totalPhotoCount > 0
+  const hasDocumentation = documentationCount + simplePhotos.length > 0
+
+  // DEBUG: Log image data for troubleshooting
+  console.log("[DEBUG] TaskVerificationView - Image Data Analysis:", {
+    taskId: task.id,
+    taskType: task.task_type,
+    categorizedPhotos: task.categorized_photos,
+    proofPhotos,
+    documentationSections,
+    documentationCount,
+    simplePhotos,
+    photoUrls: task.photo_urls,
+    photoUrl: task.photo_url,
+    totalPhotoCount,
+    userRole: user?.role,
+    userDepartment: user?.department
+  })
+
   const worker = users.find((teamMember) => teamMember.id === task.assigned_to_user_id)
-  const photoUrl = task.photo_url ?? task.photo_urls?.[0] ?? null
-  const roomPhotosCount = task.categorized_photos?.room_photos?.length ?? 0
-  const proofPhotosCount = task.categorized_photos?.proof_photos?.length ?? 0
 
   const handleBack = () => {
     router.push(returnPath)
@@ -92,92 +238,196 @@ export function TaskVerificationView({ taskId, returnPath }: TaskVerificationVie
 
   const actualDuration = task.actual_duration_minutes ?? "N/A"
   const expectedDuration = task.expected_duration_minutes ?? "N/A"
+  const assignedAt = task.assigned_at ? formatExactTimestamp(task.assigned_at) : "N/A"
+  const startedAt = task.started_at ? formatExactTimestamp(task.started_at) : null
+  const completedAt = task.completed_at ? formatExactTimestamp(task.completed_at) : null
 
   return (
-    <div className="min-h-screen bg-muted/30">
+    <div className="flex min-h-screen flex-col bg-muted/40">
       <header className="border-b bg-background">
-        <div className="container mx-auto flex items-center gap-4 px-4 py-4">
-          <Button variant="ghost" size="icon" onClick={handleBack} aria-label="Back to dashboard">
+        <div className="mx-auto flex w-full max-w-4xl items-center gap-4 px-4 py-4 sm:px-6 lg:px-8">
+          <Button variant="ghost" size="icon" onClick={handleBack}>
             <ArrowLeft className="h-5 w-5" />
+            <span className="sr-only">Back</span>
           </Button>
-          <div>
-            <h1 className="text-xl font-bold">Verify Task</h1>
+          <div className="space-y-1">
+            <h1 className="text-lg font-semibold sm:text-2xl">Verify Task</h1>
+            <p className="text-sm text-muted-foreground">Review documentation and finalize the task outcome.</p>
           </div>
         </div>
       </header>
 
-      <main className="container mx-auto px-4 py-6 max-w-2xl space-y-6">
+      <main className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
         <Card>
           <CardHeader>
-            <div className="flex items-start justify-between gap-2">
-              <CardTitle className="text-2xl">{task.task_type}</CardTitle>
-              <Badge className={priorityColors[task.priority_level]} variant="secondary">
-                {task.priority_level.replace(/_/g, " ")}
-              </Badge>
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div className="space-y-1">
+                <CardTitle className="text-xl font-semibold capitalize">{task.task_type.replace(/_/g, " ")}</CardTitle>
+                <p className="text-sm text-muted-foreground">Task ID: {task.id}</p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant="secondary" className="uppercase">
+                  {task.status.replace(/_/g, " ")}
+                </Badge>
+                <Badge className={priorityColors[task.priority_level] ?? "bg-secondary text-secondary-foreground"}>
+                  {task.priority_level.replace(/_/g, " ")}
+                </Badge>
+                <Badge variant="outline" className="uppercase">
+                  {task.department.replace(/_/g, " ")}
+                </Badge>
+              </div>
             </div>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <User className="h-4 w-4" />
-              <span>{worker?.name ?? "Unassigned"}</span>
+          <CardContent className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <User className="h-4 w-4" />
+                Assigned Worker
+              </div>
+              <p className="text-sm font-medium">{worker?.name ?? "Unassigned"}</p>
             </div>
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <MapPin className="h-4 w-4" />
-              <span>{task.room_number ? `Room ${task.room_number}` : "Room not specified"}</span>
+            <div className="space-y-1">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <MapPin className="h-4 w-4" />
+                Room
+              </div>
+              <p className="text-sm font-medium">{task.room_number || "N/A"}</p>
             </div>
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <Clock className="h-4 w-4" />
-              <span>
-                Completed in {actualDuration} minutes (Expected: {expectedDuration})
-              </span>
+            <div className="space-y-1">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Clock className="h-4 w-4" />
+                Timeline
+              </div>
+              <p className="text-sm font-medium">Assigned: {assignedAt}</p>
+              {startedAt && <p className="text-sm text-muted-foreground">Started: {startedAt}</p>}
+              {completedAt && <p className="text-sm text-muted-foreground">Completed: {completedAt}</p>}
             </div>
-            <div className="text-sm text-muted-foreground">
-              Assigned at: {formatExactTimestamp(task.assigned_at.client)}
+            <div className="space-y-1">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Clock className="h-4 w-4" />
+                Duration
+              </div>
+              <p className="text-sm font-medium">
+                Expected {expectedDuration} min · {actualDuration === "N/A" ? "Actual pending" : `${actualDuration} min actual`}
+              </p>
             </div>
           </CardContent>
         </Card>
 
         <VerificationChecklist onChecklistComplete={setChecklistComplete} />
 
-        {photoUrl && (
+        {proofPhotos.length > 0 && (
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Camera className="h-5 w-5" />
-                Task Completion Photos ({roomPhotosCount} + {proofPhotosCount})
+                Completion Proof ({proofPhotos.length} photo{proofPhotos.length === 1 ? "" : "s"})
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="grid gap-3 sm:grid-cols-2">
+              {proofPhotos.map((url, index) => (
+                <button
+                  key={`proof-${index}`}
+                  type="button"
+                  onClick={() => {
+                    setSelectedPhoto(url)
+                    setPhotoZoomOpen(true)
+                  }}
+                  className="group relative overflow-hidden rounded-lg border border-border focus:outline-none focus:ring-2 focus:ring-primary"
+                >
+                  <img
+                    src={url || "/placeholder.svg"}
+                    alt={`Proof Photo ${index + 1}`}
+                    className="w-full aspect-[4/3] object-cover"
+                  />
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors group-hover:bg-black/40">
+                    <ZoomIn className="h-6 w-6 text-white opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
+                  </div>
+                </button>
+              ))}
+            </CardContent>
+          </Card>
+        )}
+
+        {hasDocumentation && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Camera className="h-5 w-5" />
+                Task Documentation ({documentationCount + simplePhotos.length} photo
+                {documentationCount + simplePhotos.length === 1 ? "" : "s"})
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              {documentationSections.map((section) => (
+                <div key={section.key} className="space-y-2">
+                  <p className="text-sm font-semibold text-muted-foreground">{section.label}</p>
+                  <div className="grid grid-cols-3 gap-2 sm:gap-3">
+                    {section.urls.map((url, index) => (
+                      <button
+                        key={`${section.key}-${index}`}
+                        type="button"
+                        onClick={() => {
+                          setSelectedPhoto(url)
+                          setPhotoZoomOpen(true)
+                        }}
+                        className="group relative overflow-hidden rounded-lg border border-border focus:outline-none focus:ring-2 focus:ring-primary"
+                      >
+                        <img
+                          src={url || "/placeholder.svg"}
+                          alt={`${section.label} ${index + 1}`}
+                          className="w-full aspect-square object-cover"
+                        />
+                        <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors group-hover:bg-black/40">
+                          <ZoomIn className="h-6 w-6 text-white opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+
+              {simplePhotos.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-sm font-semibold text-muted-foreground">Task Photos</p>
+                  <div className="grid grid-cols-3 gap-2 sm:gap-3">
+                    {simplePhotos.map((url, index) => (
+                      <button
+                        key={`simple-${index}`}
+                        type="button"
+                        onClick={() => {
+                          setSelectedPhoto(url)
+                          setPhotoZoomOpen(true)
+                        }}
+                        className="relative overflow-hidden rounded-lg border border-border focus:outline-none focus:ring-2 focus:ring-primary"
+                      >
+                        <img src={url || "/placeholder.svg"} alt={`Task Photo ${index + 1}`} className="w-full aspect-square object-cover" />
+                        <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors hover:bg-black/40">
+                          <ZoomIn className="h-6 w-6 text-white opacity-0 group-hover:opacity-100" />
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {!hasPhotos && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Camera className="h-5 w-5" />
+                Task Documentation
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="relative">
-                {photoLoading && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-muted rounded-lg min-h-[200px]">
-                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                  </div>
-                )}
-                {photoError && (
-                  <div className="flex flex-col items-center justify-center gap-2 bg-muted rounded-lg min-h-[200px] text-muted-foreground">
-                    <AlertCircle className="h-8 w-8" />
-                    <p className="text-sm">Failed to load photo</p>
-                  </div>
-                )}
-                <div className="relative cursor-pointer group" onClick={() => !photoError && setPhotoZoomOpen(true)}>
-                  <img
-                    src={photoUrl || "/placeholder.svg"}
-                    alt="Task completion"
-                    className="w-full rounded-lg"
-                    onLoad={() => setPhotoLoading(false)}
-                    onError={() => {
-                      setPhotoLoading(false)
-                      setPhotoError(true)
-                    }}
-                  />
-                  {!photoError && !photoLoading && (
-                    <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg flex items-center justify-center">
-                      <ZoomIn className="h-8 w-8 text-white" />
-                    </div>
-                  )}
-                </div>
-              </div>
+              <p className="text-sm text-muted-foreground">
+                {isLoadingPhotos
+                  ? "Loading photo documentation…"
+                  : photoError ?? "No photo documentation was submitted for this task."}
+              </p>
             </CardContent>
           </Card>
         )}
@@ -185,7 +435,7 @@ export function TaskVerificationView({ taskId, returnPath }: TaskVerificationVie
         {task.worker_remark && (
           <Card>
             <CardHeader>
-              <CardTitle>Worker Remarks</CardTitle>
+              <CardTitle>Task Remark</CardTitle>
             </CardHeader>
             <CardContent>
               <p className="text-sm">{task.worker_remark}</p>
@@ -203,13 +453,9 @@ export function TaskVerificationView({ taskId, returnPath }: TaskVerificationVie
                 <div key={index} className="text-sm">
                   <p className="font-medium">Pause {index + 1}</p>
                   <p className="text-muted-foreground">Reason: {pause.reason}</p>
-                  <p className="text-muted-foreground">
-                    Paused at: {new Date(pause.paused_at.client).toLocaleTimeString()}
-                  </p>
+                  <p className="text-muted-foreground">Paused at: {new Date(pause.paused_at.client).toLocaleTimeString()}</p>
                   {pause.resumed_at && (
-                    <p className="text-muted-foreground">
-                      Resumed at: {new Date(pause.resumed_at.client).toLocaleTimeString()}
-                    </p>
+                    <p className="text-muted-foreground">Resumed at: {new Date(pause.resumed_at.client).toLocaleTimeString()}</p>
                   )}
                   {index < task.pause_history.length - 1 && <Separator className="mt-2" />}
                 </div>
@@ -253,16 +499,24 @@ export function TaskVerificationView({ taskId, returnPath }: TaskVerificationVie
             </div>
 
             {!checklistComplete && (
-              <p className="text-sm text-center text-muted-foreground">
-                Complete the verification checklist to enable approve/reject
-              </p>
+              <p className="text-sm text-center text-muted-foreground">Complete the verification checklist to enable approve/reject</p>
             )}
           </CardContent>
         </Card>
       </main>
 
-      {photoUrl && (
-        <PhotoZoomModal open={photoZoomOpen} onOpenChange={setPhotoZoomOpen} photoUrl={photoUrl} alt="Task completion photo" />
+      {selectedPhoto && (
+        <PhotoZoomModal
+          open={photoZoomOpen}
+          onOpenChange={(open) => {
+            setPhotoZoomOpen(open)
+            if (!open) {
+              setSelectedPhoto(null)
+            }
+          }}
+          photoUrl={selectedPhoto}
+          alt="Task documentation photo"
+        />
       )}
 
       <RatingModal open={showRatingModal} onOpenChange={setShowRatingModal} onSubmit={handleRatingSubmit} taskId={taskId} />

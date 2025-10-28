@@ -39,7 +39,7 @@ export async function getDashboardBootstrapData(): Promise<DashboardBootstrapDat
 
     const supabase = await createClient()
     const [tasks, users, shiftSchedules] = await Promise.all([
-      loadTasksFromSupabase({}, supabase),
+  loadTasksFromSupabase({ includePhotos: true }, supabase),
       loadUsersFromSupabase({}, supabase),
       loadShiftSchedulesFromSupabase({}, supabase),
     ])

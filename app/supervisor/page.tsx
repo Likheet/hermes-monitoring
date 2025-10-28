@@ -142,6 +142,23 @@ function SupervisorDashboard() {
     }
     return isCompleted
   })
+
+  // DEBUG: Log task filtering for supervisor tab
+  console.log("[DEBUG] Supervisor Tab - Task Filtering:", {
+    userRole: user?.role,
+    userDepartment: user?.department,
+    totalTasks: tasks.length,
+    filteredTasks: filteredTasks.length,
+    completedTasks: completedTasks.length,
+    completedTasksWithDetails: completedTasks.map(task => ({
+      id: task.id,
+      taskType: task.task_type,
+      status: task.status,
+      hasPhotoUrls: !!(task.photo_urls && task.photo_urls.length > 0),
+      hasPhotoUrl: !!task.photo_url,
+      hasCategorizedPhotos: !!(task.categorized_photos && Object.keys(task.categorized_photos).length > 0)
+    }))
+  })
   const otherTasks = filteredTasks.filter((t) => !(t.status === "COMPLETED" && !t.supervisor_remark))
 
   console.log("[v0] Supervisor dashboard - Completed tasks pending verification:", completedTasks.length)

@@ -18,7 +18,7 @@ export async function GET() {
 
     const supabase = await createClient()
     const [tasks, users, shiftSchedules] = await Promise.all([
-      loadTasksFromSupabase({ forceRefresh: true }, supabase),
+      loadTasksFromSupabase({ forceRefresh: true, includePhotos: false }, supabase),
       loadUsersFromSupabase({ forceRefresh: true }, supabase),
       loadShiftSchedulesFromSupabase({ forceRefresh: true }, supabase),
     ])

@@ -29,7 +29,7 @@ import {
 const CACHE_TTL_MS = 30_000
 const TASK_FETCH_LIMIT = 200
 
-type DatabaseTaskSummary = Pick<
+type DatabaseTaskSummaryBase = Pick<
   DatabaseTask,
   | "id"
   | "task_type"
@@ -49,7 +49,21 @@ type DatabaseTaskSummary = Pick<
   | "supervisor_remarks"
   | "photo_requirements"
   | "requires_verification"
+  | "is_custom_task"
+  | "custom_task_name"
+  | "custom_task_category"
+  | "custom_task_priority"
+  | "custom_task_photo_required"
+  | "custom_task_photo_count"
+  | "custom_task_is_recurring"
+  | "custom_task_recurring_frequency"
+  | "custom_task_requires_specific_time"
+  | "custom_task_recurring_time"
 >
+
+type DatabaseTaskSummary = DatabaseTaskSummaryBase & {
+  categorized_photos?: DatabaseTask["categorized_photos"]
+}
 
 type CacheKey =
   | "tasks"
@@ -118,6 +132,7 @@ function logSupabaseFailure(scope: CacheKey | "bootstrap", error: unknown) {
 
 export interface LoadOptions {
   forceRefresh?: boolean
+  includePhotos?: boolean
 }
 
 function isValidUuid(value: unknown): value is string {
@@ -143,48 +158,55 @@ export async function loadTasksFromSupabase(
   options: LoadOptions = {},
   supabaseOverride?: SupabaseClient,
 ): Promise<Task[]> {
-  const cached = getCachedValue<Task[]>("tasks", options.forceRefresh)
-  if (cached) {
-    return cached
+  const shouldUseCache = !options.includePhotos
+  if (shouldUseCache) {
+    const cached = getCachedValue<Task[]>("tasks", options.forceRefresh)
+    if (cached) {
+      return cached
+    }
   }
 
   try {
     const supabase = supabaseOverride ?? createClient()
+    const columns = [
+      "id",
+      "task_type",
+      "room_number",
+      "status",
+      "priority_level",
+      "assigned_to_user_id",
+      "assigned_by_user_id",
+      "created_at",
+      "updated_at",
+      "started_at",
+      "completed_at",
+      "assigned_at",
+      "estimated_duration",
+      "actual_duration",
+      "worker_remarks",
+      "supervisor_remarks",
+      "photo_requirements",
+      "requires_verification",
+      // Custom task fields
+      "is_custom_task",
+      "custom_task_name",
+      "custom_task_category",
+      "custom_task_priority",
+      "custom_task_photo_required",
+      "custom_task_photo_count",
+      "custom_task_is_recurring",
+      "custom_task_recurring_frequency",
+      "custom_task_requires_specific_time",
+      "custom_task_recurring_time",
+    ]
+
+    if (options.includePhotos) {
+      columns.push("categorized_photos")
+    }
+
     const { data, error } = await supabase
       .from("tasks")
-      .select(
-        [
-          "id",
-          "task_type",
-          "room_number",
-          "status",
-          "priority_level",
-          "assigned_to_user_id",
-          "assigned_by_user_id",
-          "created_at",
-          "updated_at",
-          "started_at",
-          "completed_at",
-          "assigned_at",
-          "estimated_duration",
-          "actual_duration",
-          "worker_remarks",
-          "supervisor_remarks",
-          "photo_requirements",
-          "requires_verification",
-          // Custom task fields
-          "is_custom_task",
-          "custom_task_name",
-          "custom_task_category",
-          "custom_task_priority",
-          "custom_task_photo_required",
-          "custom_task_photo_count",
-          "custom_task_is_recurring",
-          "custom_task_recurring_frequency",
-          "custom_task_requires_specific_time",
-          "custom_task_recurring_time",
-        ].join(","),
-      )
+      .select(columns.join(","))
       .order("updated_at", { ascending: false })
       .limit(TASK_FETCH_LIMIT)
 
@@ -213,9 +235,9 @@ export async function loadTasksFromSupabase(
         assigned_at: row.assigned_at ?? null,
         description: null,
         special_instructions: null,
-        estimated_duration: row.estimated_duration ?? null,
-        actual_duration: row.actual_duration ?? null,
-        categorized_photos: [],
+    estimated_duration: row.estimated_duration ?? null,
+    actual_duration: row.actual_duration ?? null,
+    categorized_photos: row.categorized_photos ?? null,
         worker_remarks: row.worker_remarks ?? null,
         supervisor_remarks: row.supervisor_remarks ?? null,
         quality_rating: null,
@@ -243,7 +265,12 @@ export async function loadTasksFromSupabase(
     return mapped
   } catch (error) {
     logSupabaseFailure("tasks", error)
-    return []
+    const cached = cacheStore.tasks as CacheEntry<Task[]> | undefined
+    if (cached) {
+      return cached.data as Task[]
+    }
+
+    throw error instanceof Error ? error : new Error(String(error))
   }
 }
 

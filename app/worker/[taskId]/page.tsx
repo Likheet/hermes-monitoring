@@ -19,6 +19,7 @@ import { PauseTimeline } from "@/components/timer/pause-timeline"
 import { saveTimerState, getTimerState, clearTimerState, addToOfflineQueue, isOnline } from "@/lib/timer-utils"
 import { formatExactTimestamp } from "@/lib/date-utils"
 import { startPauseMonitoring, stopPauseMonitoring } from "@/lib/pause-monitoring"
+import { getCategorizedPhotoSections } from "@/lib/image-utils"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -358,6 +359,8 @@ function TaskDetail({ params }: TaskDetailProps) {
   }
 
   const photoRequirementText = getPhotoRequirementText()
+  const combinedCategorizedPhotos = categorizedPhotos ?? task.categorized_photos ?? null
+  const categorizedSections = getCategorizedPhotoSections(combinedCategorizedPhotos)
 
   return (
     <div className="min-h-screen bg-muted/30">
@@ -403,14 +406,14 @@ function TaskDetail({ params }: TaskDetailProps) {
               <span>Expected: {task.expected_duration_minutes} minutes</span>
             </div>
             {task.worker_remark && (
-              <div className="mt-4 p-4 border-2 border-blue-500 bg-blue-50 dark:bg-blue-950/20 rounded-lg">
-                <div className="flex items-start gap-2">
-                  <AlertTriangle className="h-5 w-5 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
+              <div className="mt-4 rounded-xl border border-blue-500/70 bg-blue-500/15 px-4 py-3 shadow-sm dark:border-blue-400/60 dark:bg-blue-900/40">
+                <div className="flex items-start gap-3">
+                  <AlertTriangle className="h-5 w-5 text-blue-600 dark:text-blue-300 shrink-0 mt-0.5" />
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-blue-900 dark:text-blue-100 mb-2">
+                    <p className="text-sm font-semibold text-blue-900 dark:text-blue-50 mb-1">
                       Instructions from Front Office
                     </p>
-                    <p className="text-sm text-blue-800 dark:text-blue-200 leading-relaxed break-words whitespace-normal">
+                    <p className="text-sm text-blue-950 dark:text-blue-100 leading-relaxed break-words whitespace-normal">
                       {task.worker_remark}
                     </p>
                   </div>
@@ -465,12 +468,36 @@ function TaskDetail({ params }: TaskDetailProps) {
               <CardHeader>
                 <CardTitle>Photo Documentation</CardTitle>
               </CardHeader>
-              <CardContent>
+              <CardContent className="space-y-4">
                 <Button onClick={() => setShowCategorizedPhotoModal(true)} variant="outline" className="w-full">
                   <Camera className="mr-2 h-4 w-4" />
                   Capture Photos ({task.photo_categories.reduce((sum: number, cat: any) => sum + cat.count, 0)}{" "}
                   required)
                 </Button>
+
+                {categorizedSections.length > 0 ? (
+                  <div className="space-y-4">
+                    {categorizedSections.map((section) => (
+                      <div key={section.key} className="space-y-2">
+                        <p className="text-sm font-semibold text-muted-foreground">{section.label}</p>
+                        <div className="grid grid-cols-3 gap-2 sm:gap-3">
+                          {section.urls.map((url, index) => (
+                            <img
+                              key={`${section.key}-${index}`}
+                              src={url || "/placeholder.svg"}
+                              alt={`${section.label} ${index + 1}`}
+                              className="w-full aspect-square rounded-lg object-cover border border-border"
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-muted-foreground text-center">
+                    No photos captured yet. Use the button above to start documenting the task.
+                  </p>
+                )}
               </CardContent>
             </Card>
           )}
@@ -642,7 +669,7 @@ function TaskDetail({ params }: TaskDetailProps) {
             >
               Cancel
             </AlertDialogCancel>
-            <AlertDialogAction onClick={() => swapTasks(taskId, pausedTaskToSwap!.id)}>
+            <AlertDialogAction onClick={() => swapTasks(taskId, pausedTaskToSwap!.id, user!.id)}>
               Yes, Swap Tasks
             </AlertDialogAction>
           </AlertDialogFooter>

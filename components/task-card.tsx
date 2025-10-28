@@ -61,7 +61,7 @@ export function TaskCard({ task, href }: TaskCardProps) {
           {/* Display both worker and supervisor remarks */}
           {task.worker_remark && (
             <p className="text-sm text-blue-600 mt-2 line-clamp-2 italic">
-              <span className="font-medium">Worker:</span> "{task.worker_remark}"
+              <span className="font-medium">Remark:</span> "{task.worker_remark}"
             </p>
           )}
           {task.supervisor_remark && (

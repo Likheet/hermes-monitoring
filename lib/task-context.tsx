@@ -264,7 +264,8 @@ export function TaskProvider({
     if (cachedTasks && cachedTasks.length > 0) {
       const limitedTasks = cachedTasks.slice(0, MAX_CACHED_TASKS)
       setTasks(limitedTasks)
-      lastTasksFetchRef.current = Date.now()
+      // Force the next refresh to hit the network instead of treating cached data as fresh
+      lastTasksFetchRef.current = 0
 
       const cachedVersions = new Map<string, string | null>()
       for (const task of limitedTasks) {
@@ -346,7 +347,7 @@ export function TaskProvider({
 
       const execute = async () => {
         try {
-          const data = await loadTasksFromSupabase(loadOptions)
+          const data = await loadTasksFromSupabase({ ...loadOptions, includePhotos: true })
           const limited = data.length > MAX_CACHED_TASKS ? data.slice(0, MAX_CACHED_TASKS) : data
           setTasks(limited)
           persistToStorage(STORAGE_KEYS.tasks, limited)
@@ -1067,10 +1068,10 @@ export function TaskProvider({
 
     const reassignedAt = createDualTimestamp()
     const nextDepartment =
-      newWorker?.department ||
-      task.department ||
-      (oldWorkerId ? users.find((u) => u.id === oldWorkerId)?.department ?? null : null) ||
-      user?.department ||
+  newWorker?.department ||
+  task.department ||
+  (oldWorkerId ? users.find((u) => u.id === oldWorkerId)?.department ?? null : null) ||
+  currentUser?.department ||
       null
 
     const nextTaskShape = {
@@ -1106,7 +1107,7 @@ export function TaskProvider({
     if (oldWorkerId && oldWorkerId !== newWorkerId) {
       createNotification(
         oldWorkerId,
-        "task_reassigned",
+        "system",
         "Task Reassigned",
         `Task ${task.task_type} at ${task.room_number ?? "N/A"} has been reassigned.`,
         taskId,
@@ -1195,27 +1196,34 @@ export function TaskProvider({
       // Get the user's credentials from the database (we need username for the save)
       // Since we don't have the password hash here, we'll need to update just the user record
       const supabase = createClient()
-      const { data, error } = await supabase
-        .from('users')
-        .update({
-          shift_start: updatedUser.shift_start,
-          shift_end: updatedUser.shift_end,
-          has_break: updatedUser.has_break,
-          break_start: updatedUser.break_start,
-          break_end: updatedUser.break_end,
-          is_dual_shift: updatedUser.is_dual_shift,
-          has_shift_2: updatedUser.has_shift_2,
-          shift_2_start: updatedUser.shift_2_start,
-          shift_2_end: updatedUser.shift_2_end,
-          shift_2_has_break: updatedUser.shift_2_has_break,
-          shift_2_break_start: updatedUser.shift_2_break_start,
-          shift_2_break_end: updatedUser.shift_2_break_end,
-        })
-        .eq('id', workerId)
+      const shiftTimingPayload = JSON.stringify({
+        shift1: {
+          start: updatedUser.shift_start,
+          end: updatedUser.shift_end,
+          hasBreak: updatedUser.has_break,
+          breakStart: updatedUser.break_start ?? null,
+          breakEnd: updatedUser.break_end ?? null,
+        },
+        shift2: hasSecondShift
+          ? {
+              start: shift2Start ?? null,
+              end: shift2End ?? null,
+              hasBreak: false,
+              breakStart: null,
+              breakEnd: null,
+            }
+          : null,
+        isDualShift: Boolean(updatedUser.is_dual_shift),
+        hasShift2: hasSecondShift,
+      })
+
+      const { error } = await supabase
+        .from("users")
+        .update({ shift_timing: shiftTimingPayload })
+        .eq("id", workerId)
 
       if (error) {
         console.error("[v0] Failed to update worker shift in Supabase:", error)
-        // Optionally revert the local state
       } else {
         console.log("[v0] Worker shift updated in Supabase successfully")
       }

@@ -1,3 +1,5 @@
+import type { CategorizedPhotos } from "./types"
+
 /**
  * Compresses an image file to a maximum size using canvas
  * @param file - The image file to compress
@@ -84,4 +86,76 @@ export function blobToDataURL(blob: Blob): Promise<string> {
     reader.onerror = reject
     reader.readAsDataURL(blob)
   })
+}
+
+export type PhotoSection = {
+  key: string
+  label: string
+  urls: string[]
+}
+
+const CATEGORY_LABELS: Record<string, string> = {
+  room_photos: "Room Photos",
+  proof_photos: "Proof Photos",
+  before_photos: "Before Photos",
+  during_photos: "During Photos",
+  after_photos: "After Photos",
+}
+
+function toTitleCase(value: string): string {
+  return value
+    .replace(/_/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase()
+    .replace(/(^|\s)\w/g, (match) => match.toUpperCase())
+}
+
+export function getCategorizedPhotoSections(photos?: CategorizedPhotos | null): PhotoSection[] {
+  if (!photos) {
+    return []
+  }
+
+  const sections: PhotoSection[] = []
+  const handledKeys = new Set<string>(["room_photos", "proof_photos", "before_photos", "during_photos", "after_photos", "dynamic_categories"])
+
+  const appendSection = (key: string, urls?: string[] | null) => {
+    const cleaned = (urls ?? []).filter((url): url is string => typeof url === "string" && url.length > 0)
+    if (cleaned.length === 0) {
+      return
+    }
+
+    const label = CATEGORY_LABELS[key] ?? toTitleCase(key.replace(/^dynamic:/, ""))
+    sections.push({ key, label, urls: cleaned })
+  }
+
+  appendSection("room_photos", photos.room_photos)
+  appendSection("proof_photos", photos.proof_photos)
+  appendSection("before_photos", photos.before_photos)
+  appendSection("during_photos", photos.during_photos)
+  appendSection("after_photos", photos.after_photos)
+
+  if (photos.dynamic_categories) {
+    for (const [categoryKey, urls] of Object.entries(photos.dynamic_categories)) {
+      appendSection(`dynamic:${categoryKey}`, urls)
+    }
+  }
+
+  for (const [key, value] of Object.entries(photos)) {
+    if (handledKeys.has(key)) {
+      continue
+    }
+
+    if (Array.isArray(value)) {
+      appendSection(key, value)
+      continue
+    }
+
+    if (value && typeof value === "object" && "urls" in (value as Record<string, unknown>)) {
+      const maybeUrls = (value as { urls?: string[] }).urls
+      appendSection(key, maybeUrls)
+    }
+  }
+
+  return sections
 }

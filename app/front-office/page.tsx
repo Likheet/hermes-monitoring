@@ -22,6 +22,7 @@ import {
   AlertTriangle,
   Clock,
   Save,
+  Camera,
   Coffee,
   Calendar,
   MapPin,
@@ -823,6 +824,24 @@ function FrontOfficeDashboard() {
         const allCompletedTasks = tasks.filter((taskItem) => taskItem.status === "COMPLETED")
         const supervisorVerificationPendingTasks = allCompletedTasks.filter((taskItem) => taskItem.rating === null) // All completed tasks needing verification
 
+        // DEBUG: Log task filtering for front-office supervisor tab
+        console.log("[DEBUG] Front-Office Supervisor Tab - Task Filtering:", {
+          userRole: user?.role,
+          userDepartment: user?.department,
+          totalTasks: tasks.length,
+          allCompletedTasks: allCompletedTasks.length,
+          verificationPendingTasks: supervisorVerificationPendingTasks.length,
+          verificationTasksWithDetails: supervisorVerificationPendingTasks.map(task => ({
+            id: task.id,
+            taskType: task.task_type,
+            status: task.status,
+            rating: task.rating,
+            hasPhotoUrls: !!(task.photo_urls && task.photo_urls.length > 0),
+            hasPhotoUrl: !!task.photo_url,
+            hasCategorizedPhotos: !!(task.categorized_photos && Object.keys(task.categorized_photos).length > 0)
+          }))
+        })
+
         return (
           <main className="container mx-auto max-w-7xl px-4 py-6 space-y-8">
             <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
@@ -918,11 +937,36 @@ function FrontOfficeDashboard() {
                       medium: "border-orange-300 hover:border-orange-400",
                       low: "border-orange-200 hover:border-orange-300"
                     }
+                    const sanitize = (urls?: string[] | null) =>
+                      Array.isArray(urls) ? urls.filter((url) => typeof url === "string" && url.length > 0) : []
+                    const proofPhotoUrls = sanitize(task.categorized_photos?.proof_photos)
+                    const roomPhotoUrls = sanitize(task.categorized_photos?.room_photos)
+                    const legacyPhotoUrls = sanitize(task.photo_urls)
+                    const legacyPhotoUrl = (task as Task & { photo_url?: string | null }).photo_url
+                    const legacySingle =
+                      typeof legacyPhotoUrl === "string" && legacyPhotoUrl.length > 0 ? [legacyPhotoUrl] : []
+                    const allCandidates = [...proofPhotoUrls, ...roomPhotoUrls, ...legacyPhotoUrls, ...legacySingle]
+                    const primaryPhoto = allCandidates.find((url) => url.length > 0) ?? null
+                    const documentationPhotoCount = proofPhotoUrls.length + roomPhotoUrls.length + legacyPhotoUrls.length + legacySingle.length
 
                     return (
                       <Link key={task.id} href={`/front-office/supervisor/verify/${task.id}`}>
-                        <Card className={`hover:shadow-md transition-shadow cursor-pointer ${priorityBorderColors[verificationPriority]}`}>
-                          <CardHeader className="pb-2">
+                        <Card className={`overflow-hidden hover:shadow-md transition-shadow cursor-pointer ${priorityBorderColors[verificationPriority]}`}>
+                          {primaryPhoto && (
+                            <div className="relative h-40 w-full border-b border-border bg-muted">
+                              <img
+                                src={primaryPhoto || "/placeholder.svg"}
+                                alt={`${task.task_type} documentation preview`}
+                                className="h-full w-full object-cover"
+                              />
+                              {proofPhotoUrls.length > 0 && (
+                                <span className="absolute bottom-2 left-2 rounded-full bg-black/60 px-2 py-1 text-xs font-medium text-white">
+                                  {proofPhotoUrls.length} proof photo{proofPhotoUrls.length === 1 ? "" : "s"}
+                                </span>
+                              )}
+                            </div>
+                          )}
+                          <CardHeader className={`pb-2 ${primaryPhoto ? "pt-4" : ""}`}>
                             <div className="flex items-start justify-between gap-2">
                               <CardTitle className="text-base">{task.task_type}</CardTitle>
                               <div className="flex flex-col gap-1 items-end">
@@ -944,6 +988,14 @@ function FrontOfficeDashboard() {
                             </div>
                           </CardHeader>
                           <CardContent className="space-y-2 text-sm text-muted-foreground">
+                            {documentationPhotoCount > 0 && (
+                              <div className="flex items-center gap-2">
+                                <Camera className="h-4 w-4" />
+                                <span>
+                                  {documentationPhotoCount} documentation photo{documentationPhotoCount === 1 ? "" : "s"}
+                                </span>
+                              </div>
+                            )}
                             <div className="flex items-center gap-2">
                               <UserIcon className="h-4 w-4" />
                               <span>{getWorkerName(task.assigned_to_user_id)}</span>
