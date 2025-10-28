@@ -101,6 +101,8 @@ interface CreateTaskDirectParams {
   custom_task_recurring_frequency: unknown
   custom_task_requires_specific_time: unknown
   custom_task_recurring_time: unknown
+  worker_remark: string | null
+  supervisor_remark: string | null
 }
 
 async function createTaskDirectly({
@@ -126,6 +128,8 @@ async function createTaskDirectly({
   custom_task_recurring_frequency,
   custom_task_requires_specific_time,
   custom_task_recurring_time,
+  worker_remark,
+  supervisor_remark,
 }: CreateTaskDirectParams) {
   const nowIso = new Date().toISOString()
   const statusValue = assigned_to_user_id ? "assigned" : "pending"
@@ -178,8 +182,8 @@ async function createTaskDirectly({
       requires_verification: Boolean(photo_documentation_required || photo_required),
       photo_requirements: photoRequirements,
       categorized_photos: categorizedPayload,
-      worker_remarks: "",
-      supervisor_remarks: "",
+  worker_remarks: worker_remark ?? "",
+  supervisor_remarks: supervisor_remark ?? "",
       audit_log: [auditLogEntry],
       department: null,
       is_custom_task: Boolean(is_custom_task),
@@ -245,7 +249,18 @@ export async function POST(request: Request) {
       custom_task_recurring_frequency,
       custom_task_requires_specific_time,
       custom_task_recurring_time,
+      worker_remark,
+      supervisor_remark,
     } = body
+
+    const workerRemark =
+      typeof worker_remark === "string" && worker_remark.trim().length > 0
+        ? worker_remark.trim()
+        : null
+    const supervisorRemark =
+      typeof supervisor_remark === "string" && supervisor_remark.trim().length > 0
+        ? supervisor_remark.trim()
+        : null
 
     const timezoneOffset =
       typeof client_timezone_offset === "number" && Number.isFinite(client_timezone_offset)
@@ -319,8 +334,8 @@ export async function POST(request: Request) {
       photo_requirements: photoRequirementsPayload,
       room_number: room_number ?? null,
       categorized_photos: categorizedPhotosPayload,
-      worker_remarks: "",
-      supervisor_remarks: "",
+  worker_remarks: workerRemark ?? "",
+  supervisor_remarks: supervisorRemark ?? "",
       // Custom task fields
       is_custom_task: Boolean(is_custom_task),
       custom_task_name: custom_task_name ?? null,
@@ -332,7 +347,7 @@ export async function POST(request: Request) {
       custom_task_recurring_frequency: custom_task_recurring_frequency ?? null,
       custom_task_requires_specific_time: custom_task_requires_specific_time ?? null,
       custom_task_recurring_time: custom_task_recurring_time ?? null,
-    } as const
+  }
 
     const { data: task, error: taskError } = await supabase.rpc("create_task_with_autopause", rpcPayload)
 
@@ -365,6 +380,8 @@ export async function POST(request: Request) {
             custom_task_recurring_frequency,
             custom_task_requires_specific_time,
             custom_task_recurring_time,
+            worker_remark: workerRemark,
+            supervisor_remark: supervisorRemark,
           })
 
           const appTask = databaseTaskToApp(fallbackTask)
