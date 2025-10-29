@@ -1,6 +1,6 @@
 "use client"
 
-import { use, useState, useEffect } from "react"
+import { use, useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { useTasks } from "@/lib/task-context"
 import { useAuth } from "@/lib/auth-context"
@@ -36,7 +36,12 @@ import { useToast } from "@/hooks/use-toast"
 import { OfflineIndicator } from "@/components/timer/offline-indicator"
 import type { CategorizedPhotos, Task } from "@/lib/types"
 import { startPauseMonitoring, stopPauseMonitoring } from "@/lib/pause-monitoring"
-import { bucketToCategorizedPhotos, categorizedPhotosToBucket, type PhotoBucket } from "@/lib/photo-utils"
+import {
+  bucketToCategorizedPhotos,
+  categorizedPhotosToBucket,
+  hasCategorizedPhotoEntries,
+  type PhotoBucket,
+} from "@/lib/photo-utils"
 import { formatDuration } from "@/lib/time-utils"
 import { isOnline } from "@/lib/timer-utils"
 
@@ -90,11 +95,15 @@ function MaintenanceTaskPage({ params }: MaintenanceTaskPageProps) {
       after_photos: [],
     },
   )
+  const lastHydratedTaskIdRef = useRef<string | null>(task?.id ?? null)
+  const lastTaskVersionRef = useRef<string | null>(task?.server_updated_at ?? null)
   const [elapsedTime, setElapsedTime] = useState(0)
   const [isRunning, setIsRunning] = useState(false)
 
   useEffect(() => {
     if (!task) {
+      lastHydratedTaskIdRef.current = null
+      lastTaskVersionRef.current = null
       console.log(
         "[v0] Task not found. Available tasks for this room:",
         maintenanceTasks
@@ -112,13 +121,41 @@ function MaintenanceTaskPage({ params }: MaintenanceTaskPageProps) {
       categorized_photos: task.categorized_photos,
     })
 
-    if (task.categorized_photos) {
-      setCategorizedPhotos(task.categorized_photos)
-      console.log("[v0] Loaded categorized photos from task:", {
-        before: task.categorized_photos.before_photos?.length || 0,
-        after: task.categorized_photos.after_photos?.length || 0,
-      })
+    const isNewTask = lastHydratedTaskIdRef.current !== task.id
+    const incomingVersion = task.server_updated_at ?? null
+    const incomingPhotos = task.categorized_photos ?? {
+      room_photos: [],
+      proof_photos: [],
+      before_photos: [],
+      after_photos: [],
     }
+
+    setCategorizedPhotos((prev) => {
+      const incomingHas = hasCategorizedPhotoEntries(incomingPhotos)
+      const prevHas = hasCategorizedPhotoEntries(prev)
+
+      if (incomingHas) {
+        console.log("[v0] Loaded categorized photos from task:", {
+          before: incomingPhotos.before_photos?.length || 0,
+          after: incomingPhotos.after_photos?.length || 0,
+        })
+        lastTaskVersionRef.current = incomingVersion ?? lastTaskVersionRef.current
+        return incomingPhotos
+      }
+
+      if (isNewTask || !prevHas) {
+        lastTaskVersionRef.current = incomingVersion ?? lastTaskVersionRef.current
+        return incomingPhotos
+      }
+
+      if (incomingVersion) {
+        lastTaskVersionRef.current = incomingVersion
+      }
+
+      return prev
+    })
+
+    lastHydratedTaskIdRef.current = task.id
 
     // Load existing notes
     if (task.notes) {
@@ -143,10 +180,7 @@ function MaintenanceTaskPage({ params }: MaintenanceTaskPageProps) {
   useEffect(() => {
     if (!task) return
 
-    const hasPersistedPhotos = Boolean(
-      task.categorized_photos &&
-        Object.values(task.categorized_photos).some((value) => Array.isArray(value) && value.length > 0),
-    )
+    const hasPersistedPhotos = hasCategorizedPhotoEntries(task.categorized_photos)
 
     if (hasPersistedPhotos) {
       return
@@ -170,8 +204,26 @@ function MaintenanceTaskPage({ params }: MaintenanceTaskPageProps) {
         if (cancelled) return
 
         const fetchedTask = payload?.task as Task | undefined
-        if (fetchedTask?.categorized_photos) {
-          setCategorizedPhotos(fetchedTask.categorized_photos)
+        if (fetchedTask) {
+          const incoming = fetchedTask.categorized_photos ?? {
+            room_photos: [],
+            proof_photos: [],
+            before_photos: [],
+            after_photos: [],
+          }
+          const incomingVersion = fetchedTask.server_updated_at ?? null
+
+          setCategorizedPhotos((prev) => {
+            const incomingHas = hasCategorizedPhotoEntries(incoming)
+            const prevHas = hasCategorizedPhotoEntries(prev)
+
+            if (incomingHas || !prevHas) {
+              lastTaskVersionRef.current = incomingVersion ?? lastTaskVersionRef.current
+              return incoming
+            }
+
+            return prev
+          })
         }
       } catch (error) {
         console.error("[maintenance] Failed to hydrate task photos", error)
@@ -586,6 +638,7 @@ function MaintenanceTaskPage({ params }: MaintenanceTaskPageProps) {
                           alt={`Before photo ${index + 1}`}
                           fill
                           className="rounded-lg border-2 border-blue-500 object-cover"
+                          priority={index === 0}
                           sizes="(max-width: 768px) 45vw, 200px"
                         />
                         <div className="absolute bottom-1 left-1 bg-blue-500 text-white text-xs px-2 py-0.5 rounded">
@@ -613,6 +666,7 @@ function MaintenanceTaskPage({ params }: MaintenanceTaskPageProps) {
                           alt={`After photo ${index + 1}`}
                           fill
                           className="rounded-lg border-2 border-primary object-cover"
+                          priority={index === 0}
                           sizes="(max-width: 768px) 45vw, 200px"
                         />
                         <div className="absolute bottom-1 left-1 bg-primary text-primary-foreground text-xs px-2 py-0.5 rounded">
