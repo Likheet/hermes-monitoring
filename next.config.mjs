@@ -52,17 +52,33 @@ try {
         },
       },
       {
-        urlPattern: /^https:\/\/.*\.supabase\.co\/storage\/.*$/,
+        urlPattern: /^https:\/\/.*\.supabase\.co\/storage\/.*\.(jpg|jpeg|png|gif|webp)$/i,
         handler: 'CacheFirst',
         options: {
-          cacheName: 'supabase-storage',
+          cacheName: 'supabase-images',
           expiration: {
-            maxEntries: 60,
-            maxAgeSeconds: 30 * 24 * 60 * 60, // 30 days
+            maxEntries: 100,
+            maxAgeSeconds: 7 * 24 * 60 * 60, // 7 days
+          },
+          cacheableResponse: {
+            statuses: [0, 200],
           },
         },
       },
     ],
+    workboxOptions: {
+      // Don't cache Vercel Analytics or other external scripts
+      navigateFallbackDenylist: [
+        /^\/_vercel\/.*/,
+        /^\/api\/.*/,
+      ],
+      // Exclude these from being cached
+      exclude: [
+        /^\/_vercel\/.*/,
+        /^\/api\/.*/,
+        ({ url }) => url.pathname.startsWith('/_vercel/'),
+      ],
+    },
   })
   console.log('PWA configuration successful')
   finalConfig = withPWA(nextConfig)

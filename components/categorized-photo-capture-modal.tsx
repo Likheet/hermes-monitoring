@@ -56,18 +56,28 @@ export function CategorizedPhotoCaptureModal({
   const [error, setError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const lastExistingPhotosHashRef = useRef<string>("")
+  const modalOpenedRef = useRef<boolean>(false)
 
   useEffect(() => {
     if (!open) {
+      modalOpenedRef.current = false
       return
     }
+
+    // On first open, always reload from existingPhotos
+    const isFirstOpen = !modalOpenedRef.current
+    modalOpenedRef.current = true
 
     const currentHash = JSON.stringify(existingPhotos ?? {})
-    if (currentHash === lastExistingPhotosHashRef.current) {
+    
+    // Skip reload if hash hasn't changed AND it's not the first open
+    if (!isFirstOpen && currentHash === lastExistingPhotosHashRef.current) {
       return
     }
 
+    console.log("[photo-modal] Reloading photos from existingPhotos", { isFirstOpen, existingPhotos })
     lastExistingPhotosHashRef.current = currentHash
+    
     const reloaded: PhotoBucket = {}
     photoCategories.forEach((cat) => {
       const key = cat.name.toLowerCase().replace(/\s+/g, "_")
@@ -158,10 +168,17 @@ export function CategorizedPhotoCaptureModal({
   }
 
   const isValidForSubmission = () => {
-    return photoCategories.every((cat) => {
+    const validationResults = photoCategories.map((cat) => {
       const key = cat.name.toLowerCase().replace(/\s+/g, "_")
-      return (photos[key] || []).length >= cat.count
+      const count = (photos[key] || []).length
+      const required = cat.count
+      const valid = count >= required
+      return { category: cat.name, key, count, required, valid }
     })
+    
+    console.log("[photo-modal] Validation check:", validationResults)
+    
+    return validationResults.every(r => r.valid)
   }
 
   const handleConfirm = async () => {
@@ -174,11 +191,13 @@ export function CategorizedPhotoCaptureModal({
         .map((cat) => cat.name)
         .join(", ")
 
+      console.error("[photo-modal] Validation failed. Missing:", missingCategories, "Current photos:", photos)
       setError(`Please capture all required photos. Missing: ${missingCategories}`)
       triggerErrorHaptic()
       return
     }
 
+    console.log("[photo-modal] Validation passed, saving photos:", photos)
     await Promise.resolve(onSave(photos))
     onOpenChange(false)
   }

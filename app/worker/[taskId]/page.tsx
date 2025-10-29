@@ -42,6 +42,8 @@ interface TaskDetailProps {
 
 type PhotoCategoryRequirement = NonNullable<Task["photo_categories"]>[number]
 
+const BASE_CATEGORY_KEYS = new Set(["room_photos", "proof_photos", "before_photos", "during_photos", "after_photos"])
+
 function TaskDetail({ params }: TaskDetailProps) {
   const resolvedParams = params instanceof Promise ? use(params) : params
   const { taskId } = resolvedParams
@@ -75,6 +77,28 @@ function TaskDetail({ params }: TaskDetailProps) {
   const lastHydratedTaskIdRef = useRef<string | null>(null)
   const lastTaskVersionRef = useRef<string | null>(null)
   const lastSavedPhotosHashRef = useRef<string | null>(null)
+
+  const sourcePhotos = categorizedPhotos ?? task?.categorized_photos ?? null
+
+  const getPhotosForCategory = useCallback((source: CategorizedPhotos | null, normalizedKey: string): string[] => {
+    if (!source) {
+      return []
+    }
+
+    if (BASE_CATEGORY_KEYS.has(normalizedKey)) {
+      const basePhotos = source[normalizedKey as keyof CategorizedPhotos]
+      if (Array.isArray(basePhotos)) {
+        return basePhotos.filter((item): item is string => typeof item === "string")
+      }
+    }
+
+    const dynamic = source.dynamic_categories?.[normalizedKey]
+    if (Array.isArray(dynamic)) {
+      return dynamic.filter((item): item is string => typeof item === "string")
+    }
+
+    return []
+  }, [])
 
   // Set loading to false once we have tasks loaded OR after timeout
   useEffect(() => {
@@ -122,11 +146,14 @@ function TaskDetail({ params }: TaskDetailProps) {
     if (cached) {
       try {
         const parsed = JSON.parse(cached) as CategorizedPhotos
+        console.log("[worker] Loading cached photos from localStorage:", parsed)
         applyLocalCategorizedPhotos(parsed)
       } catch (error) {
         console.warn("[worker] Failed to parse cached categorized photos", error)
         window.localStorage.removeItem(photoCacheKey)
       }
+    } else {
+      console.log("[worker] No cached photos found in localStorage for key:", photoCacheKey)
     }
   }, [applyLocalCategorizedPhotos, photoCacheKey])
 
@@ -199,6 +226,7 @@ function TaskDetail({ params }: TaskDetailProps) {
 
     // Don't overwrite local changes while modal is open
     if (showCategorizedPhotoModal) {
+      console.log("[worker] Skipping photo sync - modal is open")
       return
     }
 
@@ -210,17 +238,48 @@ function TaskDetail({ params }: TaskDetailProps) {
     const lastSavedHash = lastSavedPhotosHashRef.current
     const localHas = hasCategorizedPhotoEntries(categorizedPhotos)
 
+    console.log("[worker] Photo sync check:", {
+      isNewTask,
+      incomingHas,
+      localHas,
+      incomingVersion,
+      lastTaskVersion: lastTaskVersionRef.current,
+      incomingHash: incomingHash.substring(0, 50),
+      lastSavedHash: lastSavedHash?.substring(0, 50),
+    })
+
+    // On fresh page load or new task, always use server data
+    if (isNewTask) {
+      console.log("[worker] New task detected - applying server photos")
+      applyLocalCategorizedPhotos(incomingPhotos)
+      lastTaskVersionRef.current = incomingVersion ?? lastTaskVersionRef.current
+      lastHydratedTaskIdRef.current = task.id
+      return
+    }
+
+    // Server has photos and they're different from what we have
     if (incomingHas && incomingHash !== lastSavedHash) {
+      console.log("[worker] Server has different photos - applying update")
       applyLocalCategorizedPhotos(incomingPhotos)
       lastTaskVersionRef.current = incomingVersion ?? lastTaskVersionRef.current
-    } else if (!incomingHas && !localHas && (isNewTask || lastSavedHash === null)) {
+    } 
+    // Server has no photos, we have no photos, and this is initial load
+    else if (!incomingHas && !localHas && lastSavedHash === null) {
+      console.log("[worker] No photos anywhere - initializing empty")
       applyLocalCategorizedPhotos(incomingPhotos)
       lastTaskVersionRef.current = incomingVersion ?? lastTaskVersionRef.current
-    } else if (incomingVersion && incomingVersion !== lastTaskVersionRef.current) {
+    } 
+    // Version changed - check if we should update
+    else if (incomingVersion && incomingVersion !== lastTaskVersionRef.current) {
+      console.log("[worker] Server version changed - checking if update needed")
       lastTaskVersionRef.current = incomingVersion
-      if (incomingHash === lastSavedHash) {
+      // Only apply if hashes match (no local changes) or server has photos
+      if (incomingHash === lastSavedHash || incomingHas) {
+        console.log("[worker] Applying server photos due to version change")
         applyLocalCategorizedPhotos(incomingPhotos)
       }
+    } else {
+      console.log("[worker] No photo sync needed - keeping current state")
     }
 
     lastHydratedTaskIdRef.current = task.id
@@ -231,14 +290,17 @@ function TaskDetail({ params }: TaskDetailProps) {
       return
     }
 
-    const hasPersistedPhotos = hasCategorizedPhotoEntries(task.categorized_photos)
-
-    if (hasPersistedPhotos) {
+    // Don't fetch if modal is open - user might be actively adding photos
+    if (showCategorizedPhotoModal) {
       return
     }
 
-    // Don't fetch if modal is open - user might be actively adding photos
-    if (showCategorizedPhotoModal) {
+    // Skip if we already have persisted photos from server
+    const hasPersistedPhotos = hasCategorizedPhotoEntries(task.categorized_photos)
+    const isNewPageLoad = lastHydratedTaskIdRef.current !== task.id
+
+    // Always fetch on new page load to ensure fresh data
+    if (!isNewPageLoad && hasPersistedPhotos) {
       return
     }
 
@@ -250,6 +312,10 @@ function TaskDetail({ params }: TaskDetailProps) {
           method: "GET",
           cache: "no-store",
           credentials: "include",
+          headers: {
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache',
+          },
         })
 
         if (!response.ok) {
@@ -264,12 +330,19 @@ function TaskDetail({ params }: TaskDetailProps) {
         const incoming = payload.task.categorized_photos ?? null
         const incomingVersion = payload.task.server_updated_at ?? null
         const incomingHas = hasCategorizedPhotoEntries(incoming)
-        const prevHas = hasCategorizedPhotoEntries(categorizedPhotos)
         const incomingHash = computePhotosHash(incoming)
 
-        if (incomingHas || !prevHas || incomingHash === lastSavedPhotosHashRef.current) {
+        // On page load, always use fresh server data
+        if (isNewPageLoad) {
           applyLocalCategorizedPhotos(incoming)
           lastTaskVersionRef.current = incomingVersion ?? lastTaskVersionRef.current
+        } else {
+          const prevHas = hasCategorizedPhotoEntries(categorizedPhotos)
+          // Otherwise only update if server has photos or we have nothing locally
+          if (incomingHas || !prevHas || incomingHash === lastSavedPhotosHashRef.current) {
+            applyLocalCategorizedPhotos(incoming)
+            lastTaskVersionRef.current = incomingVersion ?? lastTaskVersionRef.current
+          }
         }
       } catch (error) {
         console.error("[worker] Failed to hydrate categorized photos", error)
@@ -423,14 +496,33 @@ function TaskDetail({ params }: TaskDetailProps) {
         (category): category is PhotoCategoryRequirement => Boolean(category),
       )
 
+      console.log("[worker] Checking photo requirements before complete:", {
+        requiredCategories,
+        categorizedPhotos,
+        task_categorized_photos: task.categorized_photos,
+        sourcePhotos,
+      })
+
       const allCategoriesFilled = requiredCategories.every((category) => {
         const key = category.name.toLowerCase().replace(/\s+/g, "_")
-        const categoryPhotos = categorizedPhotos?.[key as keyof CategorizedPhotos]
-        const photoCount = Array.isArray(categoryPhotos) ? categoryPhotos.length : 0
-        return photoCount >= category.count
+        const photosForCategory = getPhotosForCategory(sourcePhotos, key)
+        const photoCount = photosForCategory.length
+        const isFilled = photoCount >= category.count
+
+        console.log(
+          `[worker] Category '${category.name}' (${key}): ${photoCount}/${category.count} - ${isFilled ? "OK" : "MISSING"}`,
+          photosForCategory,
+        )
+
+        return isFilled
       })
 
       if (!allCategoriesFilled) {
+        console.error("[worker] Photo validation failed", {
+          categorizedPhotos,
+          task_categorized_photos: task.categorized_photos,
+          sourcePhotos,
+        })
         toast({
           title: "Photos Required",
           description: "Please capture all required photos before completing",
@@ -458,7 +550,7 @@ function TaskDetail({ params }: TaskDetailProps) {
         timestamp: new Date().toISOString(),
         data: {
           categorizedPhotos: task.photo_documentation_required
-            ? categorizedPhotos
+            ? sourcePhotos
             : {
                 room_photos: photos.slice(0, Math.ceil(photos.length / 2)),
                 proof_photos: photos.slice(Math.ceil(photos.length / 2)),
@@ -475,7 +567,7 @@ function TaskDetail({ params }: TaskDetailProps) {
     }
 
     const photosToSubmit = task.photo_documentation_required
-      ? categorizedPhotos ?? {
+      ? sourcePhotos ?? {
           room_photos: [],
           proof_photos: [],
         }
@@ -827,6 +919,9 @@ function TaskDetail({ params }: TaskDetailProps) {
           existingPhotos={categorizedPhotos ? categorizedPhotosToBucket(categorizedPhotos) : undefined}
           onSave={async (photoBucket) => {
             const nextCategorized = bucketToCategorizedPhotos(photoBucket)
+            console.log("[worker] Saving photos from modal:", nextCategorized)
+            
+            // Apply immediately to local state
             applyLocalCategorizedPhotos(nextCategorized)
 
             if (!isOnline()) {
@@ -838,15 +933,22 @@ function TaskDetail({ params }: TaskDetailProps) {
               return
             }
 
+            // Save to server
             const success = await updateTask(task.id, { categorized_photos: nextCategorized })
-            setShowCategorizedPhotoModal(false)
-
+            
             if (success) {
+              console.log("[worker] Photos saved to server successfully")
+              // Force update local state again to ensure it's in sync
+              applyLocalCategorizedPhotos(nextCategorized)
+              
+              setShowCategorizedPhotoModal(false)
               toast({
                 title: "Photos Saved",
                 description: "Your photo documentation is stored safely.",
               })
             } else {
+              console.error("[worker] Failed to save photos to server")
+              setShowCategorizedPhotoModal(false)
               toast({
                 title: "Save Failed",
                 description: "Unable to persist photos. Please try again when connection stabilises.",
