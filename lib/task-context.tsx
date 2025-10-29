@@ -10,6 +10,7 @@ import { ALL_ROOMS, getMaintenanceItemsForRoom } from "./location-data"
 import { useRealtimeTasks, type TaskRealtimePayload } from "./use-realtime-tasks"
 import { useAuth } from "./auth-context"
 import { databaseTaskToApp, type DatabaseTask } from "./database-types"
+import { hasCategorizedPhotoEntries } from "./photo-utils"
 import { createClient } from "./supabase/client"
 import {
   loadTasksFromSupabase,
@@ -147,6 +148,7 @@ interface TaskContextType {
   usersLoaded: boolean
   usersLoadError: boolean
   updateTask: (taskId: string, updates: Partial<Task>) => Promise<boolean>
+  cacheTaskPhotos: (taskId: string, photos: CategorizedPhotos | null) => void
   addAuditLog: (taskId: string, entry: Omit<AuditLogEntry, "timestamp">) => void
   startTask: (taskId: string, userId: string) => Promise<{ success: boolean; error?: string }>
   pauseTask: (
@@ -252,17 +254,80 @@ export function TaskProvider({
       ]),
     ),
   )
+  const categorizedPhotoCacheRef = useRef(new Map<string, CategorizedPhotos | null>())
+
+  const mergeTasksWithCache = useCallback(
+    (previous: Task[], incoming: Task[]): Task[] => {
+      const seen = new Set<string>()
+      const result: Task[] = []
+
+      const resolvePhotos = (task: Task): Task => {
+        const cached = categorizedPhotoCacheRef.current.get(task.id)
+        const incomingPhotos = task.categorized_photos ?? null
+
+        if (typeof cached !== "undefined") {
+          if (cached === null && hasCategorizedPhotoEntries(incomingPhotos)) {
+            categorizedPhotoCacheRef.current.set(task.id, incomingPhotos)
+            return { ...task, categorized_photos: incomingPhotos }
+          }
+
+          if (cached !== null && !hasCategorizedPhotoEntries(incomingPhotos)) {
+            return { ...task, categorized_photos: cached }
+          }
+
+          return { ...task, categorized_photos: cached ?? null }
+        }
+
+        if (hasCategorizedPhotoEntries(incomingPhotos)) {
+          categorizedPhotoCacheRef.current.set(task.id, incomingPhotos)
+        } else {
+          categorizedPhotoCacheRef.current.set(task.id, incomingPhotos ?? null)
+        }
+
+        return { ...task, categorized_photos: incomingPhotos ?? null }
+      }
+
+      for (const task of incoming) {
+        const resolved = resolvePhotos(task)
+        seen.add(resolved.id)
+        result.push(resolved)
+      }
+
+      for (const task of previous) {
+        if (seen.has(task.id)) continue
+        const resolved = resolvePhotos(task)
+        result.push(resolved)
+      }
+
+      return result.slice(0, MAX_CACHED_TASKS)
+    },
+    [],
+  )
+
+  const cacheTaskPhotos = useCallback(
+    (taskId: string, photos: CategorizedPhotos | null) => {
+      categorizedPhotoCacheRef.current.set(taskId, photos ?? null)
+      setTasks((prev) => {
+        const next = prev.map((task) => (task.id === taskId ? { ...task, categorized_photos: photos ?? null } : task))
+        persistToStorage(STORAGE_KEYS.tasks, next)
+        return next
+      })
+    },
+    [],
+  )
 
   useEffect(() => {
     const cachedTasks = loadFromStorage<Task[]>(STORAGE_KEYS.tasks)
     if (cachedTasks && cachedTasks.length > 0) {
       const limitedTasks = cachedTasks.slice(0, MAX_CACHED_TASKS)
-      setTasks(limitedTasks)
+      const merged = mergeTasksWithCache([], limitedTasks)
+      setTasks(merged)
+      persistToStorage(STORAGE_KEYS.tasks, merged)
       // Force the next refresh to hit the network instead of treating cached data as fresh
       lastTasksFetchRef.current = 0
 
       const cachedVersions = new Map<string, string | null>()
-      for (const task of limitedTasks) {
+      for (const task of merged) {
         cachedVersions.set(task.id, typeof task.server_updated_at === "string" ? task.server_updated_at : null)
       }
       lastRealtimeVersionRef.current = cachedVersions
@@ -343,11 +408,14 @@ export function TaskProvider({
         try {
           const data = await loadTasksFromSupabase({
             ...loadOptions,
-            includePhotos: loadOptions.includePhotos ?? false,
+            includePhotos: true,
           })
           const limited = data.length > MAX_CACHED_TASKS ? data.slice(0, MAX_CACHED_TASKS) : data
-          setTasks(limited)
-          persistToStorage(STORAGE_KEYS.tasks, limited)
+          setTasks((previous) => {
+            const merged = mergeTasksWithCache(previous, limited)
+            persistToStorage(STORAGE_KEYS.tasks, merged)
+            return merged
+          })
           lastTasksFetchRef.current = Date.now()
 
           const nextVersions = new Map<string, string | null>()
@@ -469,8 +537,11 @@ export function TaskProvider({
           const limitedTasks =
             payload.tasks.length > MAX_CACHED_TASKS ? payload.tasks.slice(0, MAX_CACHED_TASKS) : payload.tasks
 
-          setTasks(limitedTasks)
-          persistToStorage(STORAGE_KEYS.tasks, limitedTasks)
+          setTasks((previous) => {
+            const merged = mergeTasksWithCache(previous, limitedTasks)
+            persistToStorage(STORAGE_KEYS.tasks, merged)
+            return merged
+          })
 
           setUsers(payload.users)
           setUsersLoaded(true)
@@ -1779,6 +1850,7 @@ export function TaskProvider({
         usersLoaded,
         usersLoadError,
         updateTask,
+        cacheTaskPhotos,
         addAuditLog,
         startTask,
         pauseTask,

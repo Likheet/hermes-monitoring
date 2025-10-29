@@ -30,7 +30,7 @@ import {
 
 const CACHE_TTL_MS = 30_000
 const TASK_FETCH_LIMIT = 200
-const TASK_FETCH_LIMIT_WITH_PHOTOS = 60
+const TASK_FETCH_LIMIT_WITH_PHOTOS = 80
 
 type DatabaseTaskSummaryBase = Pick<
   DatabaseTask,
@@ -316,10 +316,6 @@ export async function loadTasksFromSupabase(
       "custom_task_recurring_time",
     ]
 
-    if (options.includePhotos) {
-      columns.push("categorized_photos")
-    }
-
     const limit = options.includePhotos ? TASK_FETCH_LIMIT_WITH_PHOTOS : TASK_FETCH_LIMIT
 
     const { data, error } = await supabase
@@ -334,6 +330,57 @@ export async function loadTasksFromSupabase(
     }
 
     const rows = (data ?? []) as DatabaseTaskSummary[]
+    let categorizedPhotosMap: Map<string, DatabaseTask["categorized_photos"]> | null = null
+
+    if (options.includePhotos && rows.length > 0) {
+      const prioritizedIds = rows
+        .filter((row) => {
+          if (!row) return false
+          const requiresVerification = row.requires_verification === true
+          const status = typeof row.status === "string" ? row.status.toLowerCase() : ""
+          const inProgressLike = status === "in_progress" || status === "paused"
+          const completed = status === "completed" || status === "verified"
+          return requiresVerification || inProgressLike || completed
+        })
+        .map((row) => row.id)
+        .filter((id): id is string => typeof id === "string" && id.length > 0)
+        .slice(0, 20) // Reduced from 40 to 20 to avoid timeout
+
+      if (prioritizedIds.length > 0) {
+        // Add timeout to abort slow queries faster
+        const controller = new AbortController()
+        const timeoutId = setTimeout(() => controller.abort(), 3000) // 3 second timeout
+
+        try {
+          const { data: photoRows, error: photosError } = await supabase
+            .from("tasks")
+            .select("id,categorized_photos")
+            .in("id", prioritizedIds)
+            .limit(prioritizedIds.length)
+            .abortSignal(controller.signal)
+
+          clearTimeout(timeoutId)
+
+          if (photosError) {
+            console.warn("[supabase] categorized photo fetch failed; continuing without photos", photosError)
+          } else if (photoRows) {
+            categorizedPhotosMap = new Map<string, DatabaseTask["categorized_photos"]>()
+            for (const row of photoRows as Array<{ id: string; categorized_photos: DatabaseTask["categorized_photos"] }>) {
+              if (row?.id) {
+                categorizedPhotosMap.set(row.id, row.categorized_photos ?? null)
+              }
+            }
+          }
+        } catch (error) {
+          clearTimeout(timeoutId)
+          if ((error as Error).name === 'AbortError') {
+            console.warn("[supabase] categorized photo fetch aborted due to timeout; continuing without photos")
+          } else {
+            console.warn("[supabase] categorized photo fetch failed; continuing without photos", error)
+          }
+        }
+      }
+    }
 
     const mapped = rows.map((row) =>
       databaseTaskToApp({
@@ -355,7 +402,7 @@ export async function loadTasksFromSupabase(
         special_instructions: null,
     estimated_duration: row.estimated_duration ?? null,
     actual_duration: row.actual_duration ?? null,
-    categorized_photos: row.categorized_photos ?? null,
+    categorized_photos: categorizedPhotosMap?.get(row.id) ?? null,
         worker_remarks: row.worker_remarks ?? null,
         supervisor_remarks: row.supervisor_remarks ?? null,
         quality_rating: null,

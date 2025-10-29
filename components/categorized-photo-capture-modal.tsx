@@ -55,16 +55,25 @@ export function CategorizedPhotoCaptureModal({
   const [uploadProgress, setUploadProgress] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const lastExistingPhotosHashRef = useRef<string>("")
 
   useEffect(() => {
-    if (open && existingPhotos) {
-    const reloaded: PhotoBucket = {}
-      photoCategories.forEach((cat) => {
-        const key = cat.name.toLowerCase().replace(/\s+/g, "_")
-        reloaded[key] = existingPhotos[key] || []
-      })
-      setPhotos(reloaded)
+    if (!open) {
+      return
     }
+
+    const currentHash = JSON.stringify(existingPhotos ?? {})
+    if (currentHash === lastExistingPhotosHashRef.current) {
+      return
+    }
+
+    lastExistingPhotosHashRef.current = currentHash
+    const reloaded: PhotoBucket = {}
+    photoCategories.forEach((cat) => {
+      const key = cat.name.toLowerCase().replace(/\s+/g, "_")
+      reloaded[key] = existingPhotos?.[key] || []
+    })
+    setPhotos(reloaded)
   }, [open, existingPhotos, photoCategories])
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -132,7 +141,7 @@ export function CategorizedPhotoCaptureModal({
   const handleRemovePhoto = (categoryKey: string, index: number) => {
     setPhotos((prev) => ({
       ...prev,
-      [categoryKey]: prev[categoryKey].filter((_, i) => i !== index),
+      [categoryKey]: (prev[categoryKey] || []).filter((_, i) => i !== index),
     }))
     triggerHaptic("light")
   }
@@ -202,7 +211,7 @@ export function CategorizedPhotoCaptureModal({
   const currentPhotos = photos[activeCategory] || []
 
   const totalRequired = photoCategories.reduce((sum, cat) => sum + cat.count, 0)
-  const totalCaptured = Object.values(photos).reduce((sum, arr) => sum + arr.length, 0)
+  const totalCaptured = Object.values(photos).reduce((sum, arr) => sum + (arr?.length || 0), 0)
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

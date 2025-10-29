@@ -2,6 +2,37 @@ import type { CategorizedPhotos } from "./types"
 
 export type PhotoBucket = Partial<Record<string, string[]>>
 
+export function hasCategorizedPhotoEntries(source?: CategorizedPhotos | null): boolean {
+  if (!source) {
+    return false
+  }
+
+  const baseKeys: Array<keyof CategorizedPhotos> = [
+    "room_photos",
+    "proof_photos",
+    "before_photos",
+    "during_photos",
+    "after_photos",
+  ]
+
+  for (const key of baseKeys) {
+    const value = source[key]
+    if (Array.isArray(value) && value.length > 0) {
+      return true
+    }
+  }
+
+  if (source.dynamic_categories) {
+    for (const entries of Object.values(source.dynamic_categories)) {
+      if (Array.isArray(entries) && entries.length > 0) {
+        return true
+      }
+    }
+  }
+
+  return false
+}
+
 export function categorizedPhotosToBucket(source?: CategorizedPhotos | null): PhotoBucket {
   if (!source) {
     return {}

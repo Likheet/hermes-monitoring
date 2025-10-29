@@ -1,6 +1,6 @@
 "use client"
 
-import { use, useState, useEffect } from "react"
+import { use, useState, useEffect, useRef, useCallback, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import { ProtectedRoute } from "@/components/protected-route"
 import { useAuth } from "@/lib/auth-context"
@@ -21,7 +21,7 @@ import { formatExactTimestamp } from "@/lib/date-utils"
 import { startPauseMonitoring, stopPauseMonitoring } from "@/lib/pause-monitoring"
 import { getCategorizedPhotoSections } from "@/lib/image-utils"
 import type { CategorizedPhotos, Task } from "@/lib/types"
-import { bucketToCategorizedPhotos, categorizedPhotosToBucket } from "@/lib/photo-utils"
+import { bucketToCategorizedPhotos, categorizedPhotosToBucket, hasCategorizedPhotoEntries } from "@/lib/photo-utils"
 import { formatDuration } from "@/lib/time-utils"
 import {
   AlertDialog,
@@ -58,10 +58,12 @@ function TaskDetail({ params }: TaskDetailProps) {
     maintenanceTasks,
     swapTasks,
     updateTask,
+    cacheTaskPhotos,
   } = useTasks()
   const { toast } = useToast()
 
   const task = getTaskById(taskId)
+  const [isLoading, setIsLoading] = useState(true)
   const [remark, setRemark] = useState("")
   const [issueModalOpen, setIssueModalOpen] = useState(false)
   const [swapDialogOpen, setSwapDialogOpen] = useState(false)
@@ -70,6 +72,63 @@ function TaskDetail({ params }: TaskDetailProps) {
   const [showCategorizedPhotoModal, setShowCategorizedPhotoModal] = useState(false)
   const [categorizedPhotos, setCategorizedPhotos] = useState<CategorizedPhotos | null>(null)
   const [elapsedTime, setElapsedTime] = useState(0)
+  const lastHydratedTaskIdRef = useRef<string | null>(null)
+  const lastTaskVersionRef = useRef<string | null>(null)
+  const lastSavedPhotosHashRef = useRef<string | null>(null)
+
+  // Set loading to false once we have tasks loaded OR after timeout
+  useEffect(() => {
+    if (task) {
+      // Task found, stop loading immediately
+      setIsLoading(false)
+      return
+    }
+
+    // If no task yet, wait max 3 seconds for tasks to load
+    const timer = setTimeout(() => {
+      setIsLoading(false)
+    }, 3000)
+
+    return () => clearTimeout(timer)
+  }, [task, tasks.length]) // Also depend on tasks.length to re-check when tasks load
+
+  const computePhotosHash = useCallback((photos: CategorizedPhotos | null) => JSON.stringify(photos ?? null), [])
+
+  const photoCacheKey = useMemo(() => `hermes-task-photos-${taskId}`, [taskId])
+
+  const applyLocalCategorizedPhotos = useCallback(
+    (photos: CategorizedPhotos | null) => {
+      setCategorizedPhotos(photos)
+      lastSavedPhotosHashRef.current = computePhotosHash(photos)
+      cacheTaskPhotos(taskId, photos)
+
+      if (typeof window !== "undefined") {
+        if (photos && hasCategorizedPhotoEntries(photos)) {
+          window.localStorage.setItem(photoCacheKey, JSON.stringify(photos))
+        } else {
+          window.localStorage.removeItem(photoCacheKey)
+        }
+      }
+    },
+    [cacheTaskPhotos, computePhotosHash, photoCacheKey, taskId],
+  )
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return
+    }
+
+    const cached = window.localStorage.getItem(photoCacheKey)
+    if (cached) {
+      try {
+        const parsed = JSON.parse(cached) as CategorizedPhotos
+        applyLocalCategorizedPhotos(parsed)
+      } catch (error) {
+        console.warn("[worker] Failed to parse cached categorized photos", error)
+        window.localStorage.removeItem(photoCacheKey)
+      }
+    }
+  }, [applyLocalCategorizedPhotos, photoCacheKey])
 
   useEffect(() => {
     if (task?.status === "IN_PROGRESS" && task.started_at) {
@@ -127,29 +186,59 @@ function TaskDetail({ params }: TaskDetailProps) {
   useEffect(() => {
     if (!task) {
       setPhotos([])
-      setCategorizedPhotos(null)
+      applyLocalCategorizedPhotos(null)
+      lastHydratedTaskIdRef.current = null
+      lastTaskVersionRef.current = null
+      lastSavedPhotosHashRef.current = null
       return
     }
 
     if (task.photo_urls && task.photo_urls.length > 0) {
       setPhotos(task.photo_urls)
     }
-    if (task.categorized_photos) {
-      setCategorizedPhotos(task.categorized_photos)
+
+    // Don't overwrite local changes while modal is open
+    if (showCategorizedPhotoModal) {
+      return
     }
-  }, [task])
+
+    const isNewTask = lastHydratedTaskIdRef.current !== task.id
+    const incomingVersion = task.server_updated_at ?? null
+    const incomingPhotos = task.categorized_photos ?? null
+    const incomingHas = hasCategorizedPhotoEntries(incomingPhotos)
+    const incomingHash = computePhotosHash(incomingPhotos)
+    const lastSavedHash = lastSavedPhotosHashRef.current
+    const localHas = hasCategorizedPhotoEntries(categorizedPhotos)
+
+    if (incomingHas && incomingHash !== lastSavedHash) {
+      applyLocalCategorizedPhotos(incomingPhotos)
+      lastTaskVersionRef.current = incomingVersion ?? lastTaskVersionRef.current
+    } else if (!incomingHas && !localHas && (isNewTask || lastSavedHash === null)) {
+      applyLocalCategorizedPhotos(incomingPhotos)
+      lastTaskVersionRef.current = incomingVersion ?? lastTaskVersionRef.current
+    } else if (incomingVersion && incomingVersion !== lastTaskVersionRef.current) {
+      lastTaskVersionRef.current = incomingVersion
+      if (incomingHash === lastSavedHash) {
+        applyLocalCategorizedPhotos(incomingPhotos)
+      }
+    }
+
+    lastHydratedTaskIdRef.current = task.id
+  }, [applyLocalCategorizedPhotos, categorizedPhotos, computePhotosHash, showCategorizedPhotoModal, task])
 
   useEffect(() => {
     if (!task || !task.photo_documentation_required) {
       return
     }
 
-    const hasPersistedPhotos = Boolean(
-      task.categorized_photos &&
-        Object.values(task.categorized_photos).some((value) => Array.isArray(value) && value.length > 0),
-    )
+    const hasPersistedPhotos = hasCategorizedPhotoEntries(task.categorized_photos)
 
     if (hasPersistedPhotos) {
+      return
+    }
+
+    // Don't fetch if modal is open - user might be actively adding photos
+    if (showCategorizedPhotoModal) {
       return
     }
 
@@ -168,11 +257,20 @@ function TaskDetail({ params }: TaskDetailProps) {
         }
 
         const payload = (await response.json()) as { task?: Task }
-        if (cancelled || !payload?.task?.categorized_photos) {
+        if (cancelled || !payload?.task) {
           return
         }
 
-        setCategorizedPhotos(payload.task.categorized_photos)
+        const incoming = payload.task.categorized_photos ?? null
+        const incomingVersion = payload.task.server_updated_at ?? null
+        const incomingHas = hasCategorizedPhotoEntries(incoming)
+        const prevHas = hasCategorizedPhotoEntries(categorizedPhotos)
+        const incomingHash = computePhotosHash(incoming)
+
+        if (incomingHas || !prevHas || incomingHash === lastSavedPhotosHashRef.current) {
+          applyLocalCategorizedPhotos(incoming)
+          lastTaskVersionRef.current = incomingVersion ?? lastTaskVersionRef.current
+        }
       } catch (error) {
         console.error("[worker] Failed to hydrate categorized photos", error)
       }
@@ -183,8 +281,17 @@ function TaskDetail({ params }: TaskDetailProps) {
     return () => {
       cancelled = true
     }
-  }, [task?.id, task?.photo_documentation_required])
+  }, [applyLocalCategorizedPhotos, categorizedPhotos, computePhotosHash, showCategorizedPhotoModal, task?.id, task?.photo_documentation_required])
 
+  // Show loading state while waiting for task data
+  if (isLoading && !task) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center gap-4 p-4">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+        <p className="text-muted-foreground">Loading task...</p>
+      </div>
+    )
+  }
 
   if (!task || !user) {
     return (
@@ -368,7 +475,10 @@ function TaskDetail({ params }: TaskDetailProps) {
     }
 
     const photosToSubmit = task.photo_documentation_required
-      ? categorizedPhotos
+      ? categorizedPhotos ?? {
+          room_photos: [],
+          proof_photos: [],
+        }
       : {
           room_photos: photos.slice(0, Math.ceil(photos.length / 2)),
           proof_photos: photos.slice(Math.ceil(photos.length / 2)),
@@ -549,7 +659,7 @@ function TaskDetail({ params }: TaskDetailProps) {
 
                 {categorizedSections.length > 0 ? (
                   <div className="space-y-4">
-                    {categorizedSections.map((section) => (
+                    {categorizedSections.map((section, sectionIndex) => (
                       <div key={section.key} className="space-y-2">
                         <p className="text-sm font-semibold text-muted-foreground">{section.label}</p>
                         <div className="grid grid-cols-3 gap-2 sm:gap-3">
@@ -560,6 +670,7 @@ function TaskDetail({ params }: TaskDetailProps) {
                                 alt={`${section.label} ${index + 1}`}
                                 fill
                                 className="rounded-lg object-cover border border-border"
+                                priority={sectionIndex === 0 && index === 0}
                                 sizes="(max-width: 768px) 28vw, 160px"
                               />
                             </div>
@@ -716,10 +827,10 @@ function TaskDetail({ params }: TaskDetailProps) {
           existingPhotos={categorizedPhotos ? categorizedPhotosToBucket(categorizedPhotos) : undefined}
           onSave={async (photoBucket) => {
             const nextCategorized = bucketToCategorizedPhotos(photoBucket)
-            setCategorizedPhotos(nextCategorized)
-            setShowCategorizedPhotoModal(false)
+            applyLocalCategorizedPhotos(nextCategorized)
 
             if (!isOnline()) {
+              setShowCategorizedPhotoModal(false)
               toast({
                 title: "Offline Mode",
                 description: "Photos saved locally. They will sync when you're back online.",
@@ -728,6 +839,7 @@ function TaskDetail({ params }: TaskDetailProps) {
             }
 
             const success = await updateTask(task.id, { categorized_photos: nextCategorized })
+            setShowCategorizedPhotoModal(false)
 
             if (success) {
               toast({
