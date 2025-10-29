@@ -24,7 +24,7 @@ Hermes provides a centralized, role-based task management system that addresses 
 
 ### User Journey Flow
 
-```mermaid
+\`\`\`mermaid
 flowchart TD
     Login[User Login] --> RoleCheck{Role Check}
     
@@ -52,7 +52,7 @@ flowchart TD
     AdminDashboard --> ManageUsers[User Management]
     AdminDashboard --> Reports[Analytics Reports]
     AdminDashboard --> Settings[System Configuration]
-```
+\`\`\`
 
 ### Core Workflows
 
