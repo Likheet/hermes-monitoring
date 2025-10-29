@@ -4,7 +4,7 @@
 
 ### High-Level Architecture
 
-```mermaid
+\`\`\`mermaid
 flowchart TD
     subgraph Frontend Layer
         A[Next.js App Router]
@@ -35,7 +35,7 @@ flowchart TD
     H --> F
     I --> J
     J --> K
-```
+\`\`\`
 
 ### Component Architecture
 
@@ -68,7 +68,7 @@ flowchart TD
 
 ### Data Flow Pattern
 
-```mermaid
+\`\`\`mermaid
 flowchart LR
     subgraph Task Creation
         A1[Front Office creates task]
@@ -88,7 +88,7 @@ flowchart LR
         C2[Quality rating applied]
         C3[Status updated to verified]
     end
-```
+\`\`\`
 
 ### Design Patterns in Use
 

@@ -35,7 +35,7 @@
 - **VS Code**: Recommended IDE with TypeScript extensions
 
 ### Local Development
-```bash
+\`\`\`bash
 # Install dependencies
 pnpm install
 
@@ -46,13 +46,13 @@ pnpm dev
 supabase db push    # Push schema changes
 supabase db reset   # Reset local database
 supabase db diff    # Compare schema changes
-```
+\`\`\`
 
 ### Environment Variables
-```env
+\`\`\`env
 NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
-```
+\`\`\`
 
 ## Technical Constraints
 
@@ -78,7 +78,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
 ## Key Dependencies
 
 ### Core Dependencies
-```json
+\`\`\`json
 {
   "next": "15.2.4",
   "react": "^19",
@@ -91,10 +91,10 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
   "tailwindcss": "^4.1.9",
   "lucide-react": "^0.454.0"
 }
-```
+\`\`\`
 
 ### Development Dependencies
-```json
+\`\`\`json
 {
   "@types/node": "^22",
   "@types/react": "^19",
@@ -102,7 +102,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
   "eslint-config-next": "15.5.6",
   "typescript": "^5"
 }
-```
+\`\`\`
 
 ## Database Schema
 
