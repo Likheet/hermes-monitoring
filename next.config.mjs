@@ -76,7 +76,7 @@ try {
       exclude: [
         /^\/_vercel\/.*/,
         /^\/api\/.*/,
-        ({ url }) => url.pathname.startsWith('/_vercel/'),
+        ({ url } = {}) => Boolean(url?.pathname?.startsWith('/_vercel/')),
       ],
     },
   })
