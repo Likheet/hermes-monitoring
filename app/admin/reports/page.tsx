@@ -1,7 +1,8 @@
 "use client"
 
 import { ProtectedRoute } from "@/components/protected-route"
-import { useTasks } from "@/lib/task-context"
+import { useTasks } from "@/lib/contexts/tasks-context"
+import { useUsers } from "@/lib/contexts/users-context"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -15,11 +16,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 
 function AdminReports() {
   const { tasks } = useTasks()
+  const { users } = useUsers()
   const router = useRouter()
   const [dateRange, setDateRange] = useState<DateRange>("monthly")
 
-  const performanceReport = generateWorkerPerformanceReport(tasks, dateRange)
-  const discrepancyReport = generateDiscrepancyReport(tasks, dateRange)
+  const performanceReport = generateWorkerPerformanceReport(tasks, users, dateRange)
+  const discrepancyReport = generateDiscrepancyReport(tasks, users, dateRange)
 
   const getDiscrepancyColor = (percentage: number) => {
     if (percentage >= 50) return "text-red-500"

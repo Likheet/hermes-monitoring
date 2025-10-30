@@ -39,7 +39,7 @@ import {
   isWorkerOnShiftWithSchedule,
   type WorkerAvailability,
 } from "@/lib/shift-utils"
-import type { Department } from "@/lib/types"
+import type { Department, Task } from "@/lib/types"
 import { Badge } from "@/components/ui/badge"
 import {
   Select,
@@ -304,10 +304,6 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers, initialD
   type WorkerWithAvailability = ReturnType<typeof getWorkersWithShiftStatusFromUsers>[number]
 
   const workersWithShifts = useMemo(() => {
-    const now = new Date()
-    const currentTimeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`
-    const todayStr = now.toISOString().split('T')[0]
-    
     // Filter workers and calculate availability
     
     const allWorkers = shiftSchedules

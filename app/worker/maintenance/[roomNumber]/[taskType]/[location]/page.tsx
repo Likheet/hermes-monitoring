@@ -56,6 +56,49 @@ const MAINTENANCE_PHOTO_CATEGORIES = [
   { name: "After Photos", count: 1, description: "Capture the area after maintenance" },
 ]
 
+const cloneCategoryArray = (value?: string[]): string[] => (Array.isArray(value) ? [...value] : [])
+
+const normalizeDynamicCategories = (source?: Record<string, string[]>): Record<string, string[]> | undefined => {
+  if (!source) return undefined
+
+  return Object.fromEntries(
+    Object.entries(source).map(([key, photos]) => [key, Array.isArray(photos) ? [...photos] : []]),
+  )
+}
+
+const createEmptyCategorizedPhotos = (): CategorizedPhotos => ({
+  room_photos: [],
+  proof_photos: [],
+  before_photos: [],
+  after_photos: [],
+})
+
+const normalizeCategorizedPhotos = (
+  source: Partial<CategorizedPhotos> | CategorizedPhotos | null | undefined,
+): CategorizedPhotos => {
+  if (!source) {
+    return createEmptyCategorizedPhotos()
+  }
+
+  return {
+    room_photos: cloneCategoryArray(source.room_photos),
+    proof_photos: cloneCategoryArray(source.proof_photos),
+    before_photos: cloneCategoryArray(source.before_photos),
+    during_photos: source.during_photos ? [...source.during_photos] : undefined,
+    after_photos: cloneCategoryArray(source.after_photos),
+    dynamic_categories: normalizeDynamicCategories(source.dynamic_categories),
+  }
+}
+
+const extractServerVersion = (source: unknown): string | null => {
+  if (source && typeof source === "object" && "server_updated_at" in source) {
+    const candidate = (source as { server_updated_at?: unknown }).server_updated_at
+    return typeof candidate === "string" ? candidate : null
+  }
+
+  return null
+}
+
 function MaintenanceTaskPage({ params }: MaintenanceTaskPageProps) {
   const resolvedParams = params instanceof Promise ? use(params) : params
   const { roomNumber, taskType, location: encodedLocation } = resolvedParams
@@ -87,16 +130,11 @@ function MaintenanceTaskPage({ params }: MaintenanceTaskPageProps) {
   const [ongoingTask, setOngoingTask] = useState<typeof task | null>(null)
   const [swapDialogOpen, setSwapDialogOpen] = useState(false)
   const [taskToSwap, setTaskToSwap] = useState<typeof task | null>(null)
-  const [categorizedPhotos, setCategorizedPhotos] = useState<CategorizedPhotos>(
-    task?.categorized_photos ?? {
-      room_photos: [],
-      proof_photos: [],
-      before_photos: [],
-      after_photos: [],
-    },
+  const [categorizedPhotos, setCategorizedPhotos] = useState<CategorizedPhotos>(() =>
+    normalizeCategorizedPhotos(task?.categorized_photos),
   )
   const lastHydratedTaskIdRef = useRef<string | null>(task?.id ?? null)
-  const lastTaskVersionRef = useRef<string | null>(task?.server_updated_at ?? null)
+  const lastTaskVersionRef = useRef<string | null>(extractServerVersion(task))
   const [elapsedTime, setElapsedTime] = useState(0)
   const [isRunning, setIsRunning] = useState(false)
 
@@ -122,13 +160,8 @@ function MaintenanceTaskPage({ params }: MaintenanceTaskPageProps) {
     })
 
     const isNewTask = lastHydratedTaskIdRef.current !== task.id
-    const incomingVersion = task.server_updated_at ?? null
-    const incomingPhotos = task.categorized_photos ?? {
-      room_photos: [],
-      proof_photos: [],
-      before_photos: [],
-      after_photos: [],
-    }
+    const incomingVersion = extractServerVersion(task)
+    const incomingPhotos = normalizeCategorizedPhotos(task.categorized_photos)
 
     setCategorizedPhotos((prev) => {
       const incomingHas = hasCategorizedPhotoEntries(incomingPhotos)
@@ -139,12 +172,16 @@ function MaintenanceTaskPage({ params }: MaintenanceTaskPageProps) {
           before: incomingPhotos.before_photos?.length || 0,
           after: incomingPhotos.after_photos?.length || 0,
         })
-        lastTaskVersionRef.current = incomingVersion ?? lastTaskVersionRef.current
+        if (incomingVersion) {
+          lastTaskVersionRef.current = incomingVersion
+        }
         return incomingPhotos
       }
 
       if (isNewTask || !prevHas) {
-        lastTaskVersionRef.current = incomingVersion ?? lastTaskVersionRef.current
+        if (incomingVersion) {
+          lastTaskVersionRef.current = incomingVersion
+        }
         return incomingPhotos
       }
 
@@ -180,7 +217,9 @@ function MaintenanceTaskPage({ params }: MaintenanceTaskPageProps) {
   useEffect(() => {
     if (!task) return
 
-    const hasPersistedPhotos = hasCategorizedPhotoEntries(task.categorized_photos)
+    const hasPersistedPhotos = hasCategorizedPhotoEntries(
+      task.categorized_photos ? normalizeCategorizedPhotos(task.categorized_photos) : null,
+    )
 
     if (hasPersistedPhotos) {
       return
@@ -205,20 +244,17 @@ function MaintenanceTaskPage({ params }: MaintenanceTaskPageProps) {
 
         const fetchedTask = payload?.task as Task | undefined
         if (fetchedTask) {
-          const incoming = fetchedTask.categorized_photos ?? {
-            room_photos: [],
-            proof_photos: [],
-            before_photos: [],
-            after_photos: [],
-          }
-          const incomingVersion = fetchedTask.server_updated_at ?? null
+          const incoming = normalizeCategorizedPhotos(fetchedTask.categorized_photos)
+          const incomingVersion = extractServerVersion(fetchedTask)
 
           setCategorizedPhotos((prev) => {
             const incomingHas = hasCategorizedPhotoEntries(incoming)
             const prevHas = hasCategorizedPhotoEntries(prev)
 
             if (incomingHas || !prevHas) {
-              lastTaskVersionRef.current = incomingVersion ?? lastTaskVersionRef.current
+              if (incomingVersion) {
+                lastTaskVersionRef.current = incomingVersion
+              }
               return incoming
             }
 
@@ -235,7 +271,7 @@ function MaintenanceTaskPage({ params }: MaintenanceTaskPageProps) {
     return () => {
       cancelled = true
     }
-  }, [task?.id])
+  }, [task])
 
   useEffect(() => {
     if (!isRunning || !task?.started_at) return
@@ -248,7 +284,7 @@ function MaintenanceTaskPage({ params }: MaintenanceTaskPageProps) {
     }, 1000)
 
     return () => clearInterval(interval)
-  }, [isRunning, task?.started_at])
+  }, [isRunning, task])
 
   if (!task || !user) {
     return (
@@ -375,11 +411,10 @@ function MaintenanceTaskPage({ params }: MaintenanceTaskPageProps) {
   const handleComplete = () => {
     const minBeforePhotos = 1
     const minAfterPhotos = 1
+    const beforePhotos = categorizedPhotos.before_photos ?? []
+    const afterPhotos = categorizedPhotos.after_photos ?? []
 
-    if (
-      categorizedPhotos.before_photos.length < minBeforePhotos ||
-      categorizedPhotos.after_photos.length < minAfterPhotos
-    ) {
+    if (beforePhotos.length < minBeforePhotos || afterPhotos.length < minAfterPhotos) {
       toast({
         title: "Photos Required",
         description: `Please upload at least ${minBeforePhotos} before photo and ${minAfterPhotos} after photo for maintenance documentation`,
@@ -394,8 +429,8 @@ function MaintenanceTaskPage({ params }: MaintenanceTaskPageProps) {
     updateMaintenanceTask(task.id, {
       status: "completed",
       categorized_photos: {
-        before_photos: categorizedPhotos.before_photos,
-        after_photos: categorizedPhotos.after_photos,
+        before_photos: beforePhotos,
+        after_photos: afterPhotos,
       },
       timer_duration: Math.max(elapsedTime, 0),
       completed_at: new Date().toISOString(),
@@ -411,17 +446,22 @@ function MaintenanceTaskPage({ params }: MaintenanceTaskPageProps) {
   }
 
   const handlePhotosCapture = async (bucket: PhotoBucket) => {
+    if (!task) return
+
     const photos = bucketToCategorizedPhotos(bucket)
-    const updatedPhotos: CategorizedPhotos = {
-      room_photos: [],
-      proof_photos: [],
-      before_photos: photos.before_photos || categorizedPhotos.before_photos || [],
-      after_photos: photos.after_photos || categorizedPhotos.after_photos || [],
-    }
+    const updatedPhotos = normalizeCategorizedPhotos({
+      ...categorizedPhotos,
+      ...photos,
+    })
+    const beforePhotos = updatedPhotos.before_photos ?? []
+    const afterPhotos = updatedPhotos.after_photos ?? []
 
     setCategorizedPhotos(updatedPhotos)
     updateMaintenanceTask(task.id, {
-      categorized_photos: updatedPhotos,
+      categorized_photos: {
+        before_photos: beforePhotos,
+        after_photos: afterPhotos,
+      },
     })
 
     if (isOnline()) {
@@ -435,7 +475,7 @@ function MaintenanceTaskPage({ params }: MaintenanceTaskPageProps) {
       }
     }
 
-    const totalPhotos = (updatedPhotos.before_photos?.length || 0) + (updatedPhotos.after_photos?.length || 0)
+    const totalPhotos = beforePhotos.length + afterPhotos.length
 
     console.log("[v0] Photos saved to task:", {
       taskId: task.id,

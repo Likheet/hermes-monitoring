@@ -117,7 +117,15 @@ function ProfilePage() {
         duration: t.timer_duration,
       })),
     })
-  }, [user?.id, tasks.length, maintenanceTasks])
+  }, [
+    user?.id,
+    user?.name,
+    tasks.length,
+    maintenanceTasks,
+    myTasks.length,
+    completedTasks.length,
+    myCompletedMaintenanceTasks,
+  ])
 
   useEffect(() => {
     if (myCompletedMaintenanceTasks.length > 0) {
@@ -133,7 +141,7 @@ function ProfilePage() {
         })),
       )
     }
-  }, [myCompletedMaintenanceTasks.length])
+  }, [myCompletedMaintenanceTasks])
 
   const overdueTasks = myTasks.filter((t) => {
     if (t.status !== "IN_PROGRESS" && t.status !== "PAUSED") return false
@@ -170,7 +178,7 @@ function ProfilePage() {
       ratingValue,
       ratingPercentage,
     })
-  }, [tasksWithRating.length, avgRating])
+  }, [tasksWithRating.length, avgRating, ratingValue, ratingPercentage])
 
   const totalTasks = myTasks.length + (maintenanceTasks || []).filter((t) => t.assigned_to === user?.id).length
   const totalCompletedTasks = completedTasks.length + myCompletedMaintenanceTasks.length
@@ -221,7 +229,7 @@ function ProfilePage() {
       completionRate,
       willShowCompletedSection: completedTasks.length > 0 || myCompletedMaintenanceTasks.length > 0,
     })
-  }, [totalTasks, totalCompletedTasks])
+  }, [totalTasks, totalCompletedTasks, completionRate, completedTasks.length, myCompletedMaintenanceTasks.length])
 
   const isMaintenanceWorker = user?.department === "Maintenance"
 

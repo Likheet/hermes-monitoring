@@ -106,7 +106,7 @@ export function TaskVerificationView({ taskId, returnPath }: TaskVerificationVie
     setIsLoadingPhotos(derived.totalPhotoCount === 0)
     setPhotoError(null)
     setTask(baseTask ?? null)
-  }, [taskId])
+  }, [baseTask, taskId])
 
   useEffect(() => {
     if (initialPhotoState.totalPhotoCount > 0) {

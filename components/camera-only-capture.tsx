@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef, useEffect, useCallback } from "react"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Camera, FlipHorizontal, Zap, ZapOff, Loader2, X, Check, AlertCircle, ImageOff } from "lucide-react"
@@ -45,16 +45,15 @@ export function CameraOnlyCapture({
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
   // Start camera when modal opens
-  useEffect(() => {
-    if (open && !capturedPhoto) {
-      startCamera()
+  const stopCamera = useCallback(() => {
+    if (stream) {
+      stream.getTracks().forEach((track) => track.stop())
+      setStream(null)
     }
-    return () => {
-      stopCamera()
-    }
-  }, [open, facingMode])
+    setCameraReady(false)
+  }, [stream])
 
-  const startCamera = async () => {
+  const startCamera = useCallback(async () => {
     try {
       setError(null)
       setCameraReady(false)
@@ -110,15 +109,16 @@ export function CameraOnlyCapture({
       )
       triggerErrorHaptic()
     }
-  }
+  }, [flashMode, facingMode, stream])
 
-  const stopCamera = () => {
-    if (stream) {
-      stream.getTracks().forEach((track) => track.stop())
-      setStream(null)
+  useEffect(() => {
+    if (open && !capturedPhoto) {
+      void startCamera()
     }
-    setCameraReady(false)
-  }
+    return () => {
+      stopCamera()
+    }
+  }, [capturedPhoto, open, startCamera, stopCamera])
 
   const handleFlipCamera = async () => {
     triggerHaptic("medium")
@@ -173,7 +173,7 @@ export function CameraOnlyCapture({
     setError(null)
     setUploadProgress(0)
     triggerHaptic("light")
-    startCamera()
+    void startCamera()
   }
 
   const handleConfirm = async () => {

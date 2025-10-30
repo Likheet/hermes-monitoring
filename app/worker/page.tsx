@@ -20,7 +20,6 @@ import type { MaintenanceTask } from "@/lib/maintenance-types"
 import { TASK_TYPE_LABELS } from "@/lib/maintenance-types"
 import { formatDistanceToNow } from "@/lib/date-utils"
 import { cn } from "@/lib/utils"
-import { useToast } from "@/hooks/use-toast"
 import { formatShiftRange } from "@/lib/date-utils"
 import { initializePauseMonitoring } from "@/lib/pause-monitoring"
 
@@ -31,7 +30,6 @@ function WorkerDashboard() {
   const { user, logout } = useAuth()
   const { tasks, dismissRejectedTask, maintenanceTasks, users } = useTasks()
   const router = useRouter()
-  const { toast } = useToast()
   useRealtimeTasks({
     enabled: true,
     filter: { userId: user?.id },
@@ -90,8 +88,12 @@ function WorkerDashboard() {
     })
   }, [maintenanceTasks, currentMonth, currentYear])
 
-  const maintenanceTasksForDisplay =
-    monthlyMaintenanceTasks.length > 0 ? monthlyMaintenanceTasks : maintenanceTasks || []
+  const maintenanceTasksForDisplay = useMemo(() => {
+    if (monthlyMaintenanceTasks.length > 0) {
+      return monthlyMaintenanceTasks
+    }
+    return maintenanceTasks ?? []
+  }, [monthlyMaintenanceTasks, maintenanceTasks])
   const maintenanceTaskIdsForDisplay = useMemo(
     () => new Set(maintenanceTasksForDisplay.map((task) => task.id)),
     [maintenanceTasksForDisplay],
@@ -178,10 +180,22 @@ function WorkerDashboard() {
       },
       workerStatus: inProgressTasks.length > 0 || myActiveMaintenanceTasks.length > 0 ? "BUSY" : "AVAILABLE",
     })
-  }, [myTasks, maintenanceTasks, user?.id])
+  }, [
+    user?.id,
+    myTasks,
+    inProgressTasks.length,
+    pendingTasks.length,
+    maintenanceTasks,
+    myActiveMaintenanceTasks,
+    myCompletedMaintenanceTasks.length,
+    myMaintenanceAssignments,
+  ])
 
   const activeMaintenanceByRoom = myActiveMaintenanceTasks.reduce(
     (acc, task) => {
+      if (!task.room_number) {
+        return acc
+      }
       if (!acc[task.room_number]) {
         acc[task.room_number] = []
       }
@@ -196,6 +210,9 @@ function WorkerDashboard() {
       .filter((t) => t.assigned_to === user?.id)
       .reduce(
         (acc, task) => {
+          if (!task.room_number) {
+            return acc
+          }
           if (!acc[task.room_number]) {
             acc[task.room_number] = []
           }
@@ -311,11 +328,16 @@ function WorkerDashboard() {
 
   // Calculate rejectedThisMonth and quotaRemaining for the profile banner
   const today = new Date()
-  const rejectedThisMonth = rejectedTasks.filter(
-    (t) =>
-      new Date(t.completed_at || t.updated_at).getMonth() === today.getMonth() &&
-      new Date(t.completed_at || t.updated_at).getFullYear() === today.getFullYear(),
-  ).length
+  const rejectedThisMonth = rejectedTasks.filter((t) => {
+    const referenceTimestamp = t.completed_at?.client ?? t.rejection_acknowledged_at?.client ?? t.assigned_at.client
+    const referenceDate = new Date(referenceTimestamp)
+    if (Number.isNaN(referenceDate.getTime())) {
+      return false
+    }
+    return (
+      referenceDate.getMonth() === today.getMonth() && referenceDate.getFullYear() === today.getFullYear()
+    )
+  }).length
   const quotaRemaining = REJECTION_QUOTA - rejectedThisMonth
 
   const renderContent = () => {
@@ -380,11 +402,7 @@ function WorkerDashboard() {
 
                       <div className="flex items-center gap-4 text-xs text-muted-foreground">
                         <span>Room {task.room_number}</span>
-                        {task.assigned_at && (
-                          <span>
-                            Assigned {formatDistanceToNow(new Date(task.assigned_at.client), { addSuffix: true })}
-                          </span>
-                        )}
+                        {task.assigned_at && <span>Assigned {formatDistanceToNow(task.assigned_at.client)}</span>}
                       </div>
 
                       {task.rating && (
@@ -567,8 +585,10 @@ function WorkerDashboard() {
                 <div className="space-y-3">
                   {myCompletedMaintenanceTasksForDisplay
                     .sort((a, b) => {
-                      const aTime = new Date(a.completed_at || a.updated_at).getTime()
-                      const bTime = new Date(b.completed_at || b.updated_at).getTime()
+                      const aReference = a.completed_at ?? a.started_at ?? a.created_at
+                      const bReference = b.completed_at ?? b.started_at ?? b.created_at
+                      const aTime = new Date(aReference ?? a.created_at).getTime()
+                      const bTime = new Date(bReference ?? b.created_at).getTime()
                       return bTime - aTime
                     })
                     .slice(0, 10)
@@ -606,9 +626,7 @@ function WorkerDashboard() {
                                   {remainingCount > 0 && (
                                     <span className="text-orange-600 font-medium">{remainingCount} remaining</span>
                                   )}
-                                  {task.completed_at && (
-                                    <span>{formatDistanceToNow(new Date(task.completed_at), { addSuffix: true })}</span>
-                                  )}
+                                  {task.completed_at && <span>{formatDistanceToNow(task.completed_at)}</span>}
                                 </div>
                               </div>
                               <div className="text-right shrink-0">
@@ -695,7 +713,7 @@ function WorkerDashboard() {
                         return (
                           <p className="text-sm text-muted-foreground mt-2">
                             {currentMaintenanceTask.status === "paused" ? "Paused" : "Started"}{" "}
-                            {formatDistanceToNow(date, { addSuffix: true })}
+                            {formatDistanceToNow(date)}
                           </p>
                         )
                       })()}
@@ -877,9 +895,7 @@ function WorkerDashboard() {
                             {task.rejection_acknowledged_at && (
                               <p className="text-xs text-muted-foreground">
                                 Acknowledged{" "}
-                                {formatDistanceToNow(new Date(task.rejection_acknowledged_at.client), {
-                                  addSuffix: true,
-                                })}
+                                {formatDistanceToNow(task.rejection_acknowledged_at.client)}
                               </p>
                             )}
                           </div>

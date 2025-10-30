@@ -113,7 +113,7 @@ export function FrontDeskActiveTaskModal({ task, open, onOpenChange }: FrontDesk
     }
 
     setElapsedTime(0)
-  }, [activeTask?.id, activeTask?.status])
+  }, [activeTask])
 
   useEffect(() => {
     if (!activeTask || !activeTask.photo_documentation_required) {
@@ -159,7 +159,7 @@ export function FrontDeskActiveTaskModal({ task, open, onOpenChange }: FrontDesk
     return () => {
       cancelled = true
     }
-  }, [activeTask?.id, activeTask?.photo_documentation_required])
+  }, [activeTask])
 
   useEffect(() => {
     if (!open) {
@@ -180,9 +180,6 @@ export function FrontDeskActiveTaskModal({ task, open, onOpenChange }: FrontDesk
             <DialogTitle>No task selected</DialogTitle>
             <DialogDescription>Select a task to manage it.</DialogDescription>
           </DialogHeader>
-          <DialogFooter>
-            <Button onClick={() => onOpenChange(false)}>Close</Button>
-          </DialogFooter>
         </DialogContent>
       </Dialog>
     )
@@ -523,7 +520,7 @@ export function FrontDeskActiveTaskModal({ task, open, onOpenChange }: FrontDesk
                 <Button
                   onClick={handleStart}
                   disabled={isActionLoading}
-                  className="min-h-[48px] justify-center gap-2"
+                  className="min-h-[48px] w-full justify-center gap-2 sm:col-span-2 sm:w-auto sm:justify-self-center"
                 >
                   {pendingAction === "start" ? (
                     <>
@@ -620,13 +617,6 @@ export function FrontDeskActiveTaskModal({ task, open, onOpenChange }: FrontDesk
                 </>
               )}
 
-              <Button
-                variant="ghost"
-                onClick={() => onOpenChange(false)}
-                className="min-h-[48px] justify-center gap-2 sm:col-span-2"
-              >
-                Close
-              </Button>
             </div>
           </div>
         </DialogContent>

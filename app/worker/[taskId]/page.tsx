@@ -354,7 +354,15 @@ function TaskDetail({ params }: TaskDetailProps) {
     return () => {
       cancelled = true
     }
-  }, [applyLocalCategorizedPhotos, categorizedPhotos, computePhotosHash, showCategorizedPhotoModal, task?.id, task?.photo_documentation_required])
+  }, [
+    applyLocalCategorizedPhotos,
+    categorizedPhotos,
+    computePhotosHash,
+    showCategorizedPhotoModal,
+    task,
+    task?.id,
+    task?.photo_documentation_required,
+  ])
 
   // Show loading state while waiting for task data
   if (isLoading && !task) {

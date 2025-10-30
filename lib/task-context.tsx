@@ -344,7 +344,7 @@ export function TaskProvider({
     if (cachedShiftSchedules && cachedShiftSchedules.length > 0) {
       setShiftSchedules(cachedShiftSchedules)
     }
-  }, [])
+  }, [mergeTasksWithCache])
 
   useEffect(() => {
     if (initialTasks && initialTasks.length > 0) {
@@ -432,7 +432,7 @@ export function TaskProvider({
 
       return useGlobalLoader ? runWithGlobalLoading(execute) : execute()
     },
-    [runWithGlobalLoading],
+    [mergeTasksWithCache, runWithGlobalLoading],
   )
 
   const refreshUsers = useCallback(
@@ -575,7 +575,7 @@ export function TaskProvider({
 
       return useGlobalLoader ? runWithGlobalLoading(execute) : execute()
     },
-    [refreshShiftSchedules, refreshTasks, refreshUsers, runWithGlobalLoading],
+    [mergeTasksWithCache, refreshShiftSchedules, refreshTasks, refreshUsers, runWithGlobalLoading],
   )
 
   const queueForcedRefresh = useCallback(() => {
@@ -707,13 +707,12 @@ export function TaskProvider({
     }
   }, [currentUser])
 
-  const { isConnected } = useRealtimeTasks({
+  useRealtimeTasks({
     enabled: true,
     filter: realtimeFilters,
     onTaskUpdate: handleRealtimeTaskUpdate,
   })
 
-  
   useEffect(() => {
     void (async () => {
       try {
