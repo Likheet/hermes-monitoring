@@ -21,7 +21,7 @@ type NonAdminRole = Exclude<UserRole, "admin">
 const DEFAULT_ROLE_DEPARTMENT: Record<NonAdminRole, Department> = {
   worker: "housekeeping",
   supervisor: "maintenance",
-  front_office: "front_desk",
+  front_office: "front_office",
 }
 
 function AddAccountForm(): JSX.Element {

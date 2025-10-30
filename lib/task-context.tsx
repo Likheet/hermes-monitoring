@@ -109,7 +109,7 @@ interface CreateUserResult {
 const DEFAULT_DEPARTMENT_FOR_ROLE: Record<NonAdminRole, Department> = {
   worker: "housekeeping",
   supervisor: "maintenance",
-  front_office: "front_desk",
+  front_office: "front_office",
 }
 
 const DEFAULT_SHIFT_TIMING = {
@@ -713,10 +713,7 @@ export function TaskProvider({
     onTaskUpdate: handleRealtimeTaskUpdate,
   })
 
-  useEffect(() => {
-    console.log("[v0] Realtime connection status:", isConnected ? "CONNECTED" : "DISCONNECTED")
-  }, [isConnected])
-
+  
   useEffect(() => {
     void (async () => {
       try {
@@ -772,8 +769,7 @@ export function TaskProvider({
             persistToStorage(STORAGE_KEYS.tasks, limited)
             return limited
           })
-          console.log("[v0] Task updated successfully via API:", taskId)
-          return true
+                    return true
         } else {
           console.error("[v0] Failed to update task via API:", await response.text())
           return false
@@ -959,8 +955,7 @@ export function TaskProvider({
             lastTasksFetchRef.current = Date.now()
           }
           await refreshTasks({ useGlobalLoader: false, forceRefresh: true })
-          console.log("[v0] Task completed successfully via API:", taskId)
-        } else {
+                  } else {
           console.error("[v0] Failed to complete task via API:", await response.text())
         }
       } catch (error) {
@@ -995,8 +990,7 @@ export function TaskProvider({
 
         const { task } = await response.json()
         setTasks((prev) => [...prev, task])
-        console.log("[v0] Task created successfully via API:", task.id)
-
+        
         if (task.is_custom_task || task.custom_task_name) {
           const adminUsers = users.filter((u) => u.role === "admin")
           const notificationName = task.custom_task_name || task.task_type

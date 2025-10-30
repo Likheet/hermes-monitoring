@@ -80,7 +80,7 @@ const statusColors = {
   REJECTED: "bg-red-500",
 }
 
-const DEPARTMENT_SORT_ORDER = ["housekeeping", "maintenance", "front_desk"] as const
+const DEPARTMENT_SORT_ORDER = ["housekeeping", "maintenance", "front_office"] as const
 
 type ShiftSortOption = "status" | "department" | "name"
 

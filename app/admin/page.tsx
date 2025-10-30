@@ -83,7 +83,7 @@ function mapPriorityToPriorityLevel(priority: Priority, category: TaskCategory):
   return "DAILY_TASK"
 }
 
-const DEPARTMENT_SORT_ORDER = ["housekeeping", "maintenance", "front_desk"] as const
+const DEPARTMENT_SORT_ORDER = ["housekeeping", "maintenance", "front_office"] as const
 
 type ShiftSortOption = "status" | "department" | "name"
 
@@ -400,7 +400,7 @@ function AdminDashboard() {
 
   const housekeepingStats = calculateDepartmentStats("housekeeping")
   const maintenanceStats = calculateDepartmentStats("maintenance")
-  const frontDeskStats = calculateDepartmentStats("front_desk")
+  const frontDeskStats = calculateDepartmentStats("front_office")
 
   const getHourlyDistribution = () => {
     const hourCounts = Array(24).fill(0)

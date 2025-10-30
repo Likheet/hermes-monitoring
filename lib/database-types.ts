@@ -209,7 +209,7 @@ function normalizeDepartment(role: DatabaseUser["role"], department: DatabaseUse
   }
 
   if (role === "front_office" || role === "admin") {
-    return "front_desk"
+    return "front_office"
   }
 
   return "housekeeping"
@@ -733,7 +733,7 @@ export function appUserToDatabase(
     hasShift2: Boolean(user.has_shift_2),
   })
 
-  const department = user.department === "front_desk" ? null : user.department
+  const department = user.department === "front_office" ? null : user.department
 
   return {
     id: user.id,

@@ -62,7 +62,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { cn } from "@/lib/utils"
 
-const DEPARTMENT_ORDER: Department[] = ["housekeeping", "maintenance", "front_desk"]
+const DEPARTMENT_ORDER: Department[] = ["housekeeping", "maintenance", "front_office"]
 
 // Departments that should not be available for task assignment
 const EXCLUDED_TASK_ASSIGNMENT_DEPARTMENTS: Department[] = ["admin", "housekeeping-dept", "maintenance-dept"]
@@ -266,7 +266,7 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers, initialD
   const [frozenStaff, setFrozenStaff] = useState<Record<Department, WorkerWithAvailability[]>>({
     housekeeping: [],
     maintenance: [],
-    front_desk: [],
+    front_office: [],
     admin: [],
     "housekeeping-dept": [],
     "maintenance-dept": [],
@@ -293,7 +293,7 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers, initialD
   const departmentLabels: Record<Department, string> = {
     housekeeping: "Housekeeping",
     maintenance: "Maintenance",
-    front_desk: "Front Desk",
+    front_office: "Front Office",
     admin: "Admin",
     "housekeeping-dept": "Housekeeping Department",
     "maintenance-dept": "Maintenance Department",
@@ -308,59 +308,13 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers, initialD
     const currentTimeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`
     const todayStr = now.toISOString().split('T')[0]
     
-    console.log("=".repeat(80))
-    console.log("[TaskAssignment] ⏰ CURRENT TIME:", currentTimeStr, "DATE:", todayStr)
-    console.log("=".repeat(80))
-    
-    console.log("[TaskAssignment] 📋 RAW DATA:")
-    console.log("  - Workers count:", workers.length)
-    console.log("  - Has shiftSchedules?", !!shiftSchedules)
-    console.log("  - ShiftSchedules count:", shiftSchedules?.length || 0)
-    
-    if (shiftSchedules && shiftSchedules.length > 0) {
-      console.log("\n[TaskAssignment] 📅 SHIFT SCHEDULES (Today only):")
-      const todaySchedules = shiftSchedules.filter(s => s.schedule_date === todayStr)
-      console.log("  - Today's schedules:", todaySchedules.length)
-      todaySchedules.forEach(s => {
-        const worker = workers.find(w => w.id === s.worker_id)
-        console.log(`    • ${worker?.name || s.worker_id}:`, {
-          shift: `${s.shift_start} - ${s.shift_end}`,
-          is_override: s.is_override,
-          override_reason: s.override_reason || 'none',
-          schedule_date: s.schedule_date
-        })
-      })
-    }
-    
-    console.log("\n[TaskAssignment] 👷 WORKER PROFILES (Default Shifts):")
-    workers.forEach(w => {
-      console.log(`  • ${w.name}:`, {
-        department: w.department,
-        default_shift: `${w.shift_start} - ${w.shift_end}`,
-        has_break: w.has_break
-      })
-    })
+    // Filter workers and calculate availability
     
     const allWorkers = shiftSchedules
       ? getWorkersWithShiftStatusFromUsersAndSchedules(workers, shiftSchedules, shiftOptions)
       : getWorkersWithShiftStatusFromUsers(workers, shiftOptions)
     
-    console.log("\n[TaskAssignment] ✅ FINAL AVAILABILITY RESULTS:")
-    allWorkers.forEach(w => {
-      const statusIcon =
-        w.availability.status === "OFF_DUTY"
-          ? "❌"
-          : w.availability.status === "SHIFT_BREAK"
-          ? "☕"
-          : "✅"
-      console.log(`  ${statusIcon} ${w.name}:`, {
-        status: w.availability.status,
-        shift_times: `${w.shift_start} - ${w.shift_end}`,
-        ...(w.availability.shiftStart && { calculated_shift: `${w.availability.shiftStart} - ${w.availability.shiftEnd}` })
-      })
-    })
-    console.log("=".repeat(80))
-    
+      
     // Filter out workers from excluded departments
     return allWorkers.filter((worker) => !EXCLUDED_TASK_ASSIGNMENT_DEPARTMENTS.includes(worker.department as Department))
   }, [workers, shiftSchedules, shiftOptions])
@@ -409,7 +363,7 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers, initialD
         acc[dept] = sortedStaff.filter((worker) => worker.department === dept)
         return acc
       },
-      { housekeeping: [], maintenance: [], front_desk: [], admin: [], "housekeeping-dept": [], "maintenance-dept": [] } as Record<Department, WorkerWithAvailability[]>,
+      { housekeeping: [], maintenance: [], front_office: [], admin: [], "housekeeping-dept": [], "maintenance-dept": [] } as Record<Department, WorkerWithAvailability[]>,
     )
   }, [sortedStaff])
 
@@ -697,20 +651,7 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers, initialD
       metadata,
     }
 
-    console.log("[v0] Task assignment data:", {
-      taskName: data.taskName,
-      photoRequired: data.photoRequired,
-      photoCount: data.photoCount,
-      photoDocumentationRequired: data.photoDocumentationRequired,
-      photoCategoriesCount: data.photoCategories.length,
-      //
-      isCustomTask: data.isCustomTask,
-      isRecurring: data.isRecurring,
-      recurringFrequency: data.recurringFrequency,
-      requiresSpecificTime: data.requiresSpecificTime,
-      recurringTime: data.recurringTime,
-    })
-
+  
     onSubmit(data)
   }
 
@@ -816,7 +757,7 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers, initialD
             >
               <option value="housekeeping">Housekeeping</option>
               <option value="maintenance">Maintenance</option>
-              <option value="front_desk">Front Desk</option>
+              <option value="front_office">Front Office</option>
             </select>
           </div>
         )}

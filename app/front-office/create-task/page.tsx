@@ -49,7 +49,7 @@ function CreateTaskForm() {
           name: task.task_type,
           category: task.custom_task_category || "ROOM_CLEANING",
           priority: task.custom_task_priority || "medium",
-          department: task.department === "front_desk" ? "housekeeping" : task.department,
+          department: task.department === "front_office" ? "housekeeping" : task.department,
           duration: task.expected_duration_minutes,
           photoRequired: task.photo_required,
           photoCount: task.custom_task_photo_count || 1,
