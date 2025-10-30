@@ -11,7 +11,6 @@ DROP TABLE IF EXISTS public.rotation_pattern_details CASCADE;
 DROP TABLE IF EXISTS public.rotation_patterns CASCADE;
 DROP TABLE IF EXISTS public.shift_swap_requests CASCADE;
 DROP TABLE IF EXISTS public.shift_schedules CASCADE;
-DROP TABLE IF EXISTS public.shifts CASCADE;
 DROP TABLE IF EXISTS public.user_preferences CASCADE;
 DROP TABLE IF EXISTS public.task_issues CASCADE;
 DROP TABLE IF EXISTS public.handovers CASCADE;

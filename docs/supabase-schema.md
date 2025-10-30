@@ -1,6 +1,6 @@
 # Supabase Schema Deep Dive
 
-_Last updated: 2025-10-20_
+_Last updated: 2025-10-30_
 
 ## Overview
 - Runtime: Supabase Postgres (public schema) backing the Hermes Monitoring app.
@@ -42,8 +42,6 @@ Indexes: `idx_users_username`, `idx_users_role`, `idx_users_department` (see 01-
 | verified_at | timestamptz | yes | | QA verification time. |
 | verified_by_user_id | uuid | yes | | FK users(id), ON DELETE SET NULL. |
 | assigned_at | jsonb | yes | | Expected shape `{"client":..., "server":...}`. |
-| description | text | yes | | Task body text. |
-| special_instructions | text | yes | | Additional notes. |
 | estimated_duration | integer | yes | | Minutes estimate. |
 | actual_duration | integer | yes | | Minutes logged. |
 | categorized_photos | jsonb | no | '[]'::jsonb | Array of photo metadata grouped by category. |
@@ -51,7 +49,6 @@ Indexes: `idx_users_username`, `idx_users_role`, `idx_users_department` (see 01-
 | supervisor_remarks | text | yes | | |
 | quality_rating | integer | yes | | CHECK 1-5. |
 | requires_verification | boolean | no | false | Flag for QA workflow. |
-| timer_validation_flag | boolean | no | false | Raised when timer irregularities detected. |
 | audit_log | jsonb | no | '[]'::jsonb | Denormalised audit mirror. |
 | pause_history | jsonb | no | '[]'::jsonb | Denormalised pause mirror. |
 | photo_requirements | jsonb | no | '[]'::jsonb | Structured capture rules per template. |
@@ -92,21 +89,6 @@ Indexes: `idx_tasks_assigned_to`, `idx_tasks_status`, `idx_tasks_room_number`, `
 | created_at | timestamptz | no | now() | |
 
 Constraint: UNIQUE(worker_id, schedule_date). Indexes: `idx_shift_schedules_worker_date`, `idx_shift_schedules_date`.
-
-### shifts
-Legacy week-based schedule storage.
-| Column | Type | Nullable | Default | Notes |
-| --- | --- | --- | --- | --- |
-| id | uuid | no | gen_random_uuid() | |
-| worker_id | uuid | no | | FK users(id) ON DELETE CASCADE. |
-| days_of_week | text[] | no | | Stored as array of weekday tokens. |
-| shift_start | time | no | | |
-| shift_end | time | no | | |
-| break_start | time | yes | | |
-| break_end | time | yes | | |
-| created_at | timestamptz | no | now() | |
-
-Indexes: `idx_shifts_worker`, `idx_shifts_effective` (from 005_enhanced_features_schema.sql).
 
 ### rotation_patterns
 Defines named multi-day rotations.
@@ -224,9 +206,9 @@ Audit history lives in the `tasks.audit_log` JSONB column rather than a dedicate
 | from_worker_id | uuid | no | | FK users(id) ON DELETE CASCADE. |
 | to_worker_id | uuid | no | | FK users(id) ON DELETE CASCADE. |
 | reason | text | yes | | |
-| notes | text | yes | | |
+| description | text | yes | | Legacy duplicate of worker_remarks. Scheduled for removal once column is dropped. |
 | created_at | timestamptz | no | now() | |
-
+| special_instructions | text | yes | | Legacy duplicate of supervisor_remarks. Scheduled for removal once column is dropped. |
 ### task_issues
 | Column | Type | Nullable | Default | Notes |
 | --- | --- | --- | --- | --- |
@@ -287,7 +269,7 @@ Supabase internal ledger of applied migrations (managed by Supabase CLI/dashboar
 Current repo contains RLS definitions in the older `001_create_schema.sql` and `005_enhanced_features_schema.sql` scripts:
 - `users`: global SELECT, self-update policy.
 - `tasks`: worker/supervisor/front-office scoped SELECT/UPDATE policies; INSERT limited to front_office/admin roles.
-- `pause_records`, `shifts`, `handovers`: RLS enabled with permissive policies (many default to `true`).
+- `pause_records`, `handovers`: RLS enabled with permissive policies (many default to `true`).
 
 If your deployed schema came from `01-create-schema.sql`, RLS may not be enabled because that script omits `ALTER TABLE ... ENABLE ROW LEVEL SECURITY`. Verify via `SELECT relrowsecurity FROM pg_class WHERE relname = 'tasks';` and reapply policies if missing.
 

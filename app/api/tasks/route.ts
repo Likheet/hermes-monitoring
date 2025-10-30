@@ -186,7 +186,6 @@ async function createTaskDirectly({
   worker_remarks: worker_remark ?? "",
   supervisor_remarks: supervisor_remark ?? "",
       audit_log: [auditLogEntry],
-      department: null,
       is_custom_task: Boolean(is_custom_task),
       custom_task_name: custom_task_name ?? null,
       custom_task_category: custom_task_category ?? null,

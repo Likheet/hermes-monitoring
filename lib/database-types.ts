@@ -49,8 +49,6 @@ export interface DatabaseTask {
   verified_at: string | null
   verified_by_user_id: string | null
   assigned_at: Json | null
-  description: string | null
-  special_instructions: string | null
   estimated_duration: number | null
   actual_duration: number | null
   categorized_photos: Json
@@ -58,7 +56,6 @@ export interface DatabaseTask {
   supervisor_remarks: string | null
   quality_rating: number | null
   requires_verification: boolean
-  timer_validation_flag: boolean
   audit_log: Json
   pause_history: Json
   photo_requirements: Json
@@ -623,7 +620,7 @@ export function databaseTaskToApp(dbTask: DatabaseTask): Task {
     task_type: dbTask.task_type,
     priority_level: dbTask.priority_level ? PRIORITY_DB_TO_APP[dbTask.priority_level] : "DAILY_TASK",
     status: STATUS_DB_TO_APP[dbTask.status],
-    department: "housekeeping",
+    department: "housekeeping", // Hard-coded fallback - derive from worker.department if needed
     assigned_to_user_id: dbTask.assigned_to_user_id ?? "",
     assigned_by_user_id: dbTask.assigned_by_user_id ?? "",
     assigned_at: assignedAt,
@@ -787,16 +784,13 @@ export function appTaskToDatabase(task: Task): Omit<DatabaseTask, "created_at" |
     verified_at: task.status === "COMPLETED" ? task.completed_at?.server ?? null : null,
     verified_by_user_id: null,
     assigned_at: assignedAt as Json,
-    description: task.worker_remark || null,
-    special_instructions: task.supervisor_remark || null,
     estimated_duration: task.expected_duration_minutes ?? null,
     actual_duration: task.actual_duration_minutes ?? null,
   categorized_photos: (categorizedPhotos as unknown) as Json,
     worker_remarks: task.worker_remark || null,
     supervisor_remarks: task.supervisor_remark || null,
     quality_rating: task.rating ?? null,
-    requires_verification: task.photo_documentation_required ?? task.photo_required ?? false,
-    timer_validation_flag: false,
+  requires_verification: task.photo_documentation_required ?? task.photo_required ?? false,
     audit_log: (task.audit_log as unknown) as Json,
     pause_history: (task.pause_history as unknown) as Json,
     photo_requirements: photoRequirements,

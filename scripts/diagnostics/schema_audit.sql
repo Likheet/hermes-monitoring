@@ -63,7 +63,7 @@ FROM pg_class c
 JOIN pg_namespace n ON n.oid = c.relnamespace
 WHERE n.nspname = 'public'
   AND c.relkind = 'r'
-  AND c.relname IN ('users', 'tasks', 'pause_records', 'handovers', 'shifts')
+  AND c.relname IN ('users', 'tasks', 'pause_records', 'handovers')
 ORDER BY c.relname;
 
 SELECT schemaname AS schema_name,
@@ -76,7 +76,7 @@ SELECT schemaname AS schema_name,
        with_check AS check_expression
 FROM pg_policies
 WHERE schemaname = 'public'
-  AND tablename IN ('users', 'tasks', 'pause_records', 'handovers', 'shifts')
+  AND tablename IN ('users', 'tasks', 'pause_records', 'handovers')
 ORDER BY tablename, policyname;
 
 -- -----------------------------------------------------------------------------

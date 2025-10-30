@@ -110,6 +110,20 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       proof_photos: [],
     }
 
+    // Combine front-office remarks with worker's completion remarks
+    const existingRemarks = currentTask.worker_remarks?.trim() || ""
+    const newRemark = remark?.trim() || ""
+    let combinedRemarks = existingRemarks
+    
+    if (newRemark && existingRemarks) {
+      // Both exist: append worker's remark with separator
+      combinedRemarks = `${existingRemarks}\n[Worker completion note]: ${newRemark}`
+    } else if (newRemark) {
+      // Only worker's remark exists
+      combinedRemarks = newRemark
+    }
+    // else: only existing remarks, keep as is
+
     const { data: task, error } = await supabase
       .from("tasks")
       .update({
@@ -117,7 +131,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         completed_at: completionTimestamp,
         actual_duration: actualDuration,
         categorized_photos: updatedPhotos,
-        worker_remarks: remark ?? currentTask.worker_remarks ?? "",
+        worker_remarks: combinedRemarks,
         audit_log: auditLog,
         pause_history: updatedPauseHistory,
       })

@@ -6,20 +6,6 @@ ALTER TABLE tasks
 ADD COLUMN IF NOT EXISTS delay_reason TEXT,
 ADD COLUMN IF NOT EXISTS timer_validation_flags JSONB DEFAULT '[]'::jsonb;
 
--- Shifts table
-CREATE TABLE IF NOT EXISTS shifts (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  worker_id UUID NOT NULL REFERENCES users(id),
-  shift_start TIME NOT NULL,
-  shift_end TIME NOT NULL,
-  days_of_week INTEGER[] NOT NULL CHECK (array_length(days_of_week, 1) > 0),
-  effective_from DATE DEFAULT CURRENT_DATE,
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
-CREATE INDEX IF NOT EXISTS idx_shifts_worker ON shifts(worker_id);
-CREATE INDEX IF NOT EXISTS idx_shifts_effective ON shifts(effective_from);
-
 -- Handovers table
 CREATE TABLE IF NOT EXISTS handovers (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -38,15 +24,6 @@ CREATE INDEX IF NOT EXISTS idx_handovers_task ON handovers(task_id);
 CREATE INDEX IF NOT EXISTS idx_handovers_from_worker ON handovers(from_worker_id);
 CREATE INDEX IF NOT EXISTS idx_handovers_to_worker ON handovers(to_worker_id);
 CREATE INDEX IF NOT EXISTS idx_handovers_date ON handovers(shift_date);
-
--- RLS Policies for shifts
-ALTER TABLE shifts ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "Anyone can view shifts" ON shifts
-  FOR SELECT USING (true);
-
-CREATE POLICY "Admins can manage shifts" ON shifts
-  FOR ALL USING (true);
 
 -- RLS Policies for handovers
 ALTER TABLE handovers ENABLE ROW LEVEL SECURITY;

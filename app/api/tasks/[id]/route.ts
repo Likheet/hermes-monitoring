@@ -89,9 +89,6 @@ interface TaskUpdatePayload {
   supervisor_remark?: string | null
   rating?: number | null
   requires_verification?: boolean
-  timer_validation_flag?: boolean
-  description?: string | null
-  special_instructions?: string | null
   photo_documentation_required?: boolean
   photo_required?: boolean
   photo_categories?: unknown
@@ -132,9 +129,6 @@ interface TaskUpdatePatch {
   supervisor_remarks?: string | null
   quality_rating?: number | null
   requires_verification?: boolean
-  timer_validation_flag?: boolean
-  description?: string | null
-  special_instructions?: string | null
   categorized_photos?: unknown
   pause_history?: PauseRecord[] | []
   audit_log?: unknown
@@ -288,18 +282,6 @@ function mapTaskUpdates(body: TaskUpdatePayload): TaskUpdatePatch {
 
   if (Object.prototype.hasOwnProperty.call(body, "requires_verification")) {
     updates.requires_verification = Boolean(body.requires_verification)
-  }
-
-  if (Object.prototype.hasOwnProperty.call(body, "timer_validation_flag")) {
-    updates.timer_validation_flag = Boolean(body.timer_validation_flag)
-  }
-
-  if (Object.prototype.hasOwnProperty.call(body, "description")) {
-    updates.description = body.description ?? null
-  }
-
-  if (Object.prototype.hasOwnProperty.call(body, "special_instructions")) {
-    updates.special_instructions = body.special_instructions ?? null
   }
 
   if (Object.prototype.hasOwnProperty.call(body, "categorized_photos")) {

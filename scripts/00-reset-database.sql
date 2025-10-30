@@ -14,7 +14,6 @@ TRUNCATE TABLE public.maintenance_schedules CASCADE;
 TRUNCATE TABLE public.notifications CASCADE;
 TRUNCATE TABLE public.handovers CASCADE;
 TRUNCATE TABLE public.shift_swap_requests CASCADE;
-TRUNCATE TABLE public.shifts CASCADE;
 TRUNCATE TABLE public.worker_rotation_assignments CASCADE;
 TRUNCATE TABLE public.rotation_pattern_details CASCADE;
 TRUNCATE TABLE public.rotation_patterns CASCADE;

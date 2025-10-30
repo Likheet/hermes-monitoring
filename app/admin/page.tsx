@@ -2162,7 +2162,6 @@ function AdminDashboard() {
                               </Badge>
                             </div>
                             <h4 className="font-semibold mb-1">{task.task_type || task.title}</h4>
-                            <p className="text-sm text-muted-foreground mb-2">{task.description}</p>
                             <div className="flex items-center gap-4 text-xs text-muted-foreground">
                               <span className="flex items-center gap-1">
                                 <UserIcon className="h-3 w-3" />
@@ -2204,7 +2203,6 @@ function AdminDashboard() {
                               </Badge>
                             </div>
                             <h4 className="font-semibold mb-1">{task.task_type || task.title}</h4>
-                            <p className="text-sm text-muted-foreground mb-2">{task.description}</p>
                             <div className="flex items-center gap-4 text-xs text-muted-foreground">
                               <span className="flex items-center gap-1">
                                 <UserIcon className="h-3 w-3" />

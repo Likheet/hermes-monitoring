@@ -41,8 +41,6 @@ CREATE TABLE IF NOT EXISTS tasks (
   assigned_at JSONB,
   
   -- Task details
-  description TEXT,
-  special_instructions TEXT,
   estimated_duration INTEGER,
   actual_duration INTEGER,
   
@@ -56,9 +54,6 @@ CREATE TABLE IF NOT EXISTS tasks (
   -- Quality and verification
   quality_rating INTEGER CHECK (quality_rating >= 1 AND quality_rating <= 5),
   requires_verification BOOLEAN DEFAULT false,
-  
-  -- Timer validation
-  timer_validation_flag BOOLEAN DEFAULT false,
   
   -- Audit trail (JSONB array)
   audit_log JSONB DEFAULT '[]'::jsonb,
@@ -105,18 +100,6 @@ CREATE TABLE IF NOT EXISTS shift_schedules (
   override_reason TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   UNIQUE(worker_id, schedule_date)
-);
-
--- Legacy shifts table (for backward compatibility)
-CREATE TABLE IF NOT EXISTS shifts (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  worker_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  days_of_week TEXT[] NOT NULL,
-  shift_start TIME NOT NULL,
-  shift_end TIME NOT NULL,
-  break_start TIME,
-  break_end TIME,
-  created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- Rotation patterns
@@ -208,12 +191,10 @@ CREATE TABLE IF NOT EXISTS task_templates (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name TEXT NOT NULL,
   department TEXT NOT NULL CHECK (department IN ('housekeeping', 'maintenance')),
-  description TEXT,
   estimated_duration INTEGER,
   priority_level TEXT CHECK (priority_level IN ('low', 'medium', 'high', 'urgent')),
   requires_verification BOOLEAN DEFAULT false,
   photo_requirements JSONB DEFAULT '[]'::jsonb,
-  special_instructions TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 

@@ -377,7 +377,6 @@ function WorkerDashboard() {
                       </div>
 
                       <h3 className="font-semibold text-lg mb-1">{task.task_type}</h3>
-                      <p className="text-sm text-muted-foreground mb-2 line-clamp-2">{task.description}</p>
 
                       <div className="flex items-center gap-4 text-xs text-muted-foreground">
                         <span>Room {task.room_number}</span>
