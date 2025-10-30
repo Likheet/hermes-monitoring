@@ -204,6 +204,8 @@ Indexes: `idx_maintenance_tasks_schedule`, `idx_maintenance_tasks_status`, `idx_
 | special_instructions | text | yes | | |
 | created_at | timestamptz | no | now() | |
 
+Audit history lives in the `tasks.audit_log` JSONB column rather than a dedicated table.
+
 ### pause_records
 | Column | Type | Nullable | Default | Notes |
 | --- | --- | --- | --- | --- |
@@ -213,20 +215,6 @@ Indexes: `idx_maintenance_tasks_schedule`, `idx_maintenance_tasks_status`, `idx_
 | resumed_at | jsonb | yes | | |
 | reason | text | yes | | |
 | created_at | timestamptz | no | now() | |
-
-### audit_logs
-| Column | Type | Nullable | Default | Notes |
-| --- | --- | --- | --- | --- |
-| id | uuid | no | gen_random_uuid() | |
-| task_id | uuid | yes | | FK tasks(id) ON DELETE CASCADE. |
-| user_id | uuid | yes | | FK users(id) ON DELETE SET NULL. |
-| action | text | no | | Domain action string. |
-| old_status | text | yes | | |
-| new_status | text | yes | | |
-| metadata | jsonb | yes | | Arbitrary structured info. |
-| created_at | timestamptz | no | now() | |
-
-Indexes: `idx_audit_logs_task_id`, `idx_audit_logs_created_at`.
 
 ### handovers
 | Column | Type | Nullable | Default | Notes |
@@ -253,19 +241,6 @@ Indexes: `idx_audit_logs_task_id`, `idx_audit_logs_created_at`.
 | resolved_at | timestamptz | yes | | |
 | created_at | timestamptz | no | now() | |
 
-### escalations
-| Column | Type | Nullable | Default | Notes |
-| --- | --- | --- | --- | --- |
-| id | uuid | no | gen_random_uuid() | |
-| task_id | uuid | no | | FK tasks(id) ON DELETE CASCADE. |
-| worker_id | uuid | no | | FK users(id) ON DELETE CASCADE. |
-| escalation_type | text | no | | CHECK: 15min_overtime, 20min_overtime, 50percent_overtime. |
-| acknowledged | boolean | no | false | |
-| acknowledged_at | timestamptz | yes | | |
-| created_at | timestamptz | no | now() | |
-
-Additional legacy columns `level`, `timestamp_server`, etc. appear in earlier migration 005; see drift section.
-
 ### notifications
 | Column | Type | Nullable | Default | Notes |
 | --- | --- | --- | --- | --- |
@@ -280,18 +255,6 @@ Additional legacy columns `level`, `timestamp_server`, etc. appear in earlier mi
 | created_at | timestamptz | no | now() | |
 
 Indexes: `idx_notifications_user_read`, `idx_notifications_created_at`.
-
-### worker_notes
-| Column | Type | Nullable | Default | Notes |
-| --- | --- | --- | --- | --- |
-| id | uuid | no | gen_random_uuid() | |
-| user_id | uuid | no | | FK users(id) ON DELETE CASCADE. |
-| title | text | no | | Short label shown in worker UI. |
-| content | text | no | | Main note body. |
-| created_at | timestamptz | no | now() | |
-| updated_at | timestamptz | no | now() | Tracks latest modification. |
-
-Index: `idx_worker_notes_user_updated_at` to serve per-worker fetches ordered by `updated_at`.
 
 ### user_preferences
 | Column | Type | Nullable | Default | Notes |
@@ -324,12 +287,12 @@ Supabase internal ledger of applied migrations (managed by Supabase CLI/dashboar
 Current repo contains RLS definitions in the older `001_create_schema.sql` and `005_enhanced_features_schema.sql` scripts:
 - `users`: global SELECT, self-update policy.
 - `tasks`: worker/supervisor/front-office scoped SELECT/UPDATE policies; INSERT limited to front_office/admin roles.
-- `pause_records`, `audit_logs`, `escalations`, `shifts`, `handovers`: RLS enabled with permissive policies (many default to `true`).
+- `pause_records`, `shifts`, `handovers`: RLS enabled with permissive policies (many default to `true`).
 
 If your deployed schema came from `01-create-schema.sql`, RLS may not be enabled because that script omits `ALTER TABLE ... ENABLE ROW LEVEL SECURITY`. Verify via `SELECT relrowsecurity FROM pg_class WHERE relname = 'tasks';` and reapply policies if missing.
 
 ## Functions, Triggers, and Jobs
-- `check_task_escalations()` (scripts/006_escalation_detection_function.sql): Iterates `tasks` for overtime conditions and writes to `escalations` plus `audit_logs`. **Depends on columns** `started_at_server`, `expected_duration_minutes`, `timestamp_server`, and `level` that only exist in the older schema. Running this against the newer table definition triggers errors.
+- `check_task_escalations()` (scripts/006_escalation_detection_function.sql): **Deprecated.** File now documents its removal after the `escalations` table was retired in October 2025.
 - `record_system_metrics()` / `cleanup_old_metrics()` (scripts/010_system_health_schema.sql): Populate and prune `system_metrics`. Also defines helper `get_database_size()` and suggests pg_cron scheduling.
 - `archive_old_tasks()` (scripts/010_system_health_schema.sql): Moves completed tasks older than six months into `archived_tasks`. Assumes columns `completed_at_server` and uppercase status values (legacy schema).
 
@@ -337,12 +300,11 @@ If your deployed schema came from `01-create-schema.sql`, RLS may not be enabled
 - `task-photos` (scripts/003_storage_setup.sql): Public bucket with policies permitting authenticated uploads, public reads, and owner-only updates/deletes based on folder prefix equals auth UID.
 
 ## Schema Drift & Action Items
-1. **Tasks table mismatch**: TypeScript models (`lib/database-types.ts`) expect lowercase status strings and JSONB fields (`assigned_at`, `pause_history`). Older migrations (`001_create_schema.sql`, `006_escalation_detection_function.sql`) reference uppercase status enums (`'IN_PROGRESS'`) and separate `_server` timestamp columns. Confirm which version is live. Mixing scripts leads to columns missing or invalid enum values.
-2. **Escalations shape divergence**: `01-create-schema.sql` uses `escalation_type` text, while `005_enhanced_features_schema.sql` creates `level`, `timestamp_client/server`, `resolved` fields. Ensure downstream queries (e.g., analytics) align with live schema before applying functions relying on absent columns.
-3. **Maintenance tables**: There are two definitions for `maintenance_schedules`/`maintenance_tasks`. The V1 script (010_maintenance_schedules_schema.sql) expects `task_type`, `area`, `frequency_weeks`, etc., whereas V2 (01-create-schema.sql) stores `schedule_name`, `frequency` across seven options. Reconcile before running seed scripts to avoid constraint errors.
-4. **System metrics duplication**: Both `01-create-schema.sql` and `010_system_health_schema.sql` define `system_metrics` with different column names (`metric_name` vs `metric_type`+`value`). Check which version exists; drop/recreate to match the intended analytics pipeline.
-5. **RLS enablement gaps**: The consolidated schema lacks explicit RLS activation, weakening security. Re-run the `ALTER TABLE ... ENABLE ROW LEVEL SECURITY` and policy statements after aligning schema.
-6. **Function dependencies**: PostgreSQL functions must be updated to use the current column names (e.g., `tasks.started_at` instead of `started_at_server`). Otherwise, scheduled jobs will fail silently and block escalation logic.
+1. **Tasks table mismatch**: TypeScript models (`lib/database-types.ts`) expect lowercase status strings and JSONB fields (`assigned_at`, `pause_history`). Older migrations (`001_create_schema.sql`, legacy function scripts) reference uppercase status enums (`'IN_PROGRESS'`) and separate `_server` timestamp columns. Confirm which version is live. Mixing scripts leads to columns missing or invalid enum values.
+2. **Maintenance tables**: There are two definitions for `maintenance_schedules`/`maintenance_tasks`. The V1 script (010_maintenance_schedules_schema.sql) expects `task_type`, `area`, `frequency_weeks`, etc., whereas V2 (01-create-schema.sql) stores `schedule_name`, `frequency` across seven options. Reconcile before running seed scripts to avoid constraint errors.
+3. **System metrics duplication**: Both `01-create-schema.sql` and `010_system_health_schema.sql` define `system_metrics` with different column names (`metric_name` vs `metric_type`+`value`). Check which version exists; drop/recreate to match the intended analytics pipeline.
+4. **RLS enablement gaps**: The consolidated schema lacks explicit RLS activation, weakening security. Re-run the `ALTER TABLE ... ENABLE ROW LEVEL SECURITY` and policy statements after aligning schema.
+5. **Function dependencies**: PostgreSQL functions must be updated to use the current column names (e.g., `tasks.started_at` instead of `started_at_server`). Otherwise, scheduled jobs will fail silently.
 
 ## Recommended Next Steps
 1. Inspect the live Supabase instance (`select column_name from information_schema.columns where table_name='tasks';`) to verify which migration set actually applied.

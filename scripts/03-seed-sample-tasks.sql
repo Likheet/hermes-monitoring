@@ -47,30 +47,6 @@ BEGIN
     NOW()
   );
   
-  -- Create audit log for the task
-  INSERT INTO audit_logs (
-    id,
-    task_id,
-    user_id,
-    action,
-    old_status,
-    new_status,
-    timestamp_client,
-    timestamp_server,
-    created_at
-  )
-  VALUES (
-    gen_random_uuid(),
-    task_id,
-    front_office_id,
-    'TASK_ASSIGNED',
-    NULL,
-    'PENDING',
-    NOW(),
-    NOW(),
-    NOW()
-  );
-  
   -- Create in-progress maintenance task
   task_id := gen_random_uuid();
   INSERT INTO tasks (

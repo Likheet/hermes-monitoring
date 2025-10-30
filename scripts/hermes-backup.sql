@@ -31,14 +31,6 @@ BEGIN
     EXECUTE format('CREATE TABLE IF NOT EXISTS hermes_backup_maintenance_schedules_%s AS TABLE maintenance_schedules;', backup_timestamp);
     RAISE NOTICE '✓ Backed up maintenance_schedules table';
 
-    -- Backup audit_logs table (change history)
-    EXECUTE format('CREATE TABLE IF NOT EXISTS hermes_backup_audit_logs_%s AS TABLE audit_logs;', backup_timestamp);
-    RAISE NOTICE '✓ Backed up audit_logs table';
-
-    -- Backup escalations table (escalation tracking)
-    EXECUTE format('CREATE TABLE IF NOT EXISTS hermes_backup_escalations_%s AS TABLE escalations;', backup_timestamp);
-    RAISE NOTICE '✓ Backed up escalations table';
-
     -- Backup notifications table (user notifications)
     EXECUTE format('CREATE TABLE IF NOT EXISTS hermes_backup_notifications_%s AS TABLE notifications;', backup_timestamp);
     RAISE NOTICE '✓ Backed up notifications table';

@@ -8,10 +8,8 @@ import { TaskImage } from "@/components/task-image"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Input } from "@/components/ui/input"
-import { Textarea } from "@/components/ui/textarea"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { LogOut, Bell, AlertCircle, X, Clock, CheckCircle2, XCircle, Trash2, Save, TrendingUp } from "lucide-react"
+import { LogOut, Bell, AlertCircle, X, Clock, CheckCircle2, XCircle, TrendingUp } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { useRealtimeTasks } from "@/lib/use-realtime-tasks"
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -25,7 +23,6 @@ import { cn } from "@/lib/utils"
 import { useToast } from "@/hooks/use-toast"
 import { formatShiftRange } from "@/lib/date-utils"
 import { initializePauseMonitoring } from "@/lib/pause-monitoring"
-import { useWorkerNotes, type WorkerNote } from "@/hooks/use-worker-notes"
 
 // Define REJECTION_QUOTA and related constants
 const REJECTION_QUOTA = 5 // Updated quota from 3 to 5 per month
@@ -44,35 +41,11 @@ function WorkerDashboard() {
 
   const [tasksFilter, setTasksFilter] = useState<"all" | "active" | "completed" | "rejected">("all")
 
-  const {
-    notes,
-    loading: notesLoading,
-    error: notesError,
-    createNote,
-    updateNote,
-    deleteNote,
-  } = useWorkerNotes(user?.id)
-  const [editingNote, setEditingNote] = useState<WorkerNote | null>(null)
-  const [noteTitle, setNoteTitle] = useState("")
-  const [noteContent, setNoteContent] = useState("")
-  const [noteSubmitting, setNoteSubmitting] = useState(false)
-
   const [searchQuery, setSearchQuery] = useState("")
 
   useEffect(() => {
     console.log("[v0] Worker dashboard loaded for user:", user?.id, user?.name)
   }, [user])
-
-  useEffect(() => {
-    if (notesError) {
-      console.error("[notes] Failed to load worker notes:", notesError)
-      toast({
-        title: "Notes unavailable",
-        description: "We could not load your notes from the server. Please try again.",
-        variant: "destructive",
-      })
-    }
-  }, [notesError, toast])
 
   useEffect(() => {
     if (!user?.id) return
@@ -265,73 +238,6 @@ function WorkerDashboard() {
     }
   }
 
-  const handleSaveNote = async () => {
-    if (!noteTitle.trim() || !noteContent.trim()) {
-      toast({
-        title: "Error",
-        description: "Please enter both title and content",
-        variant: "destructive",
-      })
-      return
-    }
-
-    try {
-      setNoteSubmitting(true)
-      if (editingNote) {
-        await updateNote(editingNote.id, { title: noteTitle, content: noteContent })
-        toast({ title: "Note updated successfully" })
-      } else {
-        await createNote({ title: noteTitle, content: noteContent })
-        toast({ title: "Note created successfully" })
-      }
-
-      setNoteTitle("")
-      setNoteContent("")
-      setEditingNote(null)
-    } catch (error) {
-      console.error("[notes] Failed to save note:", error)
-      toast({
-        title: "Unable to save note",
-        description: error instanceof Error ? error.message : "Please try again.",
-        variant: "destructive",
-      })
-    } finally {
-      setNoteSubmitting(false)
-    }
-  }
-
-  const handleEditNote = (note: WorkerNote) => {
-    setEditingNote(note)
-    setNoteTitle(note.title)
-    setNoteContent(note.content)
-  }
-
-  const handleDeleteNote = async (noteId: string) => {
-    try {
-      setNoteSubmitting(true)
-      await deleteNote(noteId)
-      if (editingNote?.id === noteId) {
-        handleCancelNote()
-      }
-      toast({ title: "Note deleted" })
-    } catch (error) {
-      console.error("[notes] Failed to delete note:", error)
-      toast({
-        title: "Unable to delete note",
-        description: error instanceof Error ? error.message : "Please try again.",
-        variant: "destructive",
-      })
-    } finally {
-      setNoteSubmitting(false)
-    }
-  }
-
-  const handleCancelNote = () => {
-    setNoteTitle("")
-    setNoteContent("")
-    setEditingNote(null)
-  }
-
   const handleRoomClick = (roomNumber: string, tasks: MaintenanceTask[]) => {
     void tasks
     console.log("[v0] Navigating to room:", roomNumber)
@@ -494,84 +400,6 @@ function WorkerDashboard() {
                 </Card>
               ))
             )}
-          </main>
-        )
-
-      case "notes":
-        return (
-          <main className="container mx-auto px-4 py-6 space-y-6 max-w-4xl">
-            <Card>
-              <CardHeader>
-                <CardTitle>{editingNote ? "Edit Note" : "New Note"}</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <Input
-                  placeholder="Note title..."
-                  value={noteTitle}
-                  onChange={(e) => setNoteTitle(e.target.value)}
-                  className="text-lg font-medium"
-                />
-                <Textarea
-                  placeholder="Write your note here..."
-                  value={noteContent}
-                  onChange={(e) => setNoteContent(e.target.value)}
-                  rows={6}
-                  className="resize-none"
-                />
-                <div className="flex gap-2">
-                  <Button onClick={handleSaveNote} className="flex-1" disabled={noteSubmitting}>
-                    <Save className="h-4 w-4 mr-2" />
-                    {noteSubmitting ? "Saving..." : editingNote ? "Update Note" : "Save Note"}
-                  </Button>
-                  {editingNote && (
-                    <Button variant="outline" size="sm" onClick={handleCancelNote} disabled={noteSubmitting}>
-                      Cancel
-                    </Button>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-
-            <div className="space-y-4">
-              {notesLoading ? (
-                <div className="text-center py-12">
-                  <p className="text-muted-foreground">Loading notes...</p>
-                </div>
-              ) : notes.length === 0 ? (
-                <div className="text-center py-12">
-                  <p className="text-muted-foreground">No notes yet. Create your first note above!</p>
-                </div>
-              ) : (
-                notes.map((note) => (
-                  <Card key={note.id} className="hover:shadow-md transition-shadow">
-                    <CardHeader>
-                      <div className="flex items-start justify-between gap-4">
-                        <div className="flex items-start gap-2 flex-1">
-                          <AlertCircle className="h-5 w-5 text-destructive shrink-0 mt-0.5" />
-                          <CardTitle className="text-lg">{note.title}</CardTitle>
-                        </div>
-                        <div className="flex gap-2">
-                          <Button variant="outline" size="sm" onClick={() => handleEditNote(note)}>
-                            Edit
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleDeleteNote(note.id)}
-                            className="text-destructive hover:text-destructive"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </div>
-                    </CardHeader>
-                    <CardContent>
-                      <p className="text-sm whitespace-pre-wrap">{note.content}</p>
-                    </CardContent>
-                  </Card>
-                ))
-              )}
-            </div>
           </main>
         )
 
@@ -1125,11 +953,9 @@ function WorkerDashboard() {
                 ? "My Tasks"
                 : activeTab === "tasks"
                   ? "All Tasks"
-                  : activeTab === "notes"
-                    ? "My Notes"
-                    : activeTab === "profile"
-                      ? "Profile"
-                      : "Schedule"}
+                  : activeTab === "profile"
+                    ? "Profile"
+                    : "Schedule"}
             </h1>
             {activeTab !== "scheduled" && (
               <p className="text-xs sm:text-sm text-muted-foreground truncate">

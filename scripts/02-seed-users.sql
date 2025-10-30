@@ -64,12 +64,6 @@ VALUES
    NOW())
 ON CONFLICT (id) DO NOTHING;
 
--- Log the seed operation
-INSERT INTO audit_logs (task_id, user_id, action, metadata, created_at)
-VALUES 
-  (NULL, '00000000-0000-0000-0000-000000000001', 'seed_users', 
-   '{"count": 5, "script": "02-seed-users.sql"}'::jsonb, NOW());
-
 -- Return summary
 SELECT 
   'Users seeded successfully' as message,

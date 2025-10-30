@@ -44,9 +44,7 @@ SET session_replication_role = replica;
 
 -- Clear current tables
 RAISE NOTICE '📋 Clearing current tables...';
-TRUNCATE TABLE audit_logs CASCADE;
 TRUNCATE TABLE notifications CASCADE;
-TRUNCATE TABLE escalations CASCADE;
 TRUNCATE TABLE maintenance_tasks CASCADE;
 TRUNCATE TABLE maintenance_schedules CASCADE;
 TRUNCATE TABLE shift_schedules CASCADE;
@@ -71,12 +69,6 @@ RAISE NOTICE '✓ Restored maintenance_tasks';
 
 INSERT INTO maintenance_schedules SELECT * FROM hermes_backup_maintenance_schedules_{{TIMESTAMP}};
 RAISE NOTICE '✓ Restored maintenance_schedules';
-
-INSERT INTO audit_logs SELECT * FROM hermes_backup_audit_logs_{{TIMESTAMP}};
-RAISE NOTICE '✓ Restored audit_logs';
-
-INSERT INTO escalations SELECT * FROM hermes_backup_escalations_{{TIMESTAMP}};
-RAISE NOTICE '✓ Restored escalations';
 
 INSERT INTO notifications SELECT * FROM hermes_backup_notifications_{{TIMESTAMP}};
 RAISE NOTICE '✓ Restored notifications';

@@ -1,29 +1,10 @@
--- Enhanced Timer, Escalation, and Shift Management Schema
+-- Enhanced Timer and Shift Management Schema
 -- Run this after the base schema (001_create_schema.sql)
 
 -- Add new columns to tasks table
 ALTER TABLE tasks 
 ADD COLUMN IF NOT EXISTS delay_reason TEXT,
 ADD COLUMN IF NOT EXISTS timer_validation_flags JSONB DEFAULT '[]'::jsonb;
-
--- Escalations table
-CREATE TABLE IF NOT EXISTS escalations (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  task_id UUID NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
-  worker_id UUID NOT NULL REFERENCES users(id),
-  level INTEGER NOT NULL CHECK (level IN (1, 2, 3)),
-  timestamp_client TIMESTAMPTZ,
-  timestamp_server TIMESTAMPTZ DEFAULT NOW(),
-  acknowledged_by UUID REFERENCES users(id),
-  acknowledged_at TIMESTAMPTZ,
-  resolved BOOLEAN DEFAULT false,
-  resolution_notes TEXT,
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
-CREATE INDEX IF NOT EXISTS idx_escalations_task ON escalations(task_id);
-CREATE INDEX IF NOT EXISTS idx_escalations_worker ON escalations(worker_id);
-CREATE INDEX IF NOT EXISTS idx_escalations_resolved ON escalations(resolved);
 
 -- Shifts table
 CREATE TABLE IF NOT EXISTS shifts (
@@ -57,18 +38,6 @@ CREATE INDEX IF NOT EXISTS idx_handovers_task ON handovers(task_id);
 CREATE INDEX IF NOT EXISTS idx_handovers_from_worker ON handovers(from_worker_id);
 CREATE INDEX IF NOT EXISTS idx_handovers_to_worker ON handovers(to_worker_id);
 CREATE INDEX IF NOT EXISTS idx_handovers_date ON handovers(shift_date);
-
--- RLS Policies for escalations
-ALTER TABLE escalations ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "Anyone can view escalations" ON escalations
-  FOR SELECT USING (true);
-
-CREATE POLICY "System can insert escalations" ON escalations
-  FOR INSERT WITH CHECK (true);
-
-CREATE POLICY "Supervisors and admins can update escalations" ON escalations
-  FOR UPDATE USING (true);
 
 -- RLS Policies for shifts
 ALTER TABLE shifts ENABLE ROW LEVEL SECURITY;

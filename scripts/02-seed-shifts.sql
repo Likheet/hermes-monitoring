@@ -30,12 +30,6 @@ CROSS JOIN generate_series(0, 6) as d
 WHERE u.role = 'worker'
 ON CONFLICT DO NOTHING;
 
--- Log the seed operation
-INSERT INTO public.audit_logs (user_id, action, metadata, created_at)
-VALUES ('00000000-0000-0000-0000-000000000001', 'SEED_SHIFTS', 
-  json_build_object('days', 7, 'workers', (SELECT COUNT(*) FROM public.users WHERE role = 'worker'))::jsonb, 
-  NOW());
-
 SELECT 
   'Shift schedules seeded successfully' as status,
   COUNT(*) as schedule_count,

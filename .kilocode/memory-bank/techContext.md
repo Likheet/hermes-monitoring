@@ -111,8 +111,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
 - **tasks**: Core task tracking with dual timestamps
 - **shift_schedules**: Worker scheduling with dual-shift support
 - **maintenance_tasks**: Preventive maintenance tracking
-- **audit_logs**: Comprehensive audit trail
-- **escalations**: Overtime detection and alerts
+- **tasks.audit_log JSON**: Embedded audit history per task
 - **notifications**: User notification system
 
 ### Critical Indexes

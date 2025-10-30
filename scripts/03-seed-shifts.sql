@@ -36,12 +36,6 @@ FROM
   ) AS workers(worker_id),
   generate_series(0, 6) AS day_offset;
 
--- Log the seed operation
-INSERT INTO audit_logs (task_id, user_id, action, metadata, created_at)
-VALUES 
-  (NULL, '00000000-0000-0000-0000-000000000001'::uuid, 'seed_shifts', 
-   '{"days": 7, "workers": 2, "script": "03-seed-shifts.sql"}'::jsonb, NOW());
-
 -- Return summary
 SELECT 
   'Shift schedules seeded successfully' as message,

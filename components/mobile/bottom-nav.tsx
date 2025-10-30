@@ -1,6 +1,6 @@
 "use client"
 
-import { Home, ListTodo, FileText, User, Calendar } from "lucide-react"
+import { Home, ListTodo, User, Calendar } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { triggerHaptic } from "@/lib/haptics"
 import { useAuth } from "@/lib/auth-context"
@@ -22,14 +22,13 @@ export function BottomNav({ activeTab, onTabChange }: BottomNavProps) {
   const navItems = canAccessScheduled
     ? [
         { id: "home", icon: Home, label: "Home" },
+        { id: "tasks", icon: ListTodo, label: "Tasks" },
         { id: "scheduled", icon: Calendar, label: "Scheduled" },
-        { id: "notes", icon: FileText, label: "Notes" },
         { id: "profile", icon: User, label: "Profile" },
       ]
     : [
         { id: "home", icon: Home, label: "Home" },
         { id: "tasks", icon: ListTodo, label: "Tasks" },
-        { id: "notes", icon: FileText, label: "Notes" },
         { id: "profile", icon: User, label: "Profile" },
       ]
 

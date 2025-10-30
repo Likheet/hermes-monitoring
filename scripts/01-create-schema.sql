@@ -231,18 +231,6 @@ CREATE TABLE IF NOT EXISTS pause_records (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Audit logs
-CREATE TABLE IF NOT EXISTS audit_logs (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  task_id UUID REFERENCES tasks(id) ON DELETE CASCADE,
-  user_id UUID REFERENCES users(id) ON DELETE SET NULL,
-  action TEXT NOT NULL,
-  old_status TEXT,
-  new_status TEXT,
-  metadata JSONB,
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
 -- Task handovers
 CREATE TABLE IF NOT EXISTS handovers (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -265,17 +253,6 @@ CREATE TABLE IF NOT EXISTS task_issues (
   status TEXT NOT NULL CHECK (status IN ('open', 'in_progress', 'resolved', 'closed')),
   resolved_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
   resolved_at TIMESTAMPTZ,
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
--- Escalations
-CREATE TABLE IF NOT EXISTS escalations (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  task_id UUID NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
-  worker_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  escalation_type TEXT NOT NULL CHECK (escalation_type IN ('15min_overtime', '20min_overtime', '50percent_overtime')),
-  acknowledged BOOLEAN DEFAULT false,
-  acknowledged_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -344,10 +321,6 @@ CREATE INDEX IF NOT EXISTS idx_shift_schedules_date ON shift_schedules(schedule_
 -- Notifications indexes
 CREATE INDEX IF NOT EXISTS idx_notifications_user_read ON notifications(user_id, read);
 CREATE INDEX IF NOT EXISTS idx_notifications_created_at ON notifications(created_at);
-
--- Audit logs indexes
-CREATE INDEX IF NOT EXISTS idx_audit_logs_task_id ON audit_logs(task_id);
-CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at);
 
 -- ============================================================================
 -- SUMMARY

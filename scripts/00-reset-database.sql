@@ -5,7 +5,6 @@
 SET session_replication_role = replica;
 
 -- Truncate all tables in correct order (respecting foreign keys)
-TRUNCATE TABLE public.audit_logs CASCADE;
 TRUNCATE TABLE public.pause_records CASCADE;
 TRUNCATE TABLE public.archived_tasks CASCADE;
 TRUNCATE TABLE public.tasks CASCADE;
@@ -14,7 +13,6 @@ TRUNCATE TABLE public.maintenance_tasks CASCADE;
 TRUNCATE TABLE public.maintenance_schedules CASCADE;
 TRUNCATE TABLE public.notifications CASCADE;
 TRUNCATE TABLE public.handovers CASCADE;
-TRUNCATE TABLE public.escalations CASCADE;
 TRUNCATE TABLE public.shift_swap_requests CASCADE;
 TRUNCATE TABLE public.shifts CASCADE;
 TRUNCATE TABLE public.worker_rotation_assignments CASCADE;

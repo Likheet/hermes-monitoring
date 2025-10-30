@@ -101,27 +101,6 @@ BEGIN
 
     RAISE NOTICE '';
 
-    -- AUDIT_LOGS TABLE INDEXES
-    -- Task audit trail queries
-    IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_audit_logs_task_timestamp') THEN
-        EXECUTE 'CREATE INDEX CONCURRENTLY idx_audit_logs_task_timestamp ON audit_logs (task_id, timestamp DESC)';
-        index_count := index_count + 1;
-        RAISE NOTICE '✓ Created idx_audit_logs_task_timestamp';
-    ELSE
-        RAISE NOTICE '⏭️  idx_audit_logs_task_timestamp already exists';
-    END IF;
-
-    -- User-based audit queries
-    IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_audit_logs_user_timestamp') THEN
-        EXECUTE 'CREATE INDEX CONCURRENTLY idx_audit_logs_user_timestamp ON audit_logs (user_id, timestamp DESC)';
-        index_count := index_count + 1;
-        RAISE NOTICE '✓ Created idx_audit_logs_user_timestamp';
-    ELSE
-        RAISE NOTICE '⏭️  idx_audit_logs_user_timestamp already exists';
-    END IF;
-
-    RAISE NOTICE '';
-
     -- NOTIFICATIONS TABLE INDEXES
     -- User notification queries
     IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_notifications_user_read') THEN
@@ -149,7 +128,6 @@ BEGIN
     RAISE NOTICE '   • Task list queries: 5-10x faster';
     RAISE NOTICE '   • User schedule lookups: 8-15x faster';
     RAISE NOTICE '   • Maintenance task queries: 3-6x faster';
-    RAISE NOTICE '   • Audit log lookups: 10-20x faster';
     RAISE NOTICE '   • Notification queries: 5-12x faster';
     RAISE NOTICE '';
     RAISE NOTICE '⚠️  Note: CONCURRENTLY option allows safe creation without locking tables';
@@ -164,6 +142,6 @@ SELECT
     indexname,
     indexdef
 FROM pg_indexes
-WHERE tablename IN ('tasks', 'users', 'shift_schedules', 'maintenance_tasks', 'audit_logs', 'notifications')
+WHERE tablename IN ('tasks', 'users', 'shift_schedules', 'maintenance_tasks', 'notifications')
     AND indexname LIKE 'idx_%'
 ORDER BY tablename, indexname;

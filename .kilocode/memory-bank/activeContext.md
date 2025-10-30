@@ -87,7 +87,7 @@
 
 ### Database Patterns
 - **Soft Deletes**: Using archived_tasks table for historical data
-- **Audit Trail**: Comprehensive logging in audit_logs table
+- **Audit Trail**: Stored inline on each task via audit_log JSON
 - **Row Level Security**: All tables have appropriate RLS policies
 - **Indexing Strategy**: Performance-optimized indexes for common query patterns
 

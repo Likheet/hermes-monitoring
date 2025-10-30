@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server"
+import type { AuditLogEntry } from "@/lib/types"
 import { NextResponse } from "next/server"
 import { cookies } from "next/headers"
 
@@ -16,21 +17,27 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url)
     const taskId = searchParams.get("task_id")
 
-    let query = supabase
-      .from("audit_logs")
-      .select("*, user:users(name, role), task:tasks(task_type, room_number)")
-      .order("created_at", { ascending: false })
-
-    if (taskId) {
-      query = query.eq("task_id", taskId)
+    if (!taskId) {
+      return NextResponse.json({ error: "task_id query parameter is required" }, { status: 400 })
     }
 
-    const { data: logs, error } = await query
+    const { data: task, error } = await supabase
+      .from("tasks")
+      .select("audit_log")
+      .eq("id", taskId)
+      .single()
 
     if (error) {
-      console.error("Audit logs fetch error:", error)
+      console.error("Audit log fetch error:", error)
       return NextResponse.json({ error: error.message }, { status: 400 })
     }
+
+    const logs: AuditLogEntry[] = Array.isArray(task?.audit_log) ? [...task.audit_log] : []
+
+    logs.sort((a, b) => {
+      const getComparable = (entry: AuditLogEntry) => entry.timestamp.server ?? entry.timestamp.client ?? ""
+      return getComparable(b).localeCompare(getComparable(a))
+    })
 
     return NextResponse.json({ logs }, { status: 200 })
   } catch (error) {

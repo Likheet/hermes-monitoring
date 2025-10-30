@@ -76,22 +76,7 @@ BEGIN
         RAISE NOTICE '⏭️  Users name column already consistent';
     END IF;
 
-    -- 6. Fix audit_logs table column names
-    -- Common issue: audit_log vs audit_logs naming inconsistency
-    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'tasks' AND column_name = 'audit_log') AND
-       EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'audit_logs') THEN
-        -- The tasks table refers to audit_log, but the actual table is audit_logs
-        -- This is correct, no action needed
-        RAISE NOTICE 'ℹ️  audit_log reference correct (audit_logs table exists)';
-    ELSIF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'tasks' AND column_name = 'audit_logs') AND
-           EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'audit_logs') THEN
-        -- If both audit_log and audit_logs columns exist, consolidate
-        EXECUTE 'ALTER TABLE tasks RENAME COLUMN audit_logs TO audit_log';
-        fixes_applied := fixes_applied + 1;
-        RAISE NOTICE '✓ Renamed duplicate audit_logs column to audit_log';
-    END IF;
-
-    -- 7. Fix notification table consistency
+    -- 6. Fix notification table consistency
     -- Common issue: is_read vs read boolean column
     IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'notifications' AND column_name = 'read') AND
        NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'notifications' AND column_name = 'is_read') THEN
@@ -102,7 +87,7 @@ BEGIN
         RAISE NOTICE '⏭️  Notifications read column already consistent';
     END IF;
 
-    -- 8. Add missing foreign key constraints (safe addition)
+    -- 7. Add missing foreign key constraints (safe addition)
     -- Add constraint only if it doesn't exist and data allows it
     IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints
                    WHERE table_name = 'tasks' AND constraint_name = 'tasks_assigned_to_user_id_fkey') THEN
@@ -118,9 +103,9 @@ BEGIN
         RAISE NOTICE '⏭️  tasks.assigned_to_user_id foreign key already exists';
     END IF;
 
-    -- 9. Standardize created_at/updated_at timestamps
+    -- 8. Standardize created_at/updated_at timestamps
     -- Ensure all tables have these columns with proper types
-    FOREACH table_name IN ARRAY ARRAY['tasks', 'users', 'shift_schedules', 'maintenance_tasks', 'audit_logs', 'notifications'] LOOP
+    FOREACH table_name IN ARRAY ARRAY['tasks', 'users', 'shift_schedules', 'maintenance_tasks', 'notifications'] LOOP
         -- Add created_at if missing
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = table_name AND column_name = 'created_at') THEN
             EXECUTE format('ALTER TABLE %I ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT now()', table_name);
@@ -136,7 +121,7 @@ BEGIN
         END IF;
     END LOOP;
 
-    -- 10. Add migration record to track this fix
+    -- 9. Add migration record to track this fix
     IF NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'schema_migrations') THEN
         CREATE TABLE schema_migrations (
             id SERIAL PRIMARY KEY,

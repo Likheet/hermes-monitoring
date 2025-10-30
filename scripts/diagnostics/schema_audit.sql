@@ -38,11 +38,6 @@ FROM information_schema.columns
 WHERE table_schema = 'public' AND table_name = 'maintenance_schedules'
 ORDER BY ordinal_position;
 
-SELECT 'escalations' AS table_name, column_name, data_type, is_nullable, column_default
-FROM information_schema.columns
-WHERE table_schema = 'public' AND table_name = 'escalations'
-ORDER BY ordinal_position;
-
 -- -----------------------------------------------------------------------------
 -- 2. Check constraints and enums (helps spot uppercase vs lowercase status drift)
 -- -----------------------------------------------------------------------------
@@ -54,7 +49,7 @@ JOIN information_schema.check_constraints cc
   ON tc.constraint_name = cc.constraint_name
 WHERE tc.table_schema = 'public'
   AND tc.constraint_type = 'CHECK'
-  AND tc.table_name IN ('tasks', 'users', 'maintenance_tasks', 'escalations', 'shift_swap_requests')
+  AND tc.table_name IN ('tasks', 'users', 'maintenance_tasks', 'shift_swap_requests')
 ORDER BY tc.table_name, tc.constraint_name;
 
 -- -----------------------------------------------------------------------------
@@ -68,7 +63,7 @@ FROM pg_class c
 JOIN pg_namespace n ON n.oid = c.relnamespace
 WHERE n.nspname = 'public'
   AND c.relkind = 'r'
-  AND c.relname IN ('users', 'tasks', 'pause_records', 'audit_logs', 'handovers', 'escalations', 'shifts')
+  AND c.relname IN ('users', 'tasks', 'pause_records', 'handovers', 'shifts')
 ORDER BY c.relname;
 
 SELECT schemaname AS schema_name,
@@ -81,7 +76,7 @@ SELECT schemaname AS schema_name,
        with_check AS check_expression
 FROM pg_policies
 WHERE schemaname = 'public'
-  AND tablename IN ('users', 'tasks', 'pause_records', 'audit_logs', 'handovers', 'escalations', 'shifts')
+  AND tablename IN ('users', 'tasks', 'pause_records', 'handovers', 'shifts')
 ORDER BY tablename, policyname;
 
 -- -----------------------------------------------------------------------------
@@ -106,10 +101,6 @@ SELECT DISTINCT status
 FROM maintenance_tasks
 ORDER BY status;
 
-SELECT DISTINCT escalation_type
-FROM escalations
-ORDER BY escalation_type;
-
 -- -----------------------------------------------------------------------------
 -- 6. Column existence cross-check for legacy scripts
 -- -----------------------------------------------------------------------------
@@ -118,12 +109,6 @@ FROM information_schema.columns
 WHERE table_schema = 'public'
   AND table_name = 'tasks'
   AND column_name IN ('started_at_server', 'completed_at_server', 'assigned_at_server', 'expected_duration_minutes');
-
-SELECT column_name
-FROM information_schema.columns
-WHERE table_schema = 'public'
-  AND table_name = 'escalations'
-  AND column_name IN ('level', 'timestamp_server', 'timestamp_client', 'resolved');
 
 -- -----------------------------------------------------------------------------
 -- 7. Optional: counts (quick data health check)
@@ -135,6 +120,4 @@ UNION ALL
 SELECT 'maintenance_tasks', COUNT(*) FROM maintenance_tasks
 UNION ALL
 SELECT 'pause_records', COUNT(*) FROM pause_records
-UNION ALL
-SELECT 'audit_logs', COUNT(*) FROM audit_logs
 ORDER BY table_name;

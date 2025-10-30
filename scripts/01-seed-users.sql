@@ -29,11 +29,6 @@ ON CONFLICT (id) DO UPDATE SET
   department = EXCLUDED.department,
   shift_timing = EXCLUDED.shift_timing;
 
--- Log the seed operation
-INSERT INTO public.audit_logs (user_id, action, metadata, created_at)
-VALUES ('00000000-0000-0000-0000-000000000001', 'SEED_USERS', '{"count": 8, "script": "01-seed-users.sql"}'::jsonb, NOW())
-ON CONFLICT DO NOTHING;
-
 -- Return summary
 SELECT 
   'Users seeded successfully' as status,

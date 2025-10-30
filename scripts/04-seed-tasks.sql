@@ -79,12 +79,6 @@ VALUES
    true,
    NOW() - interval '2 hours', NOW());
 
--- Log the seed operation
-INSERT INTO audit_logs (task_id, user_id, action, metadata, created_at)
-VALUES 
-  (NULL, '00000000-0000-0000-0000-000000000001'::uuid, 'seed_tasks', 
-   '{"count": 6, "script": "04-seed-tasks.sql"}'::jsonb, NOW());
-
 -- Return summary
 SELECT 
   'Tasks seeded successfully' as message,
