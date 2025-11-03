@@ -9,6 +9,7 @@ export interface CustomTaskDefinition extends TaskDefinition {
 }
 
 type CustomTaskRow = {
+  id: string
   task_type: string
   custom_task_name: string | null
   custom_task_category: TaskCategory | null
@@ -27,7 +28,7 @@ export async function getCustomTaskDefinitions(): Promise<CustomTaskDefinition[]
     const { data, error } = await supabase
       .from("tasks")
       .select(
-        "task_type, custom_task_name, custom_task_category, custom_task_priority, custom_task_photo_required, custom_task_photo_count, created_at, assigned_by_user_id",
+        "id, task_type, custom_task_name, custom_task_category, custom_task_priority, custom_task_photo_required, custom_task_photo_count, created_at, assigned_by_user_id",
       )
       .eq("is_custom_task", true)
       .order("created_at", { ascending: false })
@@ -47,7 +48,7 @@ export async function getCustomTaskDefinitions(): Promise<CustomTaskDefinition[]
   const rows = (data ?? []) as CustomTaskRow[]
 
   const customTasks: CustomTaskDefinition[] = rows.map((task) => ({
-      id: `custom-db-${task.task_type}`,
+      id: `custom-db-${task.id}`,
       name: task.custom_task_name || task.task_type,
       category: task.custom_task_category ?? "GUEST_REQUEST",
       priority: task.custom_task_priority ?? "medium",
@@ -222,7 +223,10 @@ export async function updateCustomTaskDefinition(
 ): Promise<CustomTaskDefinition | null> {
   try {
     const supabase = createClient()
-    
+
+    // Extract database UUID from custom-db-{uuid} format
+    const dbId = id.startsWith('custom-db-') ? id.replace('custom-db-', '') : id
+
     // Update in database
     const { error } = await supabase
       .from("tasks")
@@ -234,7 +238,7 @@ export async function updateCustomTaskDefinition(
         custom_task_photo_count: updates.photoCount,
         updated_at: new Date().toISOString(),
       })
-      .eq("task_type", id)
+      .eq("id", dbId)
       .eq("is_custom_task", true)
 
     if (error) {
@@ -244,9 +248,9 @@ export async function updateCustomTaskDefinition(
 
     // Also update in localStorage for backward compatibility
     const updatedTask = updateCustomTaskDefinitionInLocalStorage(id, updates)
-    
+
     window.dispatchEvent(new Event("customTasksUpdated"))
-    
+
     return updatedTask
   } catch (error) {
     console.error("Error updating custom task definition:", error)
@@ -280,12 +284,15 @@ function updateCustomTaskDefinitionInLocalStorage(
 export async function deleteCustomTaskDefinition(id: string): Promise<void> {
   try {
     const supabase = createClient()
-    
+
+    // Extract database UUID from custom-db-{uuid} format
+    const dbId = id.startsWith('custom-db-') ? id.replace('custom-db-', '') : id
+
     // Delete from database
     const { error } = await supabase
       .from("tasks")
       .delete()
-      .eq("task_type", id)
+      .eq("id", dbId)
       .eq("is_custom_task", true)
 
     if (error) {
@@ -295,7 +302,7 @@ export async function deleteCustomTaskDefinition(id: string): Promise<void> {
 
     // Also delete from localStorage for backward compatibility
     deleteCustomTaskDefinitionFromLocalStorage(id)
-    
+
     window.dispatchEvent(new Event("customTasksUpdated"))
   } catch (error) {
     console.error("Error deleting custom task definition:", error)

@@ -38,7 +38,7 @@ import {
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
-import { useTasks } from "@/lib/contexts/tasks-context"
+import { useTasks } from "@/lib/task-context"
 import { useRealtimeTasks } from "@/lib/use-realtime-tasks-optimized"
 import { CATEGORY_LABELS } from "@/lib/task-definitions"
 import { useMemo, useState } from "react"
