@@ -21,7 +21,7 @@ import { formatExactTimestamp } from "@/lib/date-utils"
 import { startPauseMonitoring, stopPauseMonitoring } from "@/lib/pause-monitoring"
 import { getCategorizedPhotoSections } from "@/lib/image-utils"
 import type { CategorizedPhotos, Task } from "@/lib/types"
-import { bucketToCategorizedPhotos, categorizedPhotosToBucket } from "@/lib/photo-utils"
+import { bucketToCategorizedPhotos, categorizedPhotosToBucket, hasCategorizedPhotoEntries } from "@/lib/photo-utils"
 import { formatDuration } from "@/lib/time-utils"
 import {
   AlertDialog,
