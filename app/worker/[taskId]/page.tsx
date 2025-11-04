@@ -21,7 +21,7 @@ import { formatExactTimestamp } from "@/lib/date-utils"
 import { startPauseMonitoring, stopPauseMonitoring } from "@/lib/pause-monitoring"
 import { getCategorizedPhotoSections } from "@/lib/image-utils"
 import type { CategorizedPhotos, Task } from "@/lib/types"
-import { bucketToCategorizedPhotos, categorizedPhotosToBucket, hasCategorizedPhotoEntries } from "@/lib/photo-utils"
+import { bucketToCategorizedPhotos, categorizedPhotosToBucket } from "@/lib/photo-utils"
 import { formatDuration } from "@/lib/time-utils"
 import {
   AlertDialog,
@@ -125,16 +125,8 @@ function TaskDetail({ params }: TaskDetailProps) {
       setCategorizedPhotos(photos)
       lastSavedPhotosHashRef.current = computePhotosHash(photos)
       cacheTaskPhotos(taskId, photos)
-
-      if (typeof window !== "undefined") {
-        if (photos && hasCategorizedPhotoEntries(photos)) {
-          window.localStorage.setItem(photoCacheKey, JSON.stringify(photos))
-        } else {
-          window.localStorage.removeItem(photoCacheKey)
-        }
-      }
     },
-    [cacheTaskPhotos, computePhotosHash, photoCacheKey, taskId],
+    [cacheTaskPhotos, computePhotosHash, taskId],
   )
 
   useEffect(() => {
@@ -142,20 +134,10 @@ function TaskDetail({ params }: TaskDetailProps) {
       return
     }
 
-    const cached = window.localStorage.getItem(photoCacheKey)
-    if (cached) {
-      try {
-        const parsed = JSON.parse(cached) as CategorizedPhotos
-        console.log("[worker] Loading cached photos from localStorage:", parsed)
-        applyLocalCategorizedPhotos(parsed)
-      } catch (error) {
-        console.warn("[worker] Failed to parse cached categorized photos", error)
-        window.localStorage.removeItem(photoCacheKey)
-      }
-    } else {
-      console.log("[worker] No cached photos found in localStorage for key:", photoCacheKey)
+    if (window.localStorage.getItem(photoCacheKey)) {
+      window.localStorage.removeItem(photoCacheKey)
     }
-  }, [applyLocalCategorizedPhotos, photoCacheKey])
+  }, [photoCacheKey])
 
   useEffect(() => {
     if (task?.status === "IN_PROGRESS" && task.started_at) {
