@@ -51,7 +51,10 @@ function persistToStorage(key: string, value: unknown) {
   try {
     let payload = value
     if (key === STORAGE_KEYS.tasks && Array.isArray(value)) {
-      payload = (value as Task[]).slice(0, MAX_CACHED_TASKS)
+      const tasks = (value as Task[]).slice(0, MAX_CACHED_TASKS)
+      payload = tasks.map((task) =>
+        task.categorized_photos ? { ...task, categorized_photos: null } : task,
+      )
     }
 
     const cacheEntry: CacheEntry<unknown> = {
