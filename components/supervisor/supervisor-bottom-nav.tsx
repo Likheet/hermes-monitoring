@@ -1,6 +1,6 @@
 "use client"
 
-import { Home, Users, BarChart3 } from "lucide-react"
+import { Home, Users, BarChart3, ClipboardList } from "lucide-react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
@@ -14,6 +14,12 @@ export function SupervisorBottomNav() {
       href: "/supervisor",
       icon: Home,
       active: pathname === "/supervisor",
+    },
+    {
+      label: "Assignments",
+      href: "/supervisor/assignments",
+      icon: ClipboardList,
+      active: pathname === "/supervisor/assignments",
     },
     {
       label: "Workers",
@@ -31,7 +37,7 @@ export function SupervisorBottomNav() {
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-50 bg-background border-t shadow-lg">
-      <div className="grid grid-cols-3 h-16">
+      <div className="grid grid-cols-4 h-16">
         {navItems.map((item) => {
           const Icon = item.icon
           return (

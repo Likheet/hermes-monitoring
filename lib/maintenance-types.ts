@@ -61,7 +61,7 @@ export interface MaintenanceTask {
   task_type: MaintenanceTaskType
   location: string
   description: string
-  status: "pending" | "in_progress" | "paused" | "completed"
+  status: "pending" | "in_progress" | "paused" | "completed" | "rejected"
   assigned_to?: string
   started_at?: string
   paused_at?: string
@@ -74,6 +74,7 @@ export interface MaintenanceTask {
     after_photos?: string[]
   }
   notes?: string
+  rejection_reason?: string | null
   expected_duration_minutes?: number
   period_month: number
   period_year: number

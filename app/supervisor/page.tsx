@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { ProtectedRoute } from "@/components/protected-route"
 import { useAuth } from "@/lib/auth-context"
 import { useTasks } from "@/lib/task-context"
@@ -10,17 +10,25 @@ import { WorkerProfileDialog } from "@/components/worker-profile-dialog"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { LogOut, Clock, MapPin, User, AlertTriangle, XCircle } from "lucide-react"
+import { LogOut, Clock, MapPin, User, AlertTriangle, XCircle, Bell, Plus } from "lucide-react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { IssueCard } from "@/components/issue-card"
 import type { User as UserType } from "@/lib/types"
 import { useRealtimeTasks } from "@/lib/use-realtime-tasks"
-import { detectEscalationLevel, type Escalation } from "@/lib/escalation-utils"
+import { detectEscalationLevel, getEscalationColor, type Escalation } from "@/lib/escalation-utils"
 import { createDualTimestamp } from "@/lib/mock-data"
 import { TASK_TYPE_LABELS } from "@/lib/maintenance-types"
 import { formatDistanceToNow } from "@/lib/date-utils"
 import { SupervisorBottomNav } from "@/components/supervisor/supervisor-bottom-nav"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
 
 function SupervisorDashboard() {
   const { user, logout } = useAuth()
@@ -36,6 +44,69 @@ function SupervisorDashboard() {
   const [escalations, setEscalations] = useState<Escalation[]>([])
   const [selectedWorker, setSelectedWorker] = useState<UserType | null>(null)
   const [isProfileDialogOpen, setIsProfileDialogOpen] = useState(false)
+  const [isNotificationDialogOpen, setIsNotificationDialogOpen] = useState(false)
+  const [recentAcknowledgedId, setRecentAcknowledgedId] = useState<string | null>(null)
+
+  const acknowledgedEscalations = useMemo(
+    () => escalations.filter((esc) => Boolean(esc.acknowledged_by)),
+    [escalations],
+  )
+
+  const activeEscalations = useMemo(
+    () => escalations.filter((esc) => !esc.acknowledged_by && !esc.resolved),
+    [escalations],
+  )
+
+  const unacknowledgedCriticalCount = useMemo(
+    () =>
+      escalations.filter(
+        (esc) => !esc.acknowledged_by && !esc.resolved && (esc.level === 2 || esc.level === 3),
+      ).length,
+    [escalations],
+  )
+
+  const sortedActiveEscalations = useMemo(
+    () =>
+      [...activeEscalations].sort(
+        (a, b) =>
+          new Date(b.timestamp?.server ?? b.timestamp?.client ?? 0).getTime() -
+          new Date(a.timestamp?.server ?? a.timestamp?.client ?? 0).getTime(),
+      ),
+    [activeEscalations],
+  )
+
+  const sortedAcknowledgedEscalations = useMemo(
+    () =>
+      [...acknowledgedEscalations].sort(
+        (a, b) =>
+          new Date(b.acknowledged_at ?? b.timestamp?.server ?? b.timestamp?.client ?? 0).getTime() -
+          new Date(a.acknowledged_at ?? a.timestamp?.server ?? a.timestamp?.client ?? 0).getTime(),
+      ),
+    [acknowledgedEscalations],
+  )
+
+  const describeEscalationLevel = (level: 1 | 2 | 3) => {
+    switch (level) {
+      case 3:
+        return "Task has exceeded 50% of expected duration. Immediate action required."
+      case 2:
+        return "Task has exceeded 20 minutes. Worker may need assistance."
+      default:
+        return "Task has been in progress for 15 minutes. Please check in."
+    }
+  }
+
+  useEffect(() => {
+    if (!recentAcknowledgedId) {
+      return
+    }
+
+    const timeout = setTimeout(() => {
+      setRecentAcknowledgedId(null)
+    }, 60_000)
+
+    return () => clearTimeout(timeout)
+  }, [recentAcknowledgedId])
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -80,17 +151,22 @@ function SupervisorDashboard() {
   }
 
   const handleAcknowledgeEscalation = (escalationId: string) => {
+    const acknowledgedAt = new Date().toISOString()
+
     setEscalations((prev) =>
       prev.map((esc) =>
         esc.id === escalationId
           ? {
               ...esc,
-              acknowledged_by: user?.id,
-              acknowledged_at: new Date().toISOString(),
+              acknowledged_by: user?.id ?? "supervisor",
+              acknowledged_at: acknowledgedAt,
             }
           : esc,
       ),
     )
+
+    setRecentAcknowledgedId(escalationId)
+    setIsNotificationDialogOpen(true)
   }
 
   const handleWorkerClick = (workerId: string) => {
@@ -157,7 +233,6 @@ function SupervisorDashboard() {
       taskType: task.task_type,
       status: task.status,
       hasPhotoUrls: !!(task.photo_urls && task.photo_urls.length > 0),
-      hasPhotoUrl: !!task.photo_url,
       hasCategorizedPhotos: !!(task.categorized_photos && Object.keys(task.categorized_photos).length > 0)
     }))
   })
@@ -215,6 +290,7 @@ function SupervisorDashboard() {
     PAUSED: "bg-orange-500",
     COMPLETED: "bg-green-500",
     REJECTED: "bg-red-500",
+    VERIFIED: "bg-emerald-600",
   }
 
   const openIssues = issues.filter((issue) => {
@@ -239,6 +315,122 @@ function SupervisorDashboard() {
             </p>
           </div>
           <div className="flex items-center gap-2 w-full sm:w-auto">
+            <Button
+              asChild
+              size="sm"
+              className="min-h-[44px] px-3 sm:px-4 flex-1 sm:flex-none"
+            >
+              <Link href="/supervisor/create-task">
+                <Plus className="mr-2 h-4 w-4" />
+                Create Task
+              </Link>
+            </Button>
+            <Dialog open={isNotificationDialogOpen} onOpenChange={setIsNotificationDialogOpen}>
+              <DialogTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="relative min-h-[44px] min-w-[44px] bg-transparent"
+                  aria-label="Open escalation notifications"
+                >
+                  <Bell className="h-4 w-4" />
+                  {unacknowledgedCriticalCount > 0 && (
+                    <span className="absolute -top-1 -right-1 inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-destructive px-1 text-xs font-semibold text-destructive-foreground">
+                      {unacknowledgedCriticalCount}
+                    </span>
+                  )}
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-xl">
+                <DialogHeader>
+                  <DialogTitle>Escalation Notifications</DialogTitle>
+                  <DialogDescription>
+                    Review escalations that still need attention and those you have acknowledged.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-5">
+                  <section>
+                    <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Active Alerts</h3>
+                    {sortedActiveEscalations.length === 0 ? (
+                      <p className="mt-2 text-sm text-muted-foreground">No unacknowledged escalations. You're all caught up.</p>
+                    ) : (
+                      <div className="mt-3 space-y-3">
+                        {sortedActiveEscalations.map((escalation) => {
+                          const task = tasks.find((t) => t.id === escalation.task_id)
+                          const escalatedAgo = formatDistanceToNow(escalation.timestamp?.server ?? escalation.timestamp?.client ?? new Date())
+
+                          return (
+                            <div key={escalation.id} className="rounded-lg border border-border bg-background p-3">
+                              <div className="flex items-start justify-between gap-2">
+                                <div>
+                                  <p className="font-medium leading-tight">{task?.task_type ?? "Unknown task"}</p>
+                                  {task?.room_number && (
+                                    <p className="text-sm text-muted-foreground">Room {task.room_number}</p>
+                                  )}
+                                  <p className="mt-2 text-sm text-muted-foreground">{describeEscalationLevel(escalation.level)}</p>
+                                </div>
+                                <Badge className={getEscalationColor(escalation.level)} variant="secondary">
+                                  Level {escalation.level}
+                                </Badge>
+                              </div>
+                              <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-xs text-muted-foreground">
+                                <span>Escalated {escalatedAgo}</span>
+                                <Button size="sm" onClick={() => handleAcknowledgeEscalation(escalation.id)}>
+                                  Acknowledge
+                                </Button>
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </section>
+
+                  <section>
+                    <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Acknowledged</h3>
+                    {sortedAcknowledgedEscalations.length === 0 ? (
+                      <p className="mt-2 text-sm text-muted-foreground">Nothing acknowledged yet.</p>
+                    ) : (
+                      <div className="mt-3 space-y-3">
+                        {sortedAcknowledgedEscalations.map((escalation) => {
+                          const task = tasks.find((t) => t.id === escalation.task_id)
+                          const acknowledgedAgo = formatDistanceToNow(
+                            escalation.acknowledged_at ?? escalation.timestamp?.server ?? escalation.timestamp?.client ?? new Date(),
+                          )
+                          const isRecent = recentAcknowledgedId === escalation.id
+
+                          return (
+                            <div
+                              key={escalation.id}
+                              className={`rounded-lg border p-3 transition-colors ${
+                                isRecent ? "border-primary bg-primary/10" : "border-border bg-background"
+                              }`}
+                            >
+                              <div className="flex items-start justify-between gap-2">
+                                <div>
+                                  <p className="font-medium leading-tight">{task?.task_type ?? "Unknown task"}</p>
+                                  {task?.room_number && (
+                                    <p className="text-sm text-muted-foreground">Room {task.room_number}</p>
+                                  )}
+                                  <p className="mt-2 text-sm text-muted-foreground">{describeEscalationLevel(escalation.level)}</p>
+                                </div>
+                                <Badge className={getEscalationColor(escalation.level)} variant="secondary">
+                                  Level {escalation.level}
+                                </Badge>
+                              </div>
+                              <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-xs text-muted-foreground">
+                                <span>Acknowledged {acknowledgedAgo}</span>
+                                <span>{escalation.acknowledged_by ? `by ${escalation.acknowledged_by}` : ""}</span>
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </section>
+                </div>
+              </DialogContent>
+            </Dialog>
             <Button
               variant="outline"
               size="sm"
@@ -378,7 +570,7 @@ function SupervisorDashboard() {
                     const completedAtDate = task.completed_at ? new Date(task.completed_at) : null
                     const completedAtLabel =
                       completedAtDate && !Number.isNaN(completedAtDate.getTime())
-                        ? formatDistanceToNow(completedAtDate, { addSuffix: true })
+                        ? formatDistanceToNow(completedAtDate)
                         : "just now"
 
                     return (
