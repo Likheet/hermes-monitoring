@@ -16,15 +16,24 @@ function AnalyticsDashboard() {
   const departmentTasks = tasks.filter((task) => {
     const worker = users.find((u) => u.id === task.assigned_to_user_id)
     const taskDepartment = task.department || worker?.department
+    // If supervisor has no department, show all tasks
     if (!user?.department) return true
-    return taskDepartment === user.department
+    // Normalize department comparison (case-insensitive)
+    const normalizedUserDept = user.department.toLowerCase()
+    const normalizedTaskDept = taskDepartment?.toLowerCase()
+    return normalizedTaskDept === normalizedUserDept
   })
 
   const departmentStats = calculateDepartmentStats(departmentTasks)
   const priorityBreakdown = getTasksByPriority(departmentTasks)
 
   // Get worker performance
-  const departmentWorkers = users.filter((u) => u.role === "worker" && u.department === user?.department)
+  const departmentWorkers = users.filter((u) => {
+    if (u.role !== "worker") return false
+    if (!user?.department) return true
+    // Normalize department comparison (case-insensitive)
+    return u.department?.toLowerCase() === user.department.toLowerCase()
+  })
   const workerPerformance = departmentWorkers.map((worker) =>
     calculateWorkerPerformance(departmentTasks, worker.id, worker.name),
   )

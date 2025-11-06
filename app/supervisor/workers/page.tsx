@@ -18,7 +18,12 @@ function WorkersOverviewPage() {
   const { users, tasks, maintenanceTasks, shiftSchedules } = useTasks()
   const router = useRouter()
 
-  const departmentWorkers = users.filter((u) => u.role === "worker" && u.department === user?.department)
+  const departmentWorkers = users.filter((u) => {
+    if (u.role !== "worker") return false
+    if (!user?.department) return true
+    // Normalize department comparison (case-insensitive)
+    return u.department?.toLowerCase() === user.department.toLowerCase()
+  })
 
   const getWorkerStats = (workerId: string) => {
     const workerTasks = tasks.filter((t) => t.assigned_to_user_id === workerId)

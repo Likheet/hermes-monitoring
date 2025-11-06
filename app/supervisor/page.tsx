@@ -28,7 +28,7 @@ function SupervisorDashboard() {
   const router = useRouter()
   useRealtimeTasks({
     enabled: true,
-    filter: { department: user?.department },
+    filter: { role: "supervisor" },
   })
 
   const [taskFilter, setTaskFilter] = useState<"all" | "rejected" | "pending" | "in_progress">("all")
@@ -104,8 +104,12 @@ function SupervisorDashboard() {
   const departmentTasks = tasks.filter((task) => {
     const worker = users.find((u) => u.id === task.assigned_to_user_id)
     const taskDepartment = task.department || worker?.department
+    // If supervisor has no department, show all tasks
     if (!user?.department) return true
-    return taskDepartment === user.department
+    // Normalize department comparison (case-insensitive)
+    const normalizedUserDept = user.department.toLowerCase()
+    const normalizedTaskDept = taskDepartment?.toLowerCase()
+    return normalizedTaskDept === normalizedUserDept
   })
 
   const rejectedTasks = departmentTasks.filter((t) => t.status === "REJECTED")
