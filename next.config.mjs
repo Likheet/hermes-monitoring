@@ -57,7 +57,7 @@ try {
         options: {
           cacheName: 'supabase-images',
           expiration: {
-            maxEntries: 100,
+            maxEntries: 500, // Increased from 100 to reduce re-downloads
             maxAgeSeconds: 7 * 24 * 60 * 60, // 7 days
           },
           cacheableResponse: {
