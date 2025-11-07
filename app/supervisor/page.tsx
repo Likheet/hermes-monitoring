@@ -233,7 +233,7 @@ function SupervisorDashboard() {
 
   const departmentTasks = tasks.filter((task) => {
     const worker = users.find((u) => u.id === task.assigned_to_user_id)
-    const taskDepartment = task.department || worker?.department
+    const taskDepartment = worker?.department ?? task.department
     if (user?.id && task.assigned_to_user_id === user.id) return true
     // If supervisor has no department, show all tasks
     if (!user?.department) return true
@@ -377,7 +377,8 @@ function SupervisorDashboard() {
     const task = tasks.find((t) => t.id === issue.task_id)
     if (!task) return false
     const worker = users.find((u) => u.id === task.assigned_to_user_id)
-    return worker?.department === user?.department && issue.status === "OPEN"
+    const taskDepartment = worker?.department ?? task.department
+    return taskDepartment === user?.department && issue.status === "OPEN"
   })
 
   return (

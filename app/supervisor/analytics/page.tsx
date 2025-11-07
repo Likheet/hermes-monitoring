@@ -15,7 +15,7 @@ function AnalyticsDashboard() {
   // Filter tasks by department
   const departmentTasks = tasks.filter((task) => {
     const worker = users.find((u) => u.id === task.assigned_to_user_id)
-    const taskDepartment = task.department || worker?.department
+    const taskDepartment = worker?.department ?? task.department
     // If supervisor has no department, show all tasks
     if (!user?.department) return true
     // Normalize department comparison (case-insensitive)

@@ -30,18 +30,28 @@ export async function POST(request: Request) {
       path: "/",
     }
 
+    const supabase = await createClient()
+
     if (DEV_LOGIN_ENABLED) {
       const devAccount = findDevAccount(username)
       if (devAccount && devAccount.password === password) {
-        const appUser = devAccountToUser(devAccount)
+        const { data: dbUser, error: dbError } = await supabase
+          .from("users")
+          .select("*")
+          .eq("username", devAccount.username)
+          .maybeSingle()
+
+        if (dbError) {
+          console.warn("[dev-login] Failed to load matching database user", dbError)
+        }
+
+        const appUser = dbUser ? databaseUserToApp(dbUser) : devAccountToUser(devAccount)
         const response = NextResponse.json({ user: appUser })
-        response.cookies.set(SESSION_COOKIE_NAME, appUser.id, cookieOptions)
+        response.cookies.set(SESSION_COOKIE_NAME, dbUser?.id ?? appUser.id, cookieOptions)
         response.cookies.set(SESSION_PAYLOAD_COOKIE, encodeSessionPayload(appUser), cookieOptions)
         return response
       }
     }
-
-    const supabase = await createClient()
 
     // Query user by username
     const { data: user, error } = await supabase.from("users").select("*").eq("username", username).single()

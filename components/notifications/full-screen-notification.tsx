@@ -116,7 +116,11 @@ export function FullScreenNotificationOverlay() {
 
         if (!isMounted) return
         if (error) {
-          console.error("Failed to fetch high priority notifications:", error)
+          const errorMessage =
+            typeof error === "object" && error !== null && "message" in error
+              ? (error as { message?: string; code?: string; details?: string }).message || JSON.stringify(error)
+              : String(error)
+          console.error("Failed to fetch high priority notifications:", errorMessage)
           return
         }
 
@@ -146,7 +150,11 @@ export function FullScreenNotificationOverlay() {
           }
         }
       } catch (error) {
-        console.error("Error preloading high priority notifications:", error)
+        const errorMessage =
+          typeof error === "object" && error !== null && "message" in error
+            ? (error as { message?: string; code?: string; details?: string }).message || JSON.stringify(error)
+            : String(error)
+        console.error("Error preloading high priority notifications:", errorMessage)
       }
     }
 
