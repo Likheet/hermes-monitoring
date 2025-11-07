@@ -80,6 +80,15 @@ const statusColors = {
   REJECTED: "bg-red-500",
 }
 
+type StaffRole = "supervisor" | "worker" | "front_office"
+
+const STAFF_ROLE_ORDER: StaffRole[] = ["supervisor", "worker", "front_office"]
+const STAFF_ROLE_LABELS: Record<StaffRole, string> = {
+  supervisor: "Supervisors",
+  worker: "Workers",
+  front_office: "Front Office",
+}
+
 const DEPARTMENT_SORT_ORDER = ["housekeeping", "maintenance", "front_office"] as const
 
 type ShiftSortOption = "status" | "department" | "name"
@@ -139,7 +148,9 @@ function FrontOfficeDashboard() {
     }
   }, [searchParams])
 
-  const workers = users.filter((u) => u.role === "worker" || u.role === "front_office")
+  const workers = users.filter(
+    (u) => u.role === "worker" || u.role === "front_office" || u.role === "supervisor",
+  )
   const [today] = useState(() => new Date())
 
   const normalizeShiftDraft = (draft: ShiftDraft): ShiftDraft => {
@@ -332,6 +343,15 @@ function FrontOfficeDashboard() {
       }
     })
   }, [workers, shiftSortOption, offDutyStatus, shiftSchedules, today])
+  const shiftSections = useMemo(
+    () =>
+      STAFF_ROLE_ORDER.map((role) => ({
+        role,
+        label: STAFF_ROLE_LABELS[role],
+        members: sortedShiftWorkers.filter((worker) => worker.role === role),
+      })).filter((section) => section.members.length > 0),
+    [sortedShiftWorkers],
+  )
 
   const getWorkerCurrentTask = (workerId: string) => {
     const regularTask = tasks.find(
@@ -351,6 +371,24 @@ function FrontOfficeDashboard() {
 
   const availableWorkers = workers.filter((w) => !getWorkerCurrentTask(w.id))
   const busyWorkers = workers.filter((w) => getWorkerCurrentTask(w.id))
+  const availableSections = useMemo(
+    () =>
+      STAFF_ROLE_ORDER.map((role) => ({
+        role,
+        label: STAFF_ROLE_LABELS[role],
+        members: availableWorkers.filter((member) => member.role === role),
+      })).filter((section) => section.members.length > 0),
+    [availableWorkers],
+  )
+  const busySections = useMemo(
+    () =>
+      STAFF_ROLE_ORDER.map((role) => ({
+        role,
+        label: STAFF_ROLE_LABELS[role],
+        members: busyWorkers.filter((member) => member.role === role),
+      })).filter((section) => section.members.length > 0),
+    [busyWorkers],
+  )
   const rejectedTasks = tasks.filter((t) => t.status === "REJECTED")
   const openIssues = issues.filter((issue) => issue.status === "OPEN")
 
@@ -593,208 +631,228 @@ function FrontOfficeDashboard() {
                   </div>
                 </div>
 
-                <div className="grid gap-4 md:grid-cols-2">
-                  {sortedShiftWorkers.map((worker) => {
-                    const shiftState = editingShifts[worker.id] ?? buildShiftTemplate(worker)
-                    const isOffDuty = offDutyStatus[worker.id]
-                    const workingHours = getWorkingHoursDisplay(shiftState)
-                    const shiftSegments = getShiftSummaryLines(shiftState)
-                    const interShiftBreakLabel =
-                      shiftState.hasSecondShift && shiftState.shift1End && shiftState.shift2Start
-                        ? `Shift Break: ${formatShiftTime(shiftState.shift1End)} - ${formatShiftTime(shiftState.shift2Start)}`
-                        : null
+                {shiftSections.length > 0 ? (
+                  <div className="space-y-6">
+                    {shiftSections.map(({ role, label, members }) => (
+                      <section key={role} className="space-y-4">
+                        <div className="flex items-center justify-between">
+                          <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                            {label}
+                          </h3>
+                          <span className="text-xs text-muted-foreground">{members.length} scheduled</span>
+                        </div>
+                        <div className="grid gap-4 md:grid-cols-2">
+                          {members.map((worker) => {
+                            const shiftState = editingShifts[worker.id] ?? buildShiftTemplate(worker)
+                            const isOffDuty = offDutyStatus[worker.id]
+                            const workingHours = getWorkingHoursDisplay(shiftState)
+                            const shiftSegments = getShiftSummaryLines(shiftState)
+                            const interShiftBreakLabel =
+                              shiftState.hasSecondShift && shiftState.shift1End && shiftState.shift2Start
+                                ? `Shift Break: ${formatShiftTime(shiftState.shift1End)} - ${formatShiftTime(shiftState.shift2Start)}`
+                                : null
 
-                    return (
-                      <Card key={worker.id}>
-                        <CardHeader>
-                          <CardTitle className="text-lg">{worker.name}</CardTitle>
-                          <p className="text-sm text-muted-foreground capitalize">{worker.department}</p>
-                        </CardHeader>
-                        <CardContent className="space-y-4">
-                          <div className="space-y-3">
-                            <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
-                              <div className="flex items-center gap-2">
-                                <Label htmlFor={`off-duty-${worker.id}`} className="cursor-pointer font-semibold">
-                                  Mark as Off Duty
-                                </Label>
-                              </div>
-                              <Switch
-                                id={`off-duty-${worker.id}`}
-                                checked={isOffDuty}
-                                onCheckedChange={(checked) => handleOffDutyToggle(worker.id, checked)}
-                              />
-                            </div>
-
-                            <div className={isOffDuty ? "opacity-50 pointer-events-none" : ""}>
-                              <div className="grid grid-cols-2 gap-3">
-                                <div>
-                                  <Label htmlFor={`shift1-start-${worker.id}`}>
-                                    {shiftState.hasSecondShift ? "Shift 1 Start" : "Shift Start"}
-                                  </Label>
-                                  <Input
-                                    id={`shift1-start-${worker.id}`}
-                                    type="time"
-                                    value={shiftState.shift1Start}
-                                    onChange={(e) => {
-                                      const value = e.target.value
-                                      setEditingShifts((prev) => {
-                                        const next = normalizeShiftDraft({
-                                          ...(prev[worker.id] ?? buildShiftTemplate(worker)),
-                                          shift1Start: value,
-                                        })
-                                        return { ...prev, [worker.id]: next }
-                                      })
-                                      markDirty(worker.id)
-                                    }}
-                                    className="mt-1"
-                                    disabled={isOffDuty}
-                                  />
-                                </div>
-                                <div>
-                                  <Label htmlFor={`shift1-end-${worker.id}`}>
-                                    {shiftState.hasSecondShift ? "Shift 1 End" : "Shift End"}
-                                  </Label>
-                                  <Input
-                                    id={`shift1-end-${worker.id}`}
-                                    type="time"
-                                    value={shiftState.shift1End}
-                                    onChange={(e) => {
-                                      const value = e.target.value
-                                      setEditingShifts((prev) => {
-                                        const next = normalizeShiftDraft({
-                                          ...(prev[worker.id] ?? buildShiftTemplate(worker)),
-                                          shift1End: value,
-                                        })
-                                        return { ...prev, [worker.id]: next }
-                                      })
-                                      markDirty(worker.id)
-                                    }}
-                                    className="mt-1"
-                                    disabled={isOffDuty}
-                                  />
-                                </div>
-                              </div>
-
-                              <div className="flex items-center justify-between py-2 border-t">
-                                <div className="flex items-center gap-2">
-                                  <Coffee className="h-4 w-4 text-muted-foreground" />
-                                  <Label htmlFor={`second-shift-${worker.id}`} className="cursor-pointer">
-                                    Enable Second Shift
-                                  </Label>
-                                </div>
-                                <Switch
-                                  id={`second-shift-${worker.id}`}
-                                  checked={shiftState.hasSecondShift}
-                                  onCheckedChange={(checked) => {
-                                    setEditingShifts((prev) => {
-                                      const current = prev[worker.id] ?? buildShiftTemplate(worker)
-                                      const next = normalizeShiftDraft({
-                                        ...current,
-                                        hasSecondShift: checked,
-                                        shift2Start: checked ? current.shift2Start || current.shift1End : "",
-                                        shift2End: checked ? current.shift2End || current.shift1End : "",
-                                      })
-                                      return { ...prev, [worker.id]: next }
-                                    })
-                                    markDirty(worker.id)
-                                  }}
-                                  disabled={isOffDuty}
-                                />
-                              </div>
-
-                              {shiftState.hasSecondShift && (
-                                <div className="space-y-2 pl-6 border-l-2 border-muted">
-                                  <div className="grid grid-cols-2 gap-3">
-                                    <div>
-                                      <Label htmlFor={`shift2-start-${worker.id}`} className="text-xs">
-                                        Shift 2 Start
-                                      </Label>
-                                      <Input
-                                        id={`shift2-start-${worker.id}`}
-                                        type="time"
-                                        value={shiftState.shift2Start}
-                                        onChange={(e) => {
-                                          const value = e.target.value
-                                          setEditingShifts((prev) => {
-                                            const next = normalizeShiftDraft({
-                                              ...(prev[worker.id] ?? buildShiftTemplate(worker)),
-                                              shift2Start: value,
-                                            })
-                                            return { ...prev, [worker.id]: next }
-                                          })
-                                          markDirty(worker.id)
-                                        }}
-                                        className="mt-1"
-                                        disabled={isOffDuty}
+                            return (
+                              <Card key={worker.id}>
+                                <CardHeader>
+                                  <CardTitle className="text-lg">{worker.name}</CardTitle>
+                                  <p className="text-sm text-muted-foreground capitalize">{worker.department}</p>
+                                </CardHeader>
+                                <CardContent className="space-y-4">
+                                  <div className="space-y-3">
+                                    <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                                      <div className="flex items-center gap-2">
+                                        <Label htmlFor={`off-duty-${worker.id}`} className="cursor-pointer font-semibold">
+                                          Mark as Off Duty
+                                        </Label>
+                                      </div>
+                                      <Switch
+                                        id={`off-duty-${worker.id}`}
+                                        checked={isOffDuty}
+                                        onCheckedChange={(checked) => handleOffDutyToggle(worker.id, checked)}
                                       />
                                     </div>
-                                    <div>
-                                      <Label htmlFor={`shift2-end-${worker.id}`} className="text-xs">
-                                        Shift 2 End
-                                      </Label>
-                                      <Input
-                                        id={`shift2-end-${worker.id}`}
-                                        type="time"
-                                        value={shiftState.shift2End}
-                                        onChange={(e) => {
-                                          const value = e.target.value
-                                          setEditingShifts((prev) => {
-                                            const next = normalizeShiftDraft({
-                                              ...(prev[worker.id] ?? buildShiftTemplate(worker)),
-                                              shift2End: value,
+
+                                    <div className={isOffDuty ? "opacity-50 pointer-events-none" : ""}>
+                                      <div className="grid grid-cols-2 gap-3">
+                                        <div>
+                                          <Label htmlFor={`shift1-start-${worker.id}`}>
+                                            {shiftState.hasSecondShift ? "Shift 1 Start" : "Shift Start"}
+                                          </Label>
+                                          <Input
+                                            id={`shift1-start-${worker.id}`}
+                                            type="time"
+                                            value={shiftState.shift1Start}
+                                            onChange={(e) => {
+                                              const value = e.target.value
+                                              setEditingShifts((prev) => {
+                                                const next = normalizeShiftDraft({
+                                                  ...(prev[worker.id] ?? buildShiftTemplate(worker)),
+                                                  shift1Start: value,
+                                                })
+                                                return { ...prev, [worker.id]: next }
+                                              })
+                                              markDirty(worker.id)
+                                            }}
+                                            className="mt-1"
+                                            disabled={isOffDuty}
+                                          />
+                                        </div>
+                                        <div>
+                                          <Label htmlFor={`shift1-end-${worker.id}`}>
+                                            {shiftState.hasSecondShift ? "Shift 1 End" : "Shift End"}
+                                          </Label>
+                                          <Input
+                                            id={`shift1-end-${worker.id}`}
+                                            type="time"
+                                            value={shiftState.shift1End}
+                                            onChange={(e) => {
+                                              const value = e.target.value
+                                              setEditingShifts((prev) => {
+                                                const next = normalizeShiftDraft({
+                                                  ...(prev[worker.id] ?? buildShiftTemplate(worker)),
+                                                  shift1End: value,
+                                                })
+                                                return { ...prev, [worker.id]: next }
+                                              })
+                                              markDirty(worker.id)
+                                            }}
+                                            className="mt-1"
+                                            disabled={isOffDuty}
+                                          />
+                                        </div>
+                                      </div>
+
+                                      <div className="flex items-center justify-between py-2 border-t">
+                                        <div className="flex items-center gap-2">
+                                          <Coffee className="h-4 w-4 text-muted-foreground" />
+                                          <Label htmlFor={`second-shift-${worker.id}`} className="cursor-pointer">
+                                            Enable Second Shift
+                                          </Label>
+                                        </div>
+                                        <Switch
+                                          id={`second-shift-${worker.id}`}
+                                          checked={shiftState.hasSecondShift}
+                                          onCheckedChange={(checked) => {
+                                            setEditingShifts((prev) => {
+                                              const current = prev[worker.id] ?? buildShiftTemplate(worker)
+                                              const next = normalizeShiftDraft({
+                                                ...current,
+                                                hasSecondShift: checked,
+                                                shift2Start: checked ? current.shift2Start || current.shift1End : "",
+                                                shift2End: checked ? current.shift2End || current.shift1End : "",
+                                              })
+                                              return { ...prev, [worker.id]: next }
                                             })
-                                            return { ...prev, [worker.id]: next }
-                                          })
-                                          markDirty(worker.id)
-                                        }}
-                                        className="mt-1"
-                                        disabled={isOffDuty}
-                                      />
+                                            markDirty(worker.id)
+                                          }}
+                                          disabled={isOffDuty}
+                                        />
+                                      </div>
+
+                                      {shiftState.hasSecondShift && (
+                                        <div className="space-y-2 pl-6 border-l-2 border-muted">
+                                          <div className="grid grid-cols-2 gap-3">
+                                            <div>
+                                              <Label htmlFor={`shift2-start-${worker.id}`} className="text-xs">
+                                                Shift 2 Start
+                                              </Label>
+                                              <Input
+                                                id={`shift2-start-${worker.id}`}
+                                                type="time"
+                                                value={shiftState.shift2Start}
+                                                onChange={(e) => {
+                                                  const value = e.target.value
+                                                  setEditingShifts((prev) => {
+                                                    const next = normalizeShiftDraft({
+                                                      ...(prev[worker.id] ?? buildShiftTemplate(worker)),
+                                                      shift2Start: value,
+                                                    })
+                                                    return { ...prev, [worker.id]: next }
+                                                  })
+                                                  markDirty(worker.id)
+                                                }}
+                                                className="mt-1"
+                                                disabled={isOffDuty}
+                                              />
+                                            </div>
+                                            <div>
+                                              <Label htmlFor={`shift2-end-${worker.id}`} className="text-xs">
+                                                Shift 2 End
+                                              </Label>
+                                              <Input
+                                                id={`shift2-end-${worker.id}`}
+                                                type="time"
+                                                value={shiftState.shift2End}
+                                                onChange={(e) => {
+                                                  const value = e.target.value
+                                                  setEditingShifts((prev) => {
+                                                    const next = normalizeShiftDraft({
+                                                      ...(prev[worker.id] ?? buildShiftTemplate(worker)),
+                                                      shift2End: value,
+                                                    })
+                                                    return { ...prev, [worker.id]: next }
+                                                  })
+                                                  markDirty(worker.id)
+                                                }}
+                                                className="mt-1"
+                                                disabled={isOffDuty}
+                                              />
+                                            </div>
+                                          </div>
+                                          {interShiftBreakLabel && (
+                                            <p className="text-xs text-muted-foreground">{interShiftBreakLabel}</p>
+                                          )}
+                                        </div>
+                                      )}
+
+                                      <div className="flex items-center justify-between text-sm pt-2 border-t">
+                                        <span className="text-muted-foreground">Working Hours:</span>
+                                        <span className="font-semibold">{isOffDuty ? "Off Duty" : workingHours}</span>
+                                      </div>
+
+                                      <div className="flex flex-col gap-1 text-sm text-muted-foreground pt-2 border-t">
+                                        <div className="flex items-center gap-2">
+                                          <Clock className="h-4 w-4" />
+                                          <span>
+                                            Today&apos;s Schedule:{" "}
+                                            {isOffDuty
+                                              ? "Off Duty"
+                                              : shiftSegments.length > 0
+                                              ? shiftSegments.join(" • ")
+                                              : "Not set"}
+                                          </span>
+                                        </div>
+                                        {!isOffDuty && interShiftBreakLabel && (
+                                          <span className="pl-6 text-xs text-muted-foreground">{interShiftBreakLabel}</span>
+                                        )}
+                                      </div>
+
+                                      <Button
+                                        onClick={() => handleSaveShift(worker.id)}
+                                        disabled={!hasChanges(worker.id) || isOffDuty}
+                                        className="w-full"
+                                      >
+                                        <Save className="mr-2 h-4 w-4" />
+                                        Save Changes
+                                      </Button>
                                     </div>
                                   </div>
-                                  {interShiftBreakLabel && (
-                                    <p className="text-xs text-muted-foreground">{interShiftBreakLabel}</p>
-                                  )}
-                                </div>
-                              )}
-
-                              <div className="flex items-center justify-between text-sm pt-2 border-t">
-                                <span className="text-muted-foreground">Working Hours:</span>
-                                <span className="font-semibold">{isOffDuty ? "Off Duty" : workingHours}</span>
-                              </div>
-
-                              <div className="flex flex-col gap-1 text-sm text-muted-foreground pt-2 border-t">
-                                <div className="flex items-center gap-2">
-                                  <Clock className="h-4 w-4" />
-                                  <span>
-                                    Today&apos;s Schedule:{" "}
-                                    {isOffDuty
-                                      ? "Off Duty"
-                                      : shiftSegments.length > 0
-                                      ? shiftSegments.join(" • ")
-                                      : "Not set"}
-                                  </span>
-                                </div>
-                                {!isOffDuty && interShiftBreakLabel && (
-                                  <span className="pl-6 text-xs text-muted-foreground">{interShiftBreakLabel}</span>
-                                )}
-                              </div>
-
-                              <Button
-                                onClick={() => handleSaveShift(worker.id)}
-                                disabled={!hasChanges(worker.id) || isOffDuty}
-                                className="w-full"
-                              >
-                                <Save className="mr-2 h-4 w-4" />
-                                Save Changes
-                              </Button>
-                            </div>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    )
-                  })}
-                </div>
+                                </CardContent>
+                              </Card>
+                            )
+                          })}
+                        </div>
+                      </section>
+                    ))}
+                  </div>
+                ) : (
+                  <Card className="border-dashed">
+                    <CardContent className="py-10 text-center text-sm text-muted-foreground">
+                      No staff scheduled for today.
+                    </CardContent>
+                  </Card>
+                )}
               </TabsContent>
 
               <TabsContent value="schedule">
@@ -1328,10 +1386,22 @@ function FrontOfficeDashboard() {
                       <h3 className="text-base font-semibold">Available Staff</h3>
                       <span className="text-sm text-muted-foreground">{availableWorkers.length} available</span>
                     </div>
-                    {availableWorkers.length > 0 ? (
-                      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                        {availableWorkers.map((worker) => (
-                          <WorkerStatusCard key={worker.id} worker={worker} />
+                    {availableSections.length > 0 ? (
+                      <div className="space-y-5">
+                        {availableSections.map(({ role, label, members }) => (
+                          <div key={role} className="space-y-3">
+                            <div className="flex items-center justify-between">
+                              <h4 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                                {label}
+                              </h4>
+                              <span className="text-xs text-muted-foreground">{members.length} available</span>
+                            </div>
+                            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                              {members.map((worker) => (
+                                <WorkerStatusCard key={worker.id} worker={worker} />
+                              ))}
+                            </div>
+                          </div>
                         ))}
                       </div>
                     ) : (
@@ -1346,14 +1416,26 @@ function FrontOfficeDashboard() {
                       <h3 className="text-base font-semibold">Busy Staff</h3>
                       <span className="text-sm text-muted-foreground">{busyWorkers.length} working</span>
                     </div>
-                    {busyWorkers.length > 0 ? (
-                      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                        {busyWorkers.map((worker) => (
-                          <WorkerStatusCard
-                            key={worker.id}
-                            worker={worker}
-                            currentTask={getWorkerCurrentTask(worker.id)}
-                          />
+                    {busySections.length > 0 ? (
+                      <div className="space-y-5">
+                        {busySections.map(({ role, label, members }) => (
+                          <div key={role} className="space-y-3">
+                            <div className="flex items-center justify-between">
+                              <h4 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                                {label}
+                              </h4>
+                              <span className="text-xs text-muted-foreground">{members.length} working</span>
+                            </div>
+                            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                              {members.map((worker) => (
+                                <WorkerStatusCard
+                                  key={worker.id}
+                                  worker={worker}
+                                  currentTask={getWorkerCurrentTask(worker.id)}
+                                />
+                              ))}
+                            </div>
+                          </div>
                         ))}
                       </div>
                     ) : (

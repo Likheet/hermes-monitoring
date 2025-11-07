@@ -2,9 +2,11 @@ import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { verifyPassword } from "@/lib/auth-utils"
 import { databaseUserToApp } from "@/lib/database-types"
+import { devAccountToUser, findDevAccount } from "@/lib/dev-accounts"
 
 const SESSION_COOKIE_NAME = "session"
 const SESSION_PAYLOAD_COOKIE = "session_payload"
+const DEV_LOGIN_ENABLED = process.env.NEXT_PUBLIC_DEVTEST_LOGIN === "true"
 
 function encodeSessionPayload(payload: unknown) {
   const base64 = Buffer.from(JSON.stringify(payload), "utf-8").toString("base64")
@@ -18,6 +20,25 @@ export async function POST(request: Request) {
 
     if (!username || !password) {
       return NextResponse.json({ error: "Username and password are required" }, { status: 400 })
+    }
+
+    const cookieOptions = {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax" as const,
+      maxAge: 60 * 60 * 24 * 7,
+      path: "/",
+    }
+
+    if (DEV_LOGIN_ENABLED) {
+      const devAccount = findDevAccount(username)
+      if (devAccount && devAccount.password === password) {
+        const appUser = devAccountToUser(devAccount)
+        const response = NextResponse.json({ user: appUser })
+        response.cookies.set(SESSION_COOKIE_NAME, appUser.id, cookieOptions)
+        response.cookies.set(SESSION_PAYLOAD_COOKIE, encodeSessionPayload(appUser), cookieOptions)
+        return response
+      }
     }
 
     const supabase = await createClient()
@@ -44,15 +65,6 @@ export async function POST(request: Request) {
 
     // Create response with user data
     const response = NextResponse.json({ user: appUser })
-
-    // Set session cookie (httpOnly for security)
-    const cookieOptions = {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      maxAge: 60 * 60 * 24 * 7, // 7 days
-      path: "/",
-    } as const
 
     response.cookies.set(SESSION_COOKIE_NAME, user.id, cookieOptions)
     response.cookies.set(SESSION_PAYLOAD_COOKIE, encodeSessionPayload(appUser), cookieOptions)

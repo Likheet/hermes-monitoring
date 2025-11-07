@@ -4,12 +4,40 @@ import type React from "react"
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
+import {
+  DEV_ACCOUNTS,
+  DEV_LOGIN_GROUP_ORDER,
+  type DevAccount,
+  type DevLoginGroup,
+} from "@/lib/dev-accounts"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { AlertCircle } from "lucide-react"
+const groupedDevAccounts = groupDevAccounts(DEV_ACCOUNTS)
+
+function groupDevAccounts(accounts: DevAccount[]) {
+  const grouped = accounts.reduce((acc, account) => {
+    const current = acc.get(account.group) ?? []
+    current.push(account)
+    acc.set(account.group, current)
+    return acc
+  }, new Map<DevLoginGroup, DevAccount[]>())
+
+  return Array.from(grouped.entries())
+    .map(([group, items]) => ({
+      group,
+      accounts: items.sort((a, b) => a.displayName.localeCompare(b.displayName)),
+      order: (() => {
+        const index = DEV_LOGIN_GROUP_ORDER.indexOf(group)
+        return index === -1 ? DEV_LOGIN_GROUP_ORDER.length : index
+      })(),
+    }))
+    .sort((a, b) => a.order - b.order)
+    .map(({ order, ...rest }) => rest)
+}
 
 export default function LoginPage() {
   const [username, setUsername] = useState("")
@@ -19,20 +47,6 @@ export default function LoginPage() {
   const { login } = useAuth()
   const router = useRouter()
   const enableDevLogin = process.env.NEXT_PUBLIC_DEVTEST_LOGIN === "true"
-
-  const devAccounts = [
-    { label: "Admin", username: "admin", password: "admin123", redirect: "/admin" },
-    { label: "Deshik (Front Office)", username: "Deshik", password: "front123", redirect: "/front-office" },
-    { label: "HK Supervisor", username: "hk-super", password: "super123", redirect: "/supervisor" },
-    { label: "HK Worker", username: "hk-worker", password: "worker123", redirect: "/worker" },
-    { label: "Maintenance Worker", username: "maint-worker", password: "worker123", redirect: "/maintenance" },
-    { label: "Kiran", username: "Kiran", password: "kiran123", redirect: "/worker" },
-    { label: "Udit", username: "Udit", password: "udit234", redirect: "/worker" },
-    { label: "Naveen", username: "Naveen", password: "naveen987", redirect: "/worker" },
-    { label: "Sudeep", username: "Sudeep", password: "123sudeep", redirect: "/worker" },
-    { label: "Jayalaxmi", username: "Jayalaxmi", password: "123jyl", redirect: "/worker" },
-    { label: "Kumar", username: "Kumar", password: "345kumar", redirect: "/worker" },
-  ]
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -77,7 +91,7 @@ export default function LoginPage() {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-muted/30 p-4">
-      <Card className="w-full max-w-md">
+      <Card className="w-full max-w-3xl">
         <CardHeader>
           <CardTitle className="text-2xl">Resort Task Manager</CardTitle>
           <CardDescription>Sign in to your account</CardDescription>
@@ -122,41 +136,47 @@ export default function LoginPage() {
             </Button>
 
             {enableDevLogin && (
-              <div className="space-y-3 rounded-md border border-dashed border-muted-foreground/40 p-3 text-sm">
-                <p className="font-semibold text-muted-foreground">Dev Test Quick Login</p>
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                  {devAccounts.map((account) => (
-                    <Button
-                      key={account.username}
-                      type="button"
-                      variant="secondary"
-                      disabled={isLoading}
-                      onClick={() => handleQuickLogin(account.username, account.password, account.redirect)}
-                    >
-                      {account.label}
-                    </Button>
+              <div className="space-y-4 rounded-lg border border-muted bg-muted/30 p-4">
+                <div className="flex items-center justify-between pb-2">
+                  <div>
+                    <p className="text-sm font-semibold">Quick Login</p>
+                    <p className="text-xs text-muted-foreground">Tap any card to sign in</p>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  {groupedDevAccounts.map(({ group, accounts }) => (
+                    <div key={group} className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-semibold uppercase tracking-wide text-foreground">
+                          {group}
+                        </span>
+                        <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+                          {accounts.length}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+                        {accounts.map((account) => (
+                          <Button
+                            key={account.username}
+                            type="button"
+                            variant="outline"
+                            disabled={isLoading}
+                            onClick={() => handleQuickLogin(account.username, account.password, account.redirect)}
+                            className="h-auto items-start justify-start gap-1 rounded-md border bg-card p-3 text-left transition-all hover:bg-accent hover:text-accent-foreground"
+                          >
+                            <div className="flex w-full flex-col gap-1">
+                              <span className="text-sm font-semibold leading-tight">{account.displayName}</span>
+                              <span className="text-xs text-muted-foreground">@{account.username}</span>
+                            </div>
+                          </Button>
+                        ))}
+                      </div>
+                    </div>
                   ))}
                 </div>
-                <p className="text-xs text-muted-foreground">Disable by unsetting NEXT_PUBLIC_DEVTEST_LOGIN.</p>
               </div>
             )}
-
-            <div className="mt-4 rounded-md bg-muted p-3 text-sm text-muted-foreground">
-              <p className="font-semibold mb-2">Test Accounts:</p>
-              <ul className="space-y-1 text-xs">
-                <li>Admin: admin / admin123</li>
-                <li>Deshik (Front Office): Deshik / front123</li>
-                <li>HK Supervisor: hk-super / super123</li>
-                <li>HK Worker: hk-worker / worker123</li>
-                <li>Maintenance Worker: maint-worker / worker123</li>
-                <li>Kiran: Kiran / kiran123</li>
-                <li>Udit: Udit / udit234</li>
-                <li>Naveen: Naveen / naveen987</li>
-                <li>Sudeep: Sudeep / 123sudeep</li>
-                <li>Jayalaxmi: Jayalaxmi / 123jyl</li>
-                <li>Kumar: Kumar / 345kumar</li>
-              </ul>
-            </div>
           </form>
         </CardContent>
       </Card>

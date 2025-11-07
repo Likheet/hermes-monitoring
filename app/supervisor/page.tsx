@@ -1,11 +1,11 @@
 "use client"
 
-import { useState, useEffect, useMemo } from "react"
+import { useState, useEffect, useMemo, useRef } from "react"
+import type { KeyboardEvent } from "react"
 import { ProtectedRoute } from "@/components/protected-route"
 import { useAuth } from "@/lib/auth-context"
 import { useTasks } from "@/lib/task-context"
 import { EscalationBadge } from "@/components/escalation/escalation-badge"
-import { EscalationNotification } from "@/components/escalation/escalation-notification"
 import { WorkerProfileDialog } from "@/components/worker-profile-dialog"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -23,12 +23,17 @@ import { formatDistanceToNow } from "@/lib/date-utils"
 import { SupervisorBottomNav } from "@/components/supervisor/supervisor-bottom-nav"
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+
+const getEscalationStorageKey = (userId: string) => `supervisor-escalations-${userId}`
 
 function SupervisorDashboard() {
   const { user, logout } = useAuth()
@@ -46,6 +51,41 @@ function SupervisorDashboard() {
   const [isProfileDialogOpen, setIsProfileDialogOpen] = useState(false)
   const [isNotificationDialogOpen, setIsNotificationDialogOpen] = useState(false)
   const [recentAcknowledgedId, setRecentAcknowledgedId] = useState<string | null>(null)
+  const previousCriticalCountRef = useRef(0)
+  const [hasLoadedEscalations, setHasLoadedEscalations] = useState(false)
+
+  useEffect(() => {
+    if (!user?.id) return
+    if (typeof window === "undefined") return
+
+    setHasLoadedEscalations(false)
+    const storageKey = getEscalationStorageKey(user.id)
+    const stored = window.localStorage.getItem(storageKey)
+
+    if (!stored) {
+      setEscalations([])
+      setHasLoadedEscalations(true)
+      return
+    }
+
+    try {
+      const parsed = JSON.parse(stored) as Escalation[]
+      setEscalations(parsed)
+    } catch (error) {
+      console.error("Failed to parse stored escalations", error)
+      setEscalations([])
+    }
+
+    setHasLoadedEscalations(true)
+  }, [user?.id])
+
+  useEffect(() => {
+    if (!user?.id) return
+    if (!hasLoadedEscalations) return
+    if (typeof window === "undefined") return
+
+    window.localStorage.setItem(getEscalationStorageKey(user.id), JSON.stringify(escalations))
+  }, [escalations, hasLoadedEscalations, user?.id])
 
   const acknowledgedEscalations = useMemo(
     () => escalations.filter((esc) => Boolean(esc.acknowledged_by)),
@@ -64,6 +104,14 @@ function SupervisorDashboard() {
       ).length,
     [escalations],
   )
+
+  useEffect(() => {
+    if (unacknowledgedCriticalCount > previousCriticalCountRef.current) {
+      setIsNotificationDialogOpen(true)
+    }
+
+    previousCriticalCountRef.current = unacknowledgedCriticalCount
+  }, [unacknowledgedCriticalCount])
 
   const sortedActiveEscalations = useMemo(
     () =>
@@ -109,7 +157,9 @@ function SupervisorDashboard() {
   }, [recentAcknowledgedId])
 
   useEffect(() => {
-    const interval = setInterval(() => {
+    if (!hasLoadedEscalations) return
+
+    const evaluateEscalations = () => {
       const newEscalations: Escalation[] = []
 
       tasks.forEach((task) => {
@@ -140,10 +190,14 @@ function SupervisorDashboard() {
       if (newEscalations.length > 0) {
         setEscalations((prev) => [...prev, ...newEscalations])
       }
-    }, 30000)
+    }
+
+    evaluateEscalations()
+
+    const interval = setInterval(evaluateEscalations, 30000)
 
     return () => clearInterval(interval)
-  }, [tasks, escalations])
+  }, [tasks, escalations, hasLoadedEscalations])
 
   const handleLogout = () => {
     logout()
@@ -180,6 +234,7 @@ function SupervisorDashboard() {
   const departmentTasks = tasks.filter((task) => {
     const worker = users.find((u) => u.id === task.assigned_to_user_id)
     const taskDepartment = task.department || worker?.department
+    if (user?.id && task.assigned_to_user_id === user.id) return true
     // If supervisor has no department, show all tasks
     if (!user?.department) return true
     // Normalize department comparison (case-insensitive)
@@ -241,6 +296,31 @@ function SupervisorDashboard() {
   console.log("[v0] Supervisor dashboard - Completed tasks pending verification:", completedTasks.length)
   console.log("[v0] Supervisor dashboard - Other tasks:", otherTasks.length)
   console.log("[v0] Supervisor dashboard - Total filtered tasks:", filteredTasks.length)
+
+  const myPrimaryTasks = useMemo(() => {
+    if (!user?.id) return [] as typeof tasks
+    return tasks
+      .filter(
+        (task) =>
+          task.assigned_to_user_id === user.id &&
+          (task.status === "PENDING" || task.status === "IN_PROGRESS" || task.status === "PAUSED"),
+      )
+      .sort((a, b) => new Date(b.assigned_at?.client ?? b.assigned_at?.server ?? "").getTime() - new Date(a.assigned_at?.client ?? a.assigned_at?.server ?? "").getTime())
+  }, [tasks, user?.id])
+
+  const myMaintenanceTasks = useMemo(() => {
+    if (!user?.id) return []
+    const source = maintenanceTasks ?? []
+    return source
+      .filter(
+        (task) =>
+          task.assigned_to === user.id &&
+          (task.status === "pending" || task.status === "in_progress" || task.status === "paused"),
+      )
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+  }, [maintenanceTasks, user?.id])
+
+  const myTaskCount = myPrimaryTasks.length + myMaintenanceTasks.length
 
   const isMaintenanceSupervisor = user?.department?.toLowerCase() === "maintenance"
 
@@ -304,8 +384,6 @@ function SupervisorDashboard() {
     <div className="min-h-screen bg-muted/30 pb-20 md:pb-0">
       <WorkerProfileDialog worker={selectedWorker} open={isProfileDialogOpen} onOpenChange={setIsProfileDialogOpen} />
 
-      <EscalationNotification escalations={escalations} tasks={tasks} onAcknowledge={handleAcknowledgeEscalation} />
-
       <header className="border-b bg-background sticky top-0 z-40">
         <div className="container mx-auto flex flex-col sm:flex-row items-start sm:items-center justify-between px-3 sm:px-4 py-3 sm:py-4 gap-3 sm:gap-4">
           <div className="min-w-0 flex-1">
@@ -352,7 +430,7 @@ function SupervisorDashboard() {
                   <section>
                     <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Active Alerts</h3>
                     {sortedActiveEscalations.length === 0 ? (
-                      <p className="mt-2 text-sm text-muted-foreground">No unacknowledged escalations. You're all caught up.</p>
+                      <p className="mt-2 text-sm text-muted-foreground">No unacknowledged escalations. You&apos;re all caught up.</p>
                     ) : (
                       <div className="mt-3 space-y-3">
                         {sortedActiveEscalations.map((escalation) => {
@@ -375,9 +453,19 @@ function SupervisorDashboard() {
                               </div>
                               <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-xs text-muted-foreground">
                                 <span>Escalated {escalatedAgo}</span>
-                                <Button size="sm" onClick={() => handleAcknowledgeEscalation(escalation.id)}>
-                                  Acknowledge
-                                </Button>
+                                <div className="flex items-center gap-2">
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => setIsNotificationDialogOpen(false)}
+                                    className="bg-transparent"
+                                  >
+                                    Close
+                                  </Button>
+                                  <Button size="sm" onClick={() => handleAcknowledgeEscalation(escalation.id)}>
+                                    Mark as read
+                                  </Button>
+                                </div>
                               </div>
                             </div>
                           )
@@ -429,6 +517,13 @@ function SupervisorDashboard() {
                     )}
                   </section>
                 </div>
+                <DialogFooter className="border-t border-border pt-4">
+                  <DialogClose asChild>
+                    <Button variant="ghost" className="justify-center">
+                      Close
+                    </Button>
+                  </DialogClose>
+                </DialogFooter>
               </DialogContent>
             </Dialog>
             <Button
@@ -445,6 +540,28 @@ function SupervisorDashboard() {
       </header>
 
       <main className="container mx-auto px-3 sm:px-4 py-4 sm:py-6 space-y-4 sm:space-y-6">
+        {unacknowledgedCriticalCount > 0 && (
+          <Alert variant="destructive">
+            <AlertTitle>Critical escalations need attention</AlertTitle>
+            <AlertDescription>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <p>
+                  {unacknowledgedCriticalCount === 1
+                    ? "One task has crossed a critical threshold."
+                    : `${unacknowledgedCriticalCount} tasks have crossed critical thresholds.`}
+                </p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsNotificationDialogOpen(true)}
+                  className="border-destructive text-destructive hover:text-destructive"
+                >
+                  Review now
+                </Button>
+              </div>
+            </AlertDescription>
+          </Alert>
+        )}
         {(rejectedTasks.length > 0 || rejectedMaintenanceTasks.length > 0) && (
           <section>
             <h2 className="text-base sm:text-lg font-semibold mb-3 flex items-center gap-2">
@@ -507,6 +624,136 @@ function SupervisorDashboard() {
                   </CardContent>
                 </Card>
               ))}
+            </div>
+          </section>
+        )}
+
+        {myTaskCount > 0 && (
+          <section>
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-base sm:text-lg font-semibold">My Tasks</h2>
+              <Badge variant="outline" className="text-xs sm:text-sm">
+                {myTaskCount} active
+              </Badge>
+            </div>
+            <div className="grid gap-3 sm:gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {myPrimaryTasks.map((task) => {
+                const assignedTimestamp = task.assigned_at?.client ?? task.assigned_at?.server
+                const assignedAgo = assignedTimestamp ? formatDistanceToNow(assignedTimestamp) : null
+                const escalationLevel = getTaskEscalation(task.id)
+                const navigateToTask = () => router.push(`/worker/${task.id}`)
+                const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault()
+                    navigateToTask()
+                  }
+                }
+
+                return (
+                  <Card
+                    key={`my-primary-${task.id}`}
+                    className="border-primary/30 hover:shadow-md transition-shadow cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+                    onClick={navigateToTask}
+                    onKeyDown={handleKeyDown}
+                    role="button"
+                    tabIndex={0}
+                  >
+                    <CardHeader className="pb-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <CardTitle className="text-lg">{task.task_type}</CardTitle>
+                        <div className="flex flex-col gap-1 items-end">
+                          <Badge className={priorityColors[task.priority_level]} variant="secondary">
+                            {task.priority_level.replace(/_/g, " ")}
+                          </Badge>
+                          {escalationLevel && <EscalationBadge level={escalationLevel} />}
+                        </div>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="space-y-2 text-sm text-muted-foreground">
+                      <div className="flex items-center gap-2">
+                        <MapPin className="h-4 w-4" />
+                        <span>{task.room_number ? `Room ${task.room_number}` : "No room assigned"}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Clock className="h-4 w-4" />
+                        <span>
+                          {task.expected_duration_minutes
+                            ? `${task.expected_duration_minutes} min expected`
+                            : "Duration not set"}
+                        </span>
+                      </div>
+                      {assignedAgo && <p className="text-xs">Assigned {assignedAgo}</p>}
+                      <div className="flex items-center gap-2 pt-1">
+                        <div className={`h-2 w-2 rounded-full ${statusColors[task.status]}`} />
+                        <span className="text-xs sm:text-sm font-medium">{task.status.replace(/_/g, " ")}</span>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )
+              })}
+
+              {myMaintenanceTasks.map((task) => {
+                const assignedAgo = task.created_at ? formatDistanceToNow(task.created_at) : null
+                const statusKey = task.status.toUpperCase() as keyof typeof statusColors
+                const statusColor = statusColors[statusKey] ?? "bg-slate-400"
+                const navigateToMaintenanceTask = () => {
+                  if (task.room_number && task.task_type && task.location) {
+                    const room = encodeURIComponent(task.room_number)
+                    const taskType = encodeURIComponent(task.task_type)
+                    const location = encodeURIComponent(task.location)
+                    router.push(`/worker/maintenance/${room}/${taskType}/${location}`)
+                    return
+                  }
+
+                  if (task.room_number) {
+                    const room = encodeURIComponent(task.room_number)
+                    router.push(`/worker/maintenance/${room}`)
+                  }
+                }
+                const handleMaintenanceKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault()
+                    navigateToMaintenanceTask()
+                  }
+                }
+
+                return (
+                  <Card
+                    key={`my-maint-${task.id}`}
+                    className="border-primary/30 hover:shadow-md transition-shadow cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+                    onClick={navigateToMaintenanceTask}
+                    onKeyDown={handleMaintenanceKeyDown}
+                    role="button"
+                    tabIndex={0}
+                  >
+                    <CardHeader className="pb-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <CardTitle className="text-lg">{getMaintenanceTaskLabel(task.task_type)}</CardTitle>
+                        <Badge variant="outline" className="text-[11px] uppercase tracking-wide">
+                          Maintenance
+                        </Badge>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="space-y-2 text-sm text-muted-foreground">
+                      <div className="flex items-center gap-2">
+                        <MapPin className="h-4 w-4" />
+                        <span>{task.room_number ? `Room ${task.room_number}` : task.location}</span>
+                      </div>
+                      {task.expected_duration_minutes && (
+                        <div className="flex items-center gap-2">
+                          <Clock className="h-4 w-4" />
+                          <span>{task.expected_duration_minutes} min expected</span>
+                        </div>
+                      )}
+                      {assignedAgo && <p className="text-xs">Assigned {assignedAgo}</p>}
+                      <div className="flex items-center gap-2 pt-1">
+                        <div className={`h-2 w-2 rounded-full ${statusColor}`} />
+                        <span className="text-xs sm:text-sm font-medium">{task.status.replace(/_/g, " ")}</span>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )
+              })}
             </div>
           </section>
         )}

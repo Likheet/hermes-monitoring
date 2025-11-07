@@ -15,6 +15,15 @@ import { createDualTimestamp } from "@/lib/mock-data"
 import type { Department, Priority, PriorityLevel, Task } from "@/lib/types"
 import type { TaskCategory, TaskDefinition } from "@/lib/task-definitions"
 
+const normalizeDepartment = (department?: string | null): "housekeeping" | "maintenance" | "front_office" | null => {
+  if (!department) return null
+  const value = department.toLowerCase()
+  if (value === "housekeeping" || value === "housekeeping-dept") return "housekeeping"
+  if (value === "maintenance" || value === "maintenance-dept") return "maintenance"
+  if (value === "front_office") return "front_office"
+  return null
+}
+
 function mapPriorityToPriorityLevel(priority: Priority, category: TaskCategory): PriorityLevel {
   if (category === "GUEST_REQUEST") return "GUEST_REQUEST"
   if (category === "TIME_SENSITIVE") return "TIME_SENSITIVE"
@@ -33,14 +42,20 @@ function SupervisorCreateTaskForm() {
   const [rejectedTask, setRejectedTask] = useState<Task | null>(null)
   const hasLoadedRejectedTask = useRef(false)
 
+  const supervisorDepartment = useMemo(() => normalizeDepartment(user?.department), [user?.department])
+
   const workers = useMemo(
     () =>
       users.filter((teamMember) => {
-        if (teamMember.role !== "worker") return false
-        if (!user?.department) return true
-        return teamMember.department?.toLowerCase() === user.department.toLowerCase()
+        if (teamMember.role !== "worker" && teamMember.role !== "supervisor") return false
+        if (!supervisorDepartment) return true
+        if (supervisorDepartment === "housekeeping") return true
+
+        const memberDepartment = normalizeDepartment(teamMember.department)
+        if (!memberDepartment) return false
+        return memberDepartment === supervisorDepartment
       }),
-    [users, user?.department],
+    [users, supervisorDepartment],
   )
 
   useEffect(() => {

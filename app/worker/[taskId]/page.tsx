@@ -61,6 +61,7 @@ function TaskDetail({ params }: TaskDetailProps) {
     swapTasks,
     updateTask,
     cacheTaskPhotos,
+    loadTaskPhotos,
   } = useTasks()
   const { toast } = useToast()
 
@@ -277,12 +278,10 @@ function TaskDetail({ params }: TaskDetailProps) {
       return
     }
 
-    // Skip if we already have persisted photos from server
-    const hasPersistedPhotos = hasCategorizedPhotoEntries(task.categorized_photos)
-    const isNewPageLoad = lastHydratedTaskIdRef.current !== task.id
+    const hasLocalPhotos = hasCategorizedPhotoEntries(categorizedPhotos)
+    const hasTaskPhotos = hasCategorizedPhotoEntries(task.categorized_photos)
 
-    // Always fetch on new page load to ensure fresh data
-    if (!isNewPageLoad && hasPersistedPhotos) {
+    if (hasLocalPhotos || hasTaskPhotos) {
       return
     }
 
@@ -290,41 +289,27 @@ function TaskDetail({ params }: TaskDetailProps) {
 
     const hydrateTask = async () => {
       try {
-        const response = await fetch(`/api/tasks/${task.id}`, {
-          method: "GET",
-          cache: "no-store",
-          credentials: "include",
-          headers: {
-            'Cache-Control': 'no-cache, no-store, must-revalidate',
-            'Pragma': 'no-cache',
-          },
-        })
-
-        if (!response.ok) {
+        const response = await loadTaskPhotos(task.id)
+        if (cancelled || !response) {
           return
         }
 
-        const payload = (await response.json()) as { task?: Task }
-        if (cancelled || !payload?.task) {
-          return
-        }
-
-        const incoming = payload.task.categorized_photos ?? null
-        const incomingVersion = payload.task.server_updated_at ?? null
+        const incoming = response.photos ?? null
+        const incomingVersion = response.serverUpdatedAt ?? null
         const incomingHas = hasCategorizedPhotoEntries(incoming)
         const incomingHash = computePhotosHash(incoming)
+        const isNewPageLoad = lastHydratedTaskIdRef.current !== task.id
 
-        // On page load, always use fresh server data
         if (isNewPageLoad) {
           applyLocalCategorizedPhotos(incoming)
           lastTaskVersionRef.current = incomingVersion ?? lastTaskVersionRef.current
-        } else {
-          const prevHas = hasCategorizedPhotoEntries(categorizedPhotos)
-          // Otherwise only update if server has photos or we have nothing locally
-          if (incomingHas || !prevHas || incomingHash === lastSavedPhotosHashRef.current) {
-            applyLocalCategorizedPhotos(incoming)
-            lastTaskVersionRef.current = incomingVersion ?? lastTaskVersionRef.current
-          }
+          return
+        }
+
+        const prevHas = hasCategorizedPhotoEntries(categorizedPhotos)
+        if (incomingHas || !prevHas || incomingHash === lastSavedPhotosHashRef.current) {
+          applyLocalCategorizedPhotos(incoming)
+          lastTaskVersionRef.current = incomingVersion ?? lastTaskVersionRef.current
         }
       } catch (error) {
         console.error("[worker] Failed to hydrate categorized photos", error)
@@ -340,6 +325,7 @@ function TaskDetail({ params }: TaskDetailProps) {
     applyLocalCategorizedPhotos,
     categorizedPhotos,
     computePhotosHash,
+    loadTaskPhotos,
     showCategorizedPhotoModal,
     task,
     task?.id,

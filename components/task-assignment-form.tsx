@@ -62,10 +62,46 @@ import {
 } from "@/components/ui/alert-dialog"
 import { cn } from "@/lib/utils"
 
-const DEPARTMENT_ORDER: Department[] = ["housekeeping", "maintenance", "front_office"]
+const DEPARTMENT_ORDER = ["housekeeping", "maintenance", "front_office"] as const
+type DisplayDepartment = (typeof DEPARTMENT_ORDER)[number]
 
 // Departments that should not be available for task assignment
-const EXCLUDED_TASK_ASSIGNMENT_DEPARTMENTS: Department[] = ["admin", "housekeeping-dept", "maintenance-dept"]
+const EXCLUDED_TASK_ASSIGNMENT_DEPARTMENTS: Department[] = ["admin"]
+
+const displayDepartmentLabels: Record<DisplayDepartment, string> = {
+  housekeeping: "Housekeeping",
+  maintenance: "Maintenance",
+  front_office: "Front Office",
+}
+
+const departmentLabels: Record<Department, string> = {
+  housekeeping: "Housekeeping",
+  maintenance: "Maintenance",
+  front_office: "Front Office",
+  admin: "Admin",
+  "housekeeping-dept": "Housekeeping Department",
+  "maintenance-dept": "Maintenance Department",
+}
+
+const normalizeDepartment = (department: Department): DisplayDepartment | null => {
+  switch (department) {
+    case "housekeeping":
+    case "housekeeping-dept":
+      return "housekeeping"
+    case "maintenance":
+    case "maintenance-dept":
+      return "maintenance"
+    case "front_office":
+      return "front_office"
+    default:
+      return null
+  }
+}
+
+const getDepartmentRank = (department: Department) => {
+  const normalized = normalizeDepartment(department)
+  return normalized ? DEPARTMENT_ORDER.indexOf(normalized) : DEPARTMENT_ORDER.length
+}
 
 // Helper function to check if a worker is currently busy with an active task
 const isWorkerBusy = (workerId: string, currentTasks?: Task[]): boolean => {
@@ -263,13 +299,10 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers, initialD
 
   // Controlled Select state to prevent DOM errors
   const [selectOpen, setSelectOpen] = useState(false)
-  const [frozenStaff, setFrozenStaff] = useState<Record<Department, WorkerWithAvailability[]>>({
+  const [frozenStaff, setFrozenStaff] = useState<Record<DisplayDepartment, WorkerWithAvailability[]>>({
     housekeeping: [],
     maintenance: [],
     front_office: [],
-    admin: [],
-    "housekeeping-dept": [],
-    "maintenance-dept": [],
   })
 
   const definitionIsRecurring = Boolean(task.isRecurring)
@@ -289,15 +322,6 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers, initialD
       : null
 
   const locationRef = useRef<HTMLDivElement>(null)
-
-  const departmentLabels: Record<Department, string> = {
-    housekeeping: "Housekeeping",
-    maintenance: "Maintenance",
-    front_office: "Front Office",
-    admin: "Admin",
-    "housekeeping-dept": "Housekeeping Department",
-    "maintenance-dept": "Maintenance Department",
-  }
 
   const isOtherTask = task.id === "other-custom-task"
 
@@ -345,22 +369,27 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers, initialD
       const statusCompare = orderByStatus(a.availability.status) - orderByStatus(b.availability.status)
       if (statusCompare !== 0) return statusCompare
 
-      const deptCompare =
-        DEPARTMENT_ORDER.indexOf(a.department as Department) - DEPARTMENT_ORDER.indexOf(b.department as Department)
+      const deptCompare = getDepartmentRank(a.department as Department) - getDepartmentRank(b.department as Department)
       if (deptCompare !== 0) return deptCompare
 
       return a.name.localeCompare(b.name)
     })
   }, [staffIncludingCurrent])
 
-  const staffGroupedByDepartment = useMemo<Record<Department, WorkerWithAvailability[]>>(() => {
-    return DEPARTMENT_ORDER.reduce(
-      (acc, dept) => {
-        acc[dept] = sortedStaff.filter((worker) => worker.department === dept)
-        return acc
-      },
-      { housekeeping: [], maintenance: [], front_office: [], admin: [], "housekeeping-dept": [], "maintenance-dept": [] } as Record<Department, WorkerWithAvailability[]>,
-    )
+  const staffGroupedByDepartment = useMemo<Record<DisplayDepartment, WorkerWithAvailability[]>>(() => {
+    const groups: Record<DisplayDepartment, WorkerWithAvailability[]> = {
+      housekeeping: [],
+      maintenance: [],
+      front_office: [],
+    }
+
+    sortedStaff.forEach((worker) => {
+      const displayDepartment = normalizeDepartment(worker.department as Department)
+      if (!displayDepartment) return
+      groups[displayDepartment].push(worker)
+    })
+
+    return groups
   }, [sortedStaff])
 
   // Freeze staff list while Select is open to prevent DOM reconciliation errors
@@ -384,13 +413,20 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers, initialD
   )
 
   const selectedWorkerLabel = selectedWorkerEntry
-    ? `${selectedWorkerEntry.name} (${departmentLabels[selectedWorkerEntry.department as Department]}) • ${
-        selectedWorkerEntry.availability.status === "AVAILABLE"
-          ? "On Duty"
-          : selectedWorkerEntry.availability.status === "SHIFT_BREAK"
-          ? "Shift Break"
-          : "Off Duty"
-      }`
+    ? (() => {
+        const normalizedDept = normalizeDepartment(selectedWorkerEntry.department as Department)
+        const departmentLabel = normalizedDept
+          ? displayDepartmentLabels[normalizedDept]
+          : departmentLabels[selectedWorkerEntry.department as Department]
+        const statusLabel =
+          selectedWorkerEntry.availability.status === "AVAILABLE"
+            ? "On Duty"
+            : selectedWorkerEntry.availability.status === "SHIFT_BREAK"
+            ? "Shift Break"
+            : "Off Duty"
+        const supervisorTag = selectedWorkerEntry.role === "supervisor" ? " • Supervisor" : ""
+        return `${selectedWorkerEntry.name} (${departmentLabel}${supervisorTag}) • ${statusLabel}`
+      })()
     : undefined
 
   const clearAssignedToError = () =>
@@ -406,7 +442,9 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers, initialD
     if (assignedTo) return
 
     const onDutyHousekeeping = sortedStaff.find(
-      (worker) => worker.department === "housekeeping" && worker.availability.status === "AVAILABLE",
+      (worker) =>
+        normalizeDepartment(worker.department as Department) === "housekeeping" &&
+        worker.availability.status === "AVAILABLE",
     )
     if (onDutyHousekeeping) {
       setAssignedTo(onDutyHousekeeping.id)
@@ -431,7 +469,7 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers, initialD
       return
     }
 
-    if (worker.department !== selectedDepartment) {
+  if (normalizeDepartment(worker.department as Department) !== normalizeDepartment(selectedDepartment)) {
       setCrossDeptCandidate(worker)
       return
     }
@@ -1112,10 +1150,15 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers, initialD
 
                   return (
                     <SelectGroup key={dept}>
-                      <SelectLabel>{departmentLabels[dept]}</SelectLabel>
+                      <SelectLabel>{displayDepartmentLabels[dept]}</SelectLabel>
                       {workersInDept.map((worker) => {
                         const isOnDuty = worker.availability.status === "AVAILABLE"
                         const isBusy = isWorkerBusy(worker.id, currentTasks)
+                        const normalizedDept = normalizeDepartment(worker.department as Department)
+                        const departmentLabel = normalizedDept
+                          ? displayDepartmentLabels[normalizedDept]
+                          : departmentLabels[worker.department as Department]
+                        const isSupervisor = worker.role === "supervisor"
                         return (
                           <SelectItem
                             key={worker.id}
@@ -1126,9 +1169,17 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers, initialD
                             <div className="flex w-full items-center justify-between gap-2">
                               <div className="flex flex-col text-left">
                                 <span className="font-medium">{worker.name}</span>
-                                <span className="text-xs text-muted-foreground">
-                                  {departmentLabels[worker.department as Department]}
-                                </span>
+                                <div className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
+                                  <span>{departmentLabel}</span>
+                                  {isSupervisor && (
+                                    <Badge
+                                      variant="outline"
+                                      className="px-1.5 py-0 text-[10px] uppercase tracking-wide border-primary/30 bg-primary/5 text-primary"
+                                    >
+                                      Supervisor
+                                    </Badge>
+                                  )}
+                                </div>
                               </div>
                               <div className="flex items-center gap-1">
                                 {isBusy && (

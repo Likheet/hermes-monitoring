@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/client"
 import type { SupabaseClient } from "@supabase/supabase-js"
-import type { Task, User, ShiftSchedule } from "./types"
+import type { Task, User, ShiftSchedule, CategorizedPhotos } from "./types"
 import {
   AREA_LABELS,
   MAINTENANCE_AREAS,
@@ -67,6 +67,8 @@ type DatabaseTaskSummaryBase = Pick<
 type DatabaseTaskSummary = DatabaseTaskSummaryBase & {
   categorized_photos?: DatabaseTask["categorized_photos"]
 }
+
+type DatabaseTaskPhotosRow = Pick<DatabaseTask, "id" | "categorized_photos" | "updated_at">
 
 type CacheKey =
   | "tasks"
@@ -136,6 +138,23 @@ function logSupabaseFailure(scope: CacheKey | "bootstrap", error: unknown) {
 export interface LoadOptions {
   forceRefresh?: boolean
   includePhotos?: boolean
+}
+
+function parseCategorizedPhotosJson(value: Json): CategorizedPhotos | null {
+  if (!value) {
+    return null
+  }
+
+  try {
+    const parsed = typeof value === "string" ? JSON.parse(value) : value
+    if (parsed && typeof parsed === "object") {
+      return parsed as CategorizedPhotos
+    }
+  } catch (error) {
+    console.warn("[supabase] categorized photo payload could not be parsed", error)
+  }
+
+  return null
 }
 
 function isValidUuid(value: unknown): value is string {
@@ -432,6 +451,46 @@ export async function loadTasksFromSupabase(
     }
 
     throw error instanceof Error ? error : new Error(String(error))
+  }
+}
+
+export async function loadTaskCategorizedPhotos(
+  taskId: string,
+  supabaseOverride?: SupabaseClient,
+): Promise<{ photos: CategorizedPhotos | null; serverUpdatedAt: string | null } | null> {
+  if (!isValidUuid(taskId)) {
+    return null
+  }
+
+  const supabase = supabaseOverride ?? createClient()
+
+  try {
+    const { data, error } = await supabase
+      .from("tasks")
+      .select("id,categorized_photos,updated_at")
+      .eq("id", taskId)
+      .single()
+
+    if (error) {
+      console.warn("[supabase] Failed to load categorized photos", error)
+      return null
+    }
+
+    if (!data) {
+      return null
+    }
+
+    const row = data as DatabaseTaskPhotosRow
+    const photos = parseCategorizedPhotosJson(row.categorized_photos ?? null)
+    const updatedAt = typeof row.updated_at === "string" ? row.updated_at : null
+
+    return {
+      photos,
+      serverUpdatedAt: updatedAt,
+    }
+  } catch (error) {
+    console.warn("[supabase] Unexpected error loading categorized photos", error)
+    return null
   }
 }
 

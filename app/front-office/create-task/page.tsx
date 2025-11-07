@@ -33,7 +33,7 @@ function CreateTaskForm() {
   const [rejectedTask, setRejectedTask] = useState<Task | null>(null)
   const hasLoadedRejectedTask = useRef(false)
 
-  const workers = users.filter((u) => u.role === "worker" || u.role === "front_office")
+  const workers = users.filter((u) => u.role === "worker" || u.role === "supervisor" || u.role === "front_office")
 
   useEffect(() => {
     if (hasLoadedRejectedTask.current) return

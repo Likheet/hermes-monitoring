@@ -24,7 +24,22 @@ const DEFAULT_ROLE_DEPARTMENT: Record<NonAdminRole, Department> = {
   front_office: "front_office",
 }
 
-function AddAccountForm(): JSX.Element {
+const ROLE_DEPARTMENT_OPTIONS: Record<NonAdminRole, Department[]> = {
+  worker: ["housekeeping", "maintenance"],
+  supervisor: ["housekeeping", "maintenance"],
+  front_office: ["front_office"],
+}
+
+const DEPARTMENT_LABELS: Record<Department, string> = {
+  housekeeping: "Housekeeping",
+  maintenance: "Maintenance",
+  front_office: "Front Office",
+  admin: "Admin",
+  "housekeeping-dept": "Housekeeping Dept",
+  "maintenance-dept": "Maintenance Dept",
+}
+
+function AddAccountForm() {
   const router = useRouter()
   const { toast } = useToast()
   const { addWorker } = useTasks()
@@ -33,7 +48,7 @@ function AddAccountForm(): JSX.Element {
     username: "",
     password: "",
     role: "worker" as NonAdminRole,
-    department: "housekeeping" as Department,
+    department: DEFAULT_ROLE_DEPARTMENT.worker,
   })
   const [isSubmitting, setIsSubmitting] = useState(false)
 
@@ -67,7 +82,7 @@ function AddAccountForm(): JSX.Element {
         username,
         password,
         role: formData.role,
-        department: formData.role === "worker" ? formData.department : undefined,
+        department: formData.department,
       })
 
       if (result.success) {
@@ -150,17 +165,13 @@ function AddAccountForm(): JSX.Element {
                   onValueChange={(value) =>
                     setFormData((prev) => {
                       const nextRole = value as NonAdminRole
-                      const isWorker = nextRole === "worker"
-                      const nextDepartment = isWorker
-                        ? (prev.department === "housekeeping" || prev.department === "maintenance"
-                            ? prev.department
-                            : "housekeeping")
-                        : DEFAULT_ROLE_DEPARTMENT[nextRole]
+                      const options = ROLE_DEPARTMENT_OPTIONS[nextRole]
+                      const isDepartmentSupported = options.includes(prev.department)
 
                       return {
                         ...prev,
                         role: nextRole,
-                        department: nextDepartment,
+                        department: isDepartmentSupported ? prev.department : options[0],
                       }
                     })
                   }
@@ -176,9 +187,11 @@ function AddAccountForm(): JSX.Element {
                 </Select>
               </div>
 
-              {formData.role === "worker" && (
+              {(formData.role === "worker" || formData.role === "supervisor") && (
                 <div className="space-y-2">
-                  <Label htmlFor="department">Worker department</Label>
+                  <Label htmlFor="department">
+                    {formData.role === "worker" ? "Worker" : "Supervisor"} department
+                  </Label>
                   <Select
                     value={formData.department}
                     onValueChange={(value) =>
@@ -189,12 +202,15 @@ function AddAccountForm(): JSX.Element {
                       <SelectValue placeholder="Select department" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="housekeeping">Housekeeping</SelectItem>
-                      <SelectItem value="maintenance">Maintenance</SelectItem>
+                      {ROLE_DEPARTMENT_OPTIONS[formData.role].map((dept) => (
+                        <SelectItem key={dept} value={dept}>
+                          {DEPARTMENT_LABELS[dept] ?? dept}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-muted-foreground">
-                    This decides which task pool the worker joins by default.
+                    This decides which task pool the {formData.role} oversees by default.
                   </p>
                 </div>
               )}
@@ -226,7 +242,7 @@ function AddAccountForm(): JSX.Element {
   )
 }
 
-export default function AddWorkerPage(): JSX.Element {
+export default function AddWorkerPage() {
   return (
     <ProtectedRoute allowedRoles={["admin"]}>
       <AddAccountForm />

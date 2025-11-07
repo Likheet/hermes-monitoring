@@ -24,6 +24,7 @@ import {
   saveShiftScheduleToSupabase,
   deleteShiftScheduleFromSupabase,
   type LoadOptions,
+  loadTaskCategorizedPhotos,
 } from "./supabase-task-operations"
 
 const DEFAULT_MAINTENANCE_DURATION: Record<MaintenanceTaskType, number> = {
@@ -45,6 +46,8 @@ const MAX_CACHED_TASKS = 100
 const LIST_CACHE_TTL_MS = 30_000 // Reduced from 3 minutes to 30 seconds
 const REALTIME_REFRESH_DEBOUNCE_MS = 250
 const REALTIME_REFRESH_COOLDOWN_MS = 4_000
+
+const photosSignature = (value: CategorizedPhotos | null) => JSON.stringify(value ?? null)
 
 function loadFromStorage<T>(key: string): T | null {
   if (typeof window === "undefined") return null
@@ -152,6 +155,10 @@ interface TaskContextType {
   usersLoadError: boolean
   updateTask: (taskId: string, updates: Partial<Task>) => Promise<boolean>
   cacheTaskPhotos: (taskId: string, photos: CategorizedPhotos | null) => void
+  loadTaskPhotos: (
+    taskId: string,
+    options?: { forceRefresh?: boolean },
+  ) => Promise<{ photos: CategorizedPhotos | null; serverUpdatedAt: string | null } | null>
   addAuditLog: (taskId: string, entry: Omit<AuditLogEntry, "timestamp">) => void
   startTask: (taskId: string, userId: string) => Promise<{ success: boolean; error?: string }>
   pauseTask: (
@@ -259,35 +266,68 @@ export function TaskProvider({
   )
   const categorizedPhotoCacheRef = useRef(new Map<string, CategorizedPhotos | null>())
 
+  /**
+   * Merges incoming tasks with previous tasks while preserving cached photos.
+   * Uses version tracking to prevent race conditions where newer cached photos
+   * could be overwritten by stale server data.
+   *
+   * @param previous - Previously loaded tasks
+   * @param incoming - Newly fetched tasks from server
+   * @returns Merged task array with photo cache preserved where appropriate
+   */
   const mergeTasksWithCache = useCallback(
     (previous: Task[], incoming: Task[]): Task[] => {
       const seen = new Set<string>()
       const result: Task[] = []
 
+      /**
+       * Resolves which photos to use for a task: cached or incoming.
+       * Only overwrites cache when server version is newer than cached version.
+       */
       const resolvePhotos = (task: Task): Task => {
         const cached = categorizedPhotoCacheRef.current.get(task.id)
+        const cachedVersion = lastRealtimeVersionRef.current.get(task.id)
         const incomingPhotos = task.categorized_photos ?? null
+        const incomingVersion = task.server_updated_at ?? null
+        const incomingHasPhotos = hasCategorizedPhotoEntries(incomingPhotos)
 
+        // Cache exists - decide whether to keep or overwrite
         if (typeof cached !== "undefined") {
-          if (cached === null && hasCategorizedPhotoEntries(incomingPhotos)) {
-            categorizedPhotoCacheRef.current.set(task.id, incomingPhotos)
-            return { ...task, categorized_photos: incomingPhotos }
+          if (incomingHasPhotos) {
+            // Server has photos - check if they're newer than cache
+            const shouldUpdateCache =
+              !cachedVersion || // No cached version tracked
+              !incomingVersion || // No incoming version available (fallback to update)
+              incomingVersion > cachedVersion // Server version is newer
+
+            if (shouldUpdateCache) {
+              console.log(`[cache] Updating cached photos for task ${task.id} (server version: ${incomingVersion}, cached: ${cachedVersion})`)
+              categorizedPhotoCacheRef.current.set(task.id, incomingPhotos)
+              if (incomingVersion) {
+                lastRealtimeVersionRef.current.set(task.id, incomingVersion)
+              }
+              return { ...task, categorized_photos: incomingPhotos }
+            } else {
+              // Cache is newer or same version - preserve it
+              console.log(`[cache] Preserving cached photos for task ${task.id} (server version: ${incomingVersion} <= cached: ${cachedVersion})`)
+              return { ...task, categorized_photos: cached }
+            }
           }
 
-          if (cached !== null && !hasCategorizedPhotoEntries(incomingPhotos)) {
-            return { ...task, categorized_photos: cached }
-          }
-
+          // Server has no photos - keep cache
           return { ...task, categorized_photos: cached ?? null }
         }
 
-        if (hasCategorizedPhotoEntries(incomingPhotos)) {
+        // No cache exists - use incoming if available
+        if (incomingHasPhotos) {
           categorizedPhotoCacheRef.current.set(task.id, incomingPhotos)
-        } else {
-          categorizedPhotoCacheRef.current.set(task.id, incomingPhotos ?? null)
+          if (incomingVersion) {
+            lastRealtimeVersionRef.current.set(task.id, incomingVersion)
+          }
+          return { ...task, categorized_photos: incomingPhotos }
         }
 
-        return { ...task, categorized_photos: incomingPhotos ?? null }
+        return { ...task, categorized_photos: null }
       }
 
       for (const task of incoming) {
@@ -307,6 +347,16 @@ export function TaskProvider({
     [],
   )
 
+  /**
+   * Manually caches photos for a specific task.
+   * Updates both in-memory cache and task state, then persists to localStorage.
+   *
+   * NOTE: This does NOT update version tracking. For version-aware caching,
+   * use loadTaskPhotos() which tracks server versions.
+   *
+   * @param taskId - The ID of the task to cache photos for
+   * @param photos - The categorized photos to cache (null to clear)
+   */
   const cacheTaskPhotos = useCallback(
     (taskId: string, photos: CategorizedPhotos | null) => {
       categorizedPhotoCacheRef.current.set(taskId, photos ?? null)
@@ -315,6 +365,121 @@ export function TaskProvider({
         persistToStorage(STORAGE_KEYS.tasks, next)
         return next
       })
+    },
+    [],
+  )
+
+  /**
+   * Loads photos for a specific task, with caching and version tracking.
+   *
+   * Behavior:
+   * - Returns cached photos if available (unless forceRefresh is true)
+   * - Fetches from server if not cached or force refreshing
+   * - Tracks server version to prevent race conditions
+   * - Updates task state only if photos have changed
+   * - Gracefully falls back to cache on fetch failure
+   *
+   * @param taskId - The ID of the task to load photos for
+   * @param options - Optional settings
+   * @param options.forceRefresh - If true, bypasses cache and fetches from server
+   * @returns Object with photos and server version, or null if task not found
+   */
+  const loadTaskPhotos = useCallback(
+    async (
+      taskId: string,
+      options?: { forceRefresh?: boolean },
+    ): Promise<{ photos: CategorizedPhotos | null; serverUpdatedAt: string | null } | null> => {
+      if (!taskId) {
+        return null
+      }
+
+      const forceRefresh = options?.forceRefresh ?? false
+      const cached = categorizedPhotoCacheRef.current.get(taskId)
+
+      if (!forceRefresh && typeof cached !== "undefined") {
+        return {
+          photos: cached ?? null,
+          serverUpdatedAt: lastRealtimeVersionRef.current.get(taskId) ?? null,
+        }
+      }
+
+      try {
+        const result = await loadTaskCategorizedPhotos(taskId)
+        if (!result) {
+          if (forceRefresh) {
+            // Clear both photo cache and version tracking on force refresh failure
+            categorizedPhotoCacheRef.current.delete(taskId)
+            lastRealtimeVersionRef.current.delete(taskId)
+            console.log(`[cache] Cleared cache and version for task ${taskId} (force refresh with no result)`)
+          }
+
+          if (typeof cached !== "undefined") {
+            return {
+              photos: cached ?? null,
+              serverUpdatedAt: lastRealtimeVersionRef.current.get(taskId) ?? null,
+            }
+          }
+
+          console.warn(`[cache] Failed to load photos for task ${taskId}, no cached fallback available`)
+          return null
+        }
+
+        const photos = result.photos ?? null
+        categorizedPhotoCacheRef.current.set(taskId, photos)
+
+        const versionValue = result.serverUpdatedAt ?? null
+        const versions = new Map(lastRealtimeVersionRef.current)
+        versions.set(taskId, versionValue)
+        lastRealtimeVersionRef.current = versions
+
+        setTasks((prev) => {
+          let changed = false
+          const next = prev.map((task) => {
+            if (task.id !== taskId) {
+              return task
+            }
+
+            const currentPhotos = task.categorized_photos ?? null
+            const currentSignature = photosSignature(currentPhotos)
+            const nextSignature = photosSignature(photos)
+            const nextUpdatedAt = versionValue ?? task.server_updated_at ?? null
+
+            if (currentSignature === nextSignature && task.server_updated_at === nextUpdatedAt) {
+              return task
+            }
+
+            changed = true
+            return {
+              ...task,
+              categorized_photos: photos,
+              server_updated_at: nextUpdatedAt,
+            }
+          })
+
+          if (!changed) {
+            return prev
+          }
+
+          const limited = next.length > MAX_CACHED_TASKS ? next.slice(0, MAX_CACHED_TASKS) : next
+          persistToStorage(STORAGE_KEYS.tasks, limited)
+          return limited
+        })
+
+        return {
+          photos,
+          serverUpdatedAt: versionValue,
+        }
+      } catch (error) {
+        console.warn("[tasks] Failed to load categorized photos", error)
+        if (typeof cached !== "undefined") {
+          return {
+            photos: cached ?? null,
+            serverUpdatedAt: lastRealtimeVersionRef.current.get(taskId) ?? null,
+          }
+        }
+
+        return null
+      }
     },
     [],
   )
@@ -1836,18 +2001,19 @@ export function TaskProvider({
   return (
     <TaskContext.Provider
       value={{
-        tasks,
-        users,
-        issues,
-        schedules,
-        maintenanceTasks,
-        shiftSchedules,
-        isBusy,
-        usersLoaded,
-        usersLoadError,
-        updateTask,
-        cacheTaskPhotos,
-        addAuditLog,
+    tasks,
+    users,
+    issues,
+    schedules,
+    maintenanceTasks,
+    shiftSchedules,
+    isBusy,
+    usersLoaded,
+    usersLoadError,
+    updateTask,
+    cacheTaskPhotos,
+    loadTaskPhotos,
+    addAuditLog,
         startTask,
         pauseTask,
         resumeTask,
