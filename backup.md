@@ -16,9 +16,9 @@ The current production project at `wtfnntauwvsgohfmhgyo.supabase.co` contains mo
 | pgbouncer, extensions | Managed by Supabase | Skip; Supabase recreates them. |
 
 **Tip:** Run one multi-schema dump to capture everything:
-```
+\`\`\`
 pg_dump --format=custom --schema=public --schema=auth --schema=storage --schema=realtime --schema=supabase_migrations --schema=vault --schema=graphql --schema=graphql_public --file backups/hermes-full-$(Get-Date -Format yyyyMMdd-HHmmss).dump
-```
+\`\`\`
 
 ## 2. Functions, Triggers, and Scheduled Jobs
 
