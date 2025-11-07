@@ -575,8 +575,8 @@ export function TaskProvider({
       const execute = async () => {
         try {
           const data = await loadTasksFromSupabase({
+            includePhotos: false,
             ...loadOptions,
-            includePhotos: true,
           })
           const limited = data.length > MAX_CACHED_TASKS ? data.slice(0, MAX_CACHED_TASKS) : data
           setTasks((previous) => {
