@@ -153,9 +153,9 @@ export function EditTaskDefinitionModal({ task, open, onOpenChange, onSuccess, c
         keywords: keywordsArray,
         requiresRoom: formData.requiresRoom,
         requiresACLocation: formData.requiresACLocation,
-        isRecurring: formData.isRecurring || undefined,
+        isRecurring: formData.isRecurring,
         recurringFrequency: formData.isRecurring ? (formData.recurringFrequency as RecurringFrequency) : undefined,
-        requiresSpecificTime: formData.isRecurring ? formData.requiresSpecificTime : undefined,
+        requiresSpecificTime: formData.isRecurring ? formData.requiresSpecificTime : false,
         recurringTime:
           formData.isRecurring && formData.requiresSpecificTime && formData.recurringTime
             ? formData.recurringTime
@@ -177,9 +177,9 @@ export function EditTaskDefinitionModal({ task, open, onOpenChange, onSuccess, c
         keywords: keywordsArray,
         requiresRoom: formData.requiresRoom,
         requiresACLocation: formData.requiresACLocation,
-        isRecurring: formData.isRecurring || undefined,
+        isRecurring: formData.isRecurring,
         recurringFrequency: formData.isRecurring ? (formData.recurringFrequency as RecurringFrequency) : undefined,
-        requiresSpecificTime: formData.isRecurring ? formData.requiresSpecificTime : undefined,
+        requiresSpecificTime: formData.isRecurring ? formData.requiresSpecificTime : false,
         recurringTime:
           formData.isRecurring && formData.requiresSpecificTime && formData.recurringTime
             ? formData.recurringTime

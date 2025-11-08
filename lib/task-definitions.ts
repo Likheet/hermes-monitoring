@@ -37,6 +37,7 @@ export interface TaskDefinition {
   requiresSpecificTime?: boolean
   recurringTime?: string // HH:MM format
   recurringFrequency?: RecurringFrequency
+  recurringDays?: string[]
 }
 
 export const ROOM_SHIFTING_TASK_ID = "housekeeping-room-shifting"

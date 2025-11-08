@@ -8,6 +8,17 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useTasks } from "@/lib/task-context"
 import type { Task, PriorityLevel } from "@/lib/types"
 import { useToast } from "@/hooks/use-toast"
+import { AlertCircle, StopCircle } from "lucide-react"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 
 interface EditTaskModalProps {
   task: Task
@@ -21,8 +32,41 @@ export function EditTaskModal({ task, open, onOpenChange }: EditTaskModalProps) 
   const [priorityLevel, setPriorityLevel] = useState<PriorityLevel>(task.priority_level)
   const [photoRequired, setPhotoRequired] = useState(task.photo_required)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [showStopRecurringDialog, setShowStopRecurringDialog] = useState(false)
 
   const isOtherTask = task.task_type === "Other (Custom Task)" || task.custom_task_name
+  const isRecurring = task.custom_task_is_recurring || task.is_recurring
+
+  const handleStopRecurring = async () => {
+    setIsSubmitting(true)
+
+    try {
+      await updateTask(task.id, {
+        custom_task_is_recurring: false,
+        custom_task_recurring_frequency: null,
+        custom_task_requires_specific_time: false,
+        custom_task_recurring_time: null,
+        is_recurring: false,
+        recurring_frequency: null,
+      })
+
+      toast({
+        title: "Recurring Stopped",
+        description: "This task will no longer generate new instances when completed",
+      })
+
+      setShowStopRecurringDialog(false)
+      onOpenChange(false)
+    } catch (error) {
+      toast({
+        title: "Failed to Stop",
+        description: "Could not stop recurring. Please try again.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
 
   const handleSave = async () => {
     if (!isOtherTask) {
@@ -107,6 +151,34 @@ export function EditTaskModal({ task, open, onOpenChange }: EditTaskModalProps) 
             </div>
           </div>
 
+          {/* Stop Recurring Section */}
+          {isRecurring && (
+            <div className="border-t pt-4 mt-4">
+              <div className="flex items-start gap-3 p-3 bg-amber-50 dark:bg-amber-950/20 rounded-lg">
+                <AlertCircle className="h-5 w-5 text-amber-600 dark:text-amber-500 mt-0.5 shrink-0" />
+                <div className="flex-1 space-y-2">
+                  <p className="text-sm font-medium text-amber-900 dark:text-amber-100">
+                    Recurring Task Active
+                  </p>
+                  <p className="text-xs text-amber-700 dark:text-amber-300">
+                    This task will automatically create a new instance when marked as completed.
+                    Frequency: <span className="font-medium">{task.custom_task_recurring_frequency || task.recurring_frequency}</span>
+                  </p>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={() => setShowStopRecurringDialog(true)}
+                    disabled={isSubmitting}
+                    className="mt-2"
+                  >
+                    <StopCircle className="h-4 w-4 mr-2" />
+                    Stop Recurring
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="flex gap-2 justify-end">
             <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isSubmitting}>
               Cancel
@@ -117,6 +189,36 @@ export function EditTaskModal({ task, open, onOpenChange }: EditTaskModalProps) 
           </div>
         </div>
       </DialogContent>
+
+      {/* Stop Recurring Confirmation Dialog */}
+      <AlertDialog open={showStopRecurringDialog} onOpenChange={setShowStopRecurringDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Stop Recurring Task?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will prevent the task from automatically generating new instances when completed.
+              <br />
+              <br />
+              <strong>Task:</strong> {task.custom_task_name || task.task_type}
+              <br />
+              <strong>Current Frequency:</strong> {task.custom_task_recurring_frequency || task.recurring_frequency}
+              <br />
+              <br />
+              This action cannot be undone. You'll need to recreate the task if you want it to recur again.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isSubmitting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleStopRecurring}
+              disabled={isSubmitting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isSubmitting ? "Stopping..." : "Stop Recurring"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Dialog>
   )
 }

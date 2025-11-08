@@ -6,6 +6,7 @@ import type {
   User,
   ShiftSchedule,
   Department,
+  RecurringFrequency,
   DualTimestamp,
   PauseRecord,
   AuditLogEntry,
@@ -59,6 +60,7 @@ export interface DatabaseTask {
   audit_log: Json
   pause_history: Json
   photo_requirements: Json
+  department: Department | null
   // Custom task fields
   is_custom_task: boolean
   custom_task_name: string | null
@@ -70,6 +72,7 @@ export interface DatabaseTask {
   custom_task_recurring_frequency: string | null
   custom_task_requires_specific_time: boolean | null
   custom_task_recurring_time: string | null
+  custom_task_recurring_days: string[] | null
 }
 
 export interface DatabaseShiftSchedule {
@@ -196,6 +199,13 @@ const TASK_CATEGORY_VALUES: TaskCategory[] = [
   "TIME_SENSITIVE",
 ]
 const PRIORITY_VALUES: Priority[] = ["urgent", "high", "medium", "low"]
+const RECURRING_FREQUENCY_VALUES: RecurringFrequency[] = [
+  "daily",
+  "weekly",
+  "biweekly",
+  "monthly",
+  "custom",
+]
 
 function normalizeDepartment(role: DatabaseUser["role"], department: DatabaseUser["department"]): Department {
   if (
@@ -246,6 +256,59 @@ function toCustomTaskPriority(value: unknown): Priority | null {
     const lower = value.toLowerCase() as Priority
     if ((PRIORITY_VALUES as string[]).includes(lower)) {
       return lower as Priority
+    }
+  }
+
+  return null
+}
+
+function toTaskDepartment(value: DatabaseTask["department"]): Department {
+  if (
+    value === "housekeeping" ||
+    value === "maintenance" ||
+    value === "front_office" ||
+    value === "admin" ||
+    value === "housekeeping-dept" ||
+    value === "maintenance-dept"
+  ) {
+    return value
+  }
+
+  return "housekeeping"
+}
+
+function toRecurringFrequency(value: unknown): RecurringFrequency | null {
+  if (typeof value !== "string") {
+    return null
+  }
+
+  const normalized = value.toLowerCase() as RecurringFrequency
+  if ((RECURRING_FREQUENCY_VALUES as string[]).includes(normalized)) {
+    return normalized as RecurringFrequency
+  }
+
+  return null
+}
+
+function toRecurringDays(value: DatabaseTask["custom_task_recurring_days"]): string[] | null {
+  if (!value) {
+    return null
+  }
+
+  if (Array.isArray(value)) {
+    const validDays = value.filter((entry): entry is string => typeof entry === "string")
+    return validDays.length > 0 ? validDays : null
+  }
+
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value)
+      if (Array.isArray(parsed)) {
+        const validDays = parsed.filter((entry): entry is string => typeof entry === "string")
+        return validDays.length > 0 ? validDays : null
+      }
+    } catch (error) {
+      console.warn("custom_task_recurring_days parse failed, defaulting to null:", error)
     }
   }
 
@@ -620,7 +683,7 @@ export function databaseTaskToApp(dbTask: DatabaseTask): Task {
     task_type: dbTask.task_type,
     priority_level: dbTask.priority_level ? PRIORITY_DB_TO_APP[dbTask.priority_level] : "DAILY_TASK",
     status: STATUS_DB_TO_APP[dbTask.status],
-    department: "housekeeping", // Hard-coded fallback - derive from worker.department if needed
+    department: toTaskDepartment(dbTask.department),
     assigned_to_user_id: dbTask.assigned_to_user_id ?? "",
     assigned_by_user_id: dbTask.assigned_by_user_id ?? "",
     assigned_at: assignedAt,
@@ -649,6 +712,11 @@ export function databaseTaskToApp(dbTask: DatabaseTask): Task {
   custom_task_priority: toCustomTaskPriority(dbTask.custom_task_priority),
     custom_task_photo_required: dbTask.custom_task_photo_required ?? null,
     custom_task_photo_count: dbTask.custom_task_photo_count ?? null,
+    custom_task_is_recurring: dbTask.custom_task_is_recurring ?? null,
+    custom_task_recurring_frequency: toRecurringFrequency(dbTask.custom_task_recurring_frequency),
+    custom_task_requires_specific_time: dbTask.custom_task_requires_specific_time ?? null,
+    custom_task_recurring_time: dbTask.custom_task_recurring_time ?? null,
+    custom_task_recurring_days: toRecurringDays(dbTask.custom_task_recurring_days),
     custom_task_processed: false,
     rejection_acknowledged: false,
     rejection_acknowledged_at: null,
@@ -794,6 +862,7 @@ export function appTaskToDatabase(task: Task): Omit<DatabaseTask, "created_at" |
     audit_log: (task.audit_log as unknown) as Json,
     pause_history: (task.pause_history as unknown) as Json,
     photo_requirements: photoRequirements,
+    department: task.department || null,
     // Custom task fields
     is_custom_task: task.is_custom_task ?? false,
     custom_task_name: task.custom_task_name ?? null,
@@ -805,6 +874,7 @@ export function appTaskToDatabase(task: Task): Omit<DatabaseTask, "created_at" |
     custom_task_recurring_frequency: task.custom_task_recurring_frequency ?? null,
     custom_task_requires_specific_time: task.custom_task_requires_specific_time ?? null,
     custom_task_recurring_time: task.custom_task_recurring_time ?? null,
+    custom_task_recurring_days: task.custom_task_recurring_days ?? null,
   }
 }
 

@@ -92,6 +92,7 @@ export interface Task {
   custom_task_recurring_frequency?: RecurringFrequency | null
   custom_task_requires_specific_time?: boolean | null
   custom_task_recurring_time?: string | null
+  custom_task_recurring_days?: string[] | null
   custom_task_processed?: boolean
   rejection_acknowledged?: boolean
   rejection_acknowledged_at?: DualTimestamp | null

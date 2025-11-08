@@ -241,9 +241,9 @@ export function ManagerTaskLibraryDialog({ open, onOpenChange, currentUser }: Ma
         photoCategories: form.photoDocumentationRequired ? form.photoCategories : undefined,
         requiresRoom: form.requiresRoom,
         requiresACLocation: form.requiresACLocation,
-        isRecurring: form.isRecurring || undefined,
+        isRecurring: form.isRecurring,
         recurringFrequency: form.isRecurring ? (form.recurringFrequency as RecurringFrequency) : undefined,
-        requiresSpecificTime: form.isRecurring ? form.requiresSpecificTime : undefined,
+        requiresSpecificTime: form.isRecurring ? form.requiresSpecificTime : false,
         recurringTime:
           form.isRecurring && form.requiresSpecificTime && form.recurringTime ? form.recurringTime : undefined,
         createdBy: managerId,

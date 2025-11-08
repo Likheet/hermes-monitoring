@@ -64,7 +64,7 @@ BEGIN
       NEW.room_number,                          -- Same room (if any)
       'pending',                                -- Fresh pending status
       NEW.priority_level,                       -- Same priority
-      NULL,                                     -- Unassigned (will be manually reassigned)
+      NEW.assigned_to_user_id,                  -- Keep same assignee (auto-recurring)
       NEW.assigned_by_user_id,                  -- Original creator
       NOW() AT TIME ZONE 'UTC',                 -- Current timestamp
       NOW() AT TIME ZONE 'UTC',                 -- Current timestamp

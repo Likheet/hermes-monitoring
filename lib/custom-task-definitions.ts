@@ -1,4 +1,10 @@
-import type { TaskCategory, Priority, TaskDefinition } from "./task-definitions"
+import type {
+  TaskCategory,
+  Priority,
+  TaskDefinition,
+  RecurringFrequency,
+  Department,
+} from "./task-definitions"
 import { TASK_DEFINITIONS } from "./task-definitions"
 import { createClient } from "./supabase/client"
 
@@ -18,6 +24,77 @@ type CustomTaskRow = {
   custom_task_photo_count: number | null
   created_at: string
   assigned_by_user_id: string | null
+  department: string | null
+  custom_task_is_recurring: boolean | null
+  custom_task_recurring_frequency: string | null
+  custom_task_requires_specific_time: boolean | null
+  custom_task_recurring_time: string | null
+  custom_task_recurring_days: string[] | null
+}
+
+const VALID_DEPARTMENTS: Department[] = [
+  "housekeeping",
+  "maintenance",
+  "housekeeping-dept",
+  "maintenance-dept",
+  "admin",
+]
+
+const VALID_RECURRING_FREQUENCIES: RecurringFrequency[] = [
+  "daily",
+  "weekly",
+  "biweekly",
+  "monthly",
+  "custom",
+]
+
+const isDepartment = (value: string | null): value is Department =>
+  Boolean(value && VALID_DEPARTMENTS.includes(value as Department))
+
+const normalizeDepartment = (value: string | null): Department =>
+  isDepartment(value) ? value : "housekeeping"
+
+const toRecurringFrequency = (value: string | null): RecurringFrequency | undefined => {
+  if (!value) return undefined
+  const normalized = value.toLowerCase() as RecurringFrequency
+  return VALID_RECURRING_FREQUENCIES.includes(normalized) ? normalized : undefined
+}
+
+const toRecurringDays = (value: string[] | null): string[] | undefined => {
+  if (!value) return undefined
+  const filtered = value.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0)
+  return filtered.length > 0 ? filtered : undefined
+}
+
+const buildRecurringDatabaseFields = (input: {
+  isRecurring?: boolean
+  recurringFrequency?: RecurringFrequency | null
+  requiresSpecificTime?: boolean | null
+  recurringTime?: string | null
+  recurringDays?: string[] | null
+}): {
+  custom_task_is_recurring: boolean
+  custom_task_recurring_frequency: string | null
+  custom_task_requires_specific_time: boolean
+  custom_task_recurring_time: string | null
+  custom_task_recurring_days: string[] | null
+} => {
+  const isRecurring = Boolean(input.isRecurring)
+  const frequency = isRecurring ? input.recurringFrequency ?? null : null
+  const requiresSpecificTime = isRecurring ? Boolean(input.requiresSpecificTime) : false
+  const recurringTime = isRecurring && requiresSpecificTime ? input.recurringTime ?? null : null
+  const recurringDays =
+    isRecurring && Array.isArray(input.recurringDays) && input.recurringDays.length > 0
+      ? input.recurringDays
+      : null
+
+  return {
+    custom_task_is_recurring: isRecurring,
+    custom_task_recurring_frequency: frequency,
+    custom_task_requires_specific_time: requiresSpecificTime,
+    custom_task_recurring_time: recurringTime,
+    custom_task_recurring_days: recurringDays,
+  }
 }
 
 export async function getCustomTaskDefinitions(): Promise<CustomTaskDefinition[]> {
@@ -28,7 +105,7 @@ export async function getCustomTaskDefinitions(): Promise<CustomTaskDefinition[]
     const { data, error } = await supabase
       .from("tasks")
       .select(
-        "id, task_type, custom_task_name, custom_task_category, custom_task_priority, custom_task_photo_required, custom_task_photo_count, created_at, assigned_by_user_id",
+        "id, task_type, custom_task_name, custom_task_category, custom_task_priority, custom_task_photo_required, custom_task_photo_count, created_at, assigned_by_user_id, department, custom_task_is_recurring, custom_task_recurring_frequency, custom_task_requires_specific_time, custom_task_recurring_time, custom_task_recurring_days",
       )
       .eq("is_custom_task", true)
       .order("created_at", { ascending: false })
@@ -52,7 +129,7 @@ export async function getCustomTaskDefinitions(): Promise<CustomTaskDefinition[]
       name: task.custom_task_name || task.task_type,
       category: task.custom_task_category ?? "GUEST_REQUEST",
       priority: task.custom_task_priority ?? "medium",
-      department: "housekeeping",
+      department: normalizeDepartment(task.department),
       duration: 30, // Default duration
       photoRequired: task.custom_task_photo_required || false,
       photoCount: task.custom_task_photo_count || 1,
@@ -61,10 +138,14 @@ export async function getCustomTaskDefinitions(): Promise<CustomTaskDefinition[]
       keywords: [],
       requiresRoom: true,
       requiresACLocation: false,
-      isRecurring: false,
-      recurringFrequency: undefined,
-      requiresSpecificTime: false,
-      recurringTime: undefined,
+      isRecurring: Boolean(task.custom_task_is_recurring),
+      recurringFrequency: toRecurringFrequency(task.custom_task_recurring_frequency),
+      requiresSpecificTime: Boolean(task.custom_task_requires_specific_time),
+      recurringTime:
+        task.custom_task_is_recurring && task.custom_task_requires_specific_time
+          ? task.custom_task_recurring_time ?? undefined
+          : undefined,
+      recurringDays: toRecurringDays(task.custom_task_recurring_days),
       isCustom: true,
       createdBy: task.assigned_by_user_id ?? "unknown",
       createdAt: task.created_at,
@@ -125,7 +206,15 @@ async function migrateLocalTaskToDatabase(task: CustomTaskDefinition): Promise<v
       custom_task_photo_count: task.photoCount,
       assigned_by_user_id: task.createdBy,
       assigned_to_user_id: null, // Unassigned
-      priority_level: "low",
+      priority_level: task.priority,
+      department: task.department,
+      ...buildRecurringDatabaseFields({
+        isRecurring: task.isRecurring,
+        recurringFrequency: task.recurringFrequency ?? null,
+        requiresSpecificTime: task.requiresSpecificTime ?? null,
+        recurringTime: task.recurringTime ?? null,
+        recurringDays: task.recurringDays ?? null,
+      }),
       created_at: task.createdAt,
       updated_at: task.createdAt,
     })
@@ -170,7 +259,15 @@ export async function saveCustomTaskDefinition(
       custom_task_photo_count: newTask.photoCount,
       assigned_by_user_id: newTask.createdBy,
       assigned_to_user_id: null, // Unassigned template
-      priority_level: "low",
+      priority_level: newTask.priority,
+      department: newTask.department,
+      ...buildRecurringDatabaseFields({
+        isRecurring: newTask.isRecurring,
+        recurringFrequency: newTask.recurringFrequency ?? null,
+        requiresSpecificTime: newTask.requiresSpecificTime ?? null,
+        recurringTime: newTask.recurringTime ?? null,
+        recurringDays: newTask.recurringDays ?? null,
+      }),
       created_at: newTask.createdAt,
       updated_at: newTask.createdAt,
     })
@@ -227,17 +324,43 @@ export async function updateCustomTaskDefinition(
     // Extract database UUID from custom-db-{uuid} format
     const dbId = id.startsWith('custom-db-') ? id.replace('custom-db-', '') : id
 
+    const recurringPayloadProvided =
+      updates.isRecurring !== undefined ||
+      updates.recurringFrequency !== undefined ||
+      updates.requiresSpecificTime !== undefined ||
+      updates.recurringTime !== undefined ||
+      updates.recurringDays !== undefined
+
+    const updatePayload: Record<string, unknown> = {
+      custom_task_name: updates.name,
+      custom_task_category: updates.category,
+      custom_task_priority: updates.priority,
+      custom_task_photo_required: updates.photoRequired,
+      custom_task_photo_count: updates.photoCount,
+      updated_at: new Date().toISOString(),
+    }
+
+    if (updates.department !== undefined) {
+      updatePayload.department = updates.department
+    }
+
+    if (recurringPayloadProvided) {
+      Object.assign(
+        updatePayload,
+        buildRecurringDatabaseFields({
+          isRecurring: updates.isRecurring,
+          recurringFrequency: updates.recurringFrequency ?? null,
+          requiresSpecificTime: updates.requiresSpecificTime ?? null,
+          recurringTime: updates.recurringTime ?? null,
+          recurringDays: updates.recurringDays ?? null,
+        }),
+      )
+    }
+
     // Update in database
     const { error } = await supabase
       .from("tasks")
-      .update({
-        custom_task_name: updates.name,
-        custom_task_category: updates.category,
-        custom_task_priority: updates.priority,
-        custom_task_photo_required: updates.photoRequired,
-        custom_task_photo_count: updates.photoCount,
-        updated_at: new Date().toISOString(),
-      })
+      .update(updatePayload)
       .eq("id", dbId)
       .eq("is_custom_task", true)
 

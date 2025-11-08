@@ -1,3 +1,4 @@
+
 import { createClient } from "@/lib/supabase/client"
 import type { SupabaseClient } from "@supabase/supabase-js"
 import type { Task, User, ShiftSchedule, CategorizedPhotos } from "./types"
