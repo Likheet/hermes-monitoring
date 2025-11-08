@@ -9,14 +9,15 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { LogOut, Bell, AlertCircle, X, Clock, CheckCircle2, XCircle, TrendingUp } from "lucide-react"
+import { LogOut, Bell, AlertCircle, X, Clock, CheckCircle2, XCircle, TrendingUp, ListTodo } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { useRealtimeTasks } from "@/lib/use-realtime-tasks"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { BottomNav } from "@/components/mobile/bottom-nav"
 import { MaintenanceCalendar } from "@/components/maintenance/maintenance-calendar"
 import type { MaintenanceTask } from "@/lib/maintenance-types"
+import type { Task } from "@/lib/types"
 import { TASK_TYPE_LABELS } from "@/lib/maintenance-types"
 import { formatDistanceToNow } from "@/lib/date-utils"
 import { cn } from "@/lib/utils"
@@ -37,7 +38,7 @@ function WorkerDashboard() {
   const [urgentTaskAlert, setUrgentTaskAlert] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState("home")
 
-  const [tasksFilter, setTasksFilter] = useState<"all" | "active" | "completed" | "rejected">("all")
+  const [tasksFilter, setTasksFilter] = useState<"all" | "active" | "recurring" | "completed" | "rejected">("all")
 
   const [searchQuery, setSearchQuery] = useState("")
 
@@ -62,12 +63,40 @@ function WorkerDashboard() {
     : ""
 
   const myTasks = tasks.filter((task) => task.assigned_to_user_id === user?.id)
+  const isRecurringTask = useCallback(
+    (task: Task) =>
+      Boolean(
+        task.is_recurring ||
+          task.recurring_frequency ||
+          task.custom_task_is_recurring ||
+          task.custom_task_recurring_frequency,
+      ),
+    [],
+  )
   const pendingTasks = myTasks.filter((t) => t.status === "PENDING")
   const inProgressTasks = myTasks.filter((t) => t.status === "IN_PROGRESS" || t.status === "PAUSED")
   const completedTasks = myTasks.filter((t) => t.status === "COMPLETED")
   const rejectedTasks = myTasks.filter((t) => t.status === "REJECTED")
   const unacknowledgedRejectedTasks = rejectedTasks.filter((t) => !t.rejection_acknowledged)
   const acknowledgedRejectedTasks = rejectedTasks.filter((t) => t.rejection_acknowledged)
+
+  const recurringTasks = useMemo(() => myTasks.filter(isRecurringTask), [myTasks, isRecurringTask])
+  const nonRecurringTasks = useMemo(
+    () => myTasks.filter((task) => !isRecurringTask(task)),
+    [myTasks, isRecurringTask],
+  )
+  const homeInProgressTasks = useMemo(
+    () => inProgressTasks.filter((task) => !isRecurringTask(task)),
+    [inProgressTasks, isRecurringTask],
+  )
+  const homePendingTasks = useMemo(
+    () => pendingTasks.filter((task) => !isRecurringTask(task)),
+    [pendingTasks, isRecurringTask],
+  )
+  const homeCompletedTasks = useMemo(
+    () => completedTasks.filter((task) => !isRecurringTask(task)),
+    [completedTasks, isRecurringTask],
+  )
 
   const now = new Date()
   const currentMonth = now.getMonth() + 1
@@ -347,6 +376,7 @@ function WorkerDashboard() {
           if (tasksFilter === "all") return true
           if (tasksFilter === "active")
             return task.status === "PENDING" || task.status === "IN_PROGRESS" || task.status === "PAUSED"
+          if (tasksFilter === "recurring") return isRecurringTask(task)
           if (tasksFilter === "completed") return task.status === "COMPLETED" || task.status === "VERIFIED"
           if (tasksFilter === "rejected") return task.status === "REJECTED"
           return true
@@ -358,6 +388,7 @@ function WorkerDashboard() {
               {[
                 { value: "all", label: "All" },
                 { value: "active", label: "Active" },
+                { value: "recurring", label: "Recurring" },
                 { value: "completed", label: "Completed" },
                 { value: "rejected", label: "Rejected" },
               ].map((tab) => (
@@ -394,6 +425,14 @@ function WorkerDashboard() {
                         {task.priority_level === "GUEST_REQUEST" && (
                           <Badge variant="destructive" className="text-xs">
                             High Priority
+                          </Badge>
+                        )}
+                        {isRecurringTask(task) && (
+                          <Badge
+                            variant="secondary"
+                            className="text-xs border-amber-200 bg-amber-50 text-amber-700"
+                          >
+                            Recurring
                           </Badge>
                         )}
                       </div>
@@ -680,6 +719,15 @@ function WorkerDashboard() {
               </Alert>
             )}
 
+            {recurringTasks.length > 0 && (
+              <Alert className="border-primary/40 bg-primary/10">
+                <ListTodo className="h-4 w-4 text-primary" />
+                <AlertDescription className="text-primary">
+                  Recurring tasks are waiting in the Tasks tab. Tap "Tasks" below to review, start, or complete them.
+                </AlertDescription>
+              </Alert>
+            )}
+
             {canAccessMaintenance && currentMaintenanceTask && currentMaintenanceTask.room_number && (
               <Card
                 className="cursor-pointer border-2 border-accent bg-accent/20 shadow-lg transition-all hover:shadow-xl hover:border-accent/80"
@@ -907,48 +955,61 @@ function WorkerDashboard() {
               </section>
             )}
 
-            {inProgressTasks.length > 0 && (
+            {homeInProgressTasks.length > 0 && (
               <section>
                 <h2 className="text-base md:text-lg font-semibold mb-3">In Progress</h2>
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                  {inProgressTasks.map((task) => (
+                  {homeInProgressTasks.map((task) => (
                     <TaskCard key={task.id} task={task} />
                   ))}
                 </div>
               </section>
             )}
 
-            {pendingTasks.length > 0 && (
+            {homePendingTasks.length > 0 && (
               <section>
                 <h2 className="text-base md:text-lg font-semibold mb-3">Pending Tasks</h2>
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                  {pendingTasks.map((task) => (
+                  {homePendingTasks.map((task) => (
                     <TaskCard key={task.id} task={task} />
                   ))}
                 </div>
               </section>
             )}
 
-            {completedTasks.length > 0 && (
+            {homeCompletedTasks.length > 0 && (
               <section>
                 <h2 className="text-base md:text-lg font-semibold mb-3">Completed</h2>
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                  {completedTasks.map((task) => (
+                  {homeCompletedTasks.map((task) => (
                     <TaskCard key={task.id} task={task} />
                   ))}
                 </div>
               </section>
             )}
 
-            {myTasks.length === 0 && myActiveMaintenanceTasks.length === 0 && partiallyCompletedRooms.length === 0 && (
+            {nonRecurringTasks.length === 0 &&
+              myActiveMaintenanceTasks.length === 0 &&
+              partiallyCompletedRooms.length === 0 && (
               <div className="flex min-h-[400px] items-center justify-center">
                 <div className="text-center space-y-2">
-                  <p className="text-muted-foreground">No tasks assigned</p>
-                  {(completedTasks.length > 0 || myCompletedMaintenanceTasksForDisplay.length > 0) && (
-                    <p className="text-sm text-muted-foreground">
-                      You&apos;ve completed {completedTasks.length + myCompletedMaintenanceTasksForDisplay.length} task(s)
-                      today
-                    </p>
+                  {recurringTasks.length > 0 ? (
+                    <>
+                      <p className="text-muted-foreground">Recurring tasks are ready in the Tasks tab.</p>
+                      <p className="text-sm text-muted-foreground">
+                        Tap "Tasks" below to start, pause, or complete your recurring work.
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-muted-foreground">No tasks assigned</p>
+                      {(completedTasks.length > 0 || myCompletedMaintenanceTasksForDisplay.length > 0) && (
+                        <p className="text-sm text-muted-foreground">
+                          You&apos;ve completed {completedTasks.length + myCompletedMaintenanceTasksForDisplay.length} task(s)
+                          today
+                        </p>
+                      )}
+                    </>
                   )}
                 </div>
               </div>

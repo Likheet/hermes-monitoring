@@ -3,9 +3,10 @@
 import { useMemo, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { Plus, ClipboardList, Clock, CheckCircle2, User as UserIcon, MapPin, LogOut } from "lucide-react"
+import { Plus, PlusSquare, ClipboardList, Clock, CheckCircle2, User as UserIcon, MapPin, LogOut } from "lucide-react"
 import { ProtectedRoute } from "@/components/protected-route"
 import { ManagerBottomNav } from "@/components/manager/manager-bottom-nav"
+import { ManagerTaskLibraryDialog } from "@/components/manager/manager-task-library-dialog"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -32,6 +33,9 @@ const STATUS_COLORS: Record<string, string> = {
 }
 
 
+type StatKey = "pending" | "inProgress" | "completed" | "assignedByMe"
+
+
 
 function ManagerDashboard() {
   const { user, logout } = useAuth()
@@ -39,6 +43,7 @@ function ManagerDashboard() {
   const { tasks, users } = useTasks()
 
   const [activeStatKey, setActiveStatKey] = useState<StatKey | null>(null)
+  const [isTaskLibraryOpen, setIsTaskLibraryOpen] = useState(false)
 
   useRealtimeTasks({ enabled: true, filter: { role: "manager" } })
 
@@ -201,6 +206,27 @@ function ManagerDashboard() {
       </header>
 
       <main className="container mx-auto space-y-6 px-4 py-6">
+        <section>
+          <Card className="border-dashed border-primary/40 bg-primary/5">
+            <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <CardTitle className="text-lg">Task Type Library</CardTitle>
+                <p className="text-sm text-muted-foreground">
+                  Build recurring checklists or custom workflows tailored for your property.
+                </p>
+              </div>
+              <Button
+                variant="outline"
+                className="min-h-[44px] border-primary text-primary hover:bg-primary hover:text-primary-foreground"
+                onClick={() => setIsTaskLibraryOpen(true)}
+              >
+                <PlusSquare className="mr-2 h-4 w-4" />
+                Add New Task Type
+              </Button>
+            </CardHeader>
+          </Card>
+        </section>
+
         <section>
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             {statCards.map((card) => (
@@ -419,6 +445,12 @@ function ManagerDashboard() {
           )}
         </DialogContent>
       </Dialog>
+
+        <ManagerTaskLibraryDialog
+          open={isTaskLibraryOpen}
+          onOpenChange={setIsTaskLibraryOpen}
+          currentUser={user}
+        />
     </div>
   )
 }

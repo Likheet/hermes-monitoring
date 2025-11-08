@@ -919,6 +919,86 @@ export async function deleteMaintenanceScheduleFromSupabase(scheduleId: string):
   }
 }
 
+export async function regenerateMaintenanceSchedules(options: {
+  minCompletionRatio?: number
+} = {}): Promise<MaintenanceScheduleRegenerationResult[]> {
+  try {
+    const supabase = createClient()
+    const rpcArgs =
+      typeof options.minCompletionRatio === "number"
+        ? { min_completion_ratio: options.minCompletionRatio }
+        : undefined
+
+    const { data, error } = rpcArgs
+      ? await supabase.rpc("regenerate_maintenance_schedules", rpcArgs)
+      : await supabase.rpc("regenerate_maintenance_schedules")
+
+    if (error) {
+      console.error("[v0] Error triggering maintenance regeneration via Supabase:", error)
+      throw new Error(`Failed to regenerate maintenance schedules: ${error.message}`)
+    }
+
+    invalidateCache("maintenance_tasks", "maintenance_schedules")
+
+    const results = Array.isArray(data) ? (data as MaintenanceScheduleRegenerationResult[]) : []
+    return results
+  } catch (error) {
+    console.error("[v0] Exception regenerating maintenance schedules:", error)
+    return []
+  }
+}
+
+/**
+ * Fetch recurring task instances linked to a parent recurring task
+ * Shows the chain of auto-generated recurring tasks
+ */
+export async function getRecurringTaskInstances(
+  taskId: string,
+  options: LoadOptions = {}
+): Promise<RecurringTaskInstance[]> {
+  try {
+    const supabase = createClient()
+
+    // Get the task and all related instances via audit_log lineage
+    const { data: instances, error } = await supabase
+      .from("tasks")
+      .select(
+        `
+        id,
+        custom_task_name,
+        custom_task_recurring_frequency,
+        status,
+        created_at,
+        audit_log
+      `
+      )
+      .or(`id.eq.${taskId},audit_log->>generated_from_task_id.eq.${taskId}`)
+      .order("created_at", { ascending: false })
+
+    if (error) {
+      console.error("[v0] Error fetching recurring task instances:", error)
+      return []
+    }
+
+    if (!Array.isArray(instances)) {
+      return []
+    }
+
+    // Map to RecurringTaskInstance format
+    return instances.map((row: any) => ({
+      id: row.id,
+      parent_id: row.audit_log?.generated_from_task_id || null,
+      custom_task_name: row.custom_task_name,
+      custom_task_recurring_frequency: row.custom_task_recurring_frequency,
+      status: row.status,
+      created_at: row.created_at,
+    }))
+  } catch (error) {
+    console.error("[v0] Exception fetching recurring task instances:", error)
+    return []
+  }
+}
+
 export async function loadMaintenanceTasksFromSupabase(options: LoadOptions = {}): Promise<MaintenanceTask[]> {
   const cached = getCachedValue<MaintenanceTask[]>("maintenance_tasks", options.forceRefresh)
   if (cached) {
@@ -986,6 +1066,23 @@ interface MaintenanceScheduleMetadata {
   day_range_end?: number | null
   created_by?: string | null
   updated_at?: string | null
+}
+
+export interface MaintenanceScheduleRegenerationResult {
+  schedule_id: string
+  generated_tasks: number
+  period_year: number
+  period_month: number
+  next_due: string | null
+}
+
+export interface RecurringTaskInstance {
+  id: string
+  parent_id: string | null
+  custom_task_name: string
+  custom_task_recurring_frequency: "daily" | "weekly" | "biweekly" | "monthly" | null
+  status: "pending" | "completed" | "verified"
+  created_at: string
 }
 
 function isMaintenanceTaskTypeValue(value: unknown): value is MaintenanceTaskType {

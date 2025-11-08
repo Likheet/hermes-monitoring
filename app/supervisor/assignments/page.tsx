@@ -40,6 +40,7 @@ function SupervisorAssignments() {
   const { tasks, users } = useTasks()
 
   const [assignmentFilter, setAssignmentFilter] = useState<AssignmentFilter>("mine")
+  const [taskTypeFilter, setTaskTypeFilter] = useState<"all" | "recurring">("all")
   const [reassignTask, setReassignTask] = useState<Task | null>(null)
   const [editTask, setEditTask] = useState<Task | null>(null)
 
@@ -70,7 +71,18 @@ function SupervisorAssignments() {
     [departmentTasks],
   )
 
-  const displayedAssignments = assignmentFilter === "mine" ? assignmentsCreatedByMe : assignmentsAllDepartment
+  const isRecurringTask = (task: Task) =>
+    Boolean(
+      task.is_recurring || task.recurring_frequency || task.custom_task_is_recurring || task.custom_task_recurring_frequency,
+    )
+
+  const displayedAssignments = useMemo(() => {
+    const base = assignmentFilter === "mine" ? assignmentsCreatedByMe : assignmentsAllDepartment
+    if (taskTypeFilter === "recurring") {
+      return base.filter(isRecurringTask)
+    }
+    return base
+  }, [assignmentFilter, assignmentsAllDepartment, assignmentsCreatedByMe, taskTypeFilter])
 
   const assignmentStats = useMemo(
     () => ({

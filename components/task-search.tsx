@@ -23,6 +23,7 @@ const RECURRING_FREQUENCY_LABELS: Record<RecurringFrequency, string> = {
   weekly: "Weekly",
   biweekly: "Biweekly",
   monthly: "Monthly",
+  custom: "Custom",
 }
 
 export function TaskSearch({ onSelectTask }: TaskSearchProps) {

@@ -9,13 +9,13 @@ export type Department = "housekeeping" | "maintenance" | "housekeeping-dept" | 
 
 export type Priority = "urgent" | "high" | "medium" | "low"
 
-export type RecurringFrequency = "daily" | "weekly" | "biweekly" | "monthly"
+export type RecurringFrequency = "daily" | "weekly" | "biweekly" | "monthly" | "custom"
 
 export interface PhotoCategory {
   name: string // e.g., "Before", "After", "Room", "Proof"
   count: number // minimum photos required for this category
   description?: string // optional description for workers
-  icon?: string // optional icon name (lucide icon)
+  icon?: string
 }
 
 export interface TaskDefinition {

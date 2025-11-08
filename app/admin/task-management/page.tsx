@@ -48,6 +48,7 @@ const RECURRING_FREQUENCY_LABELS: Record<RecurringFrequency, string> = {
   weekly: "Weekly",
   biweekly: "Biweekly",
   monthly: "Monthly",
+  custom: "Custom",
 }
 
 function TaskManagementPage() {
@@ -864,6 +865,7 @@ function TaskManagementPage() {
             task={editingTask}
             open={isEditDialogOpen}
             onOpenChange={setIsEditDialogOpen}
+            createdByUserId={user?.id || "unknown"}
             onSuccess={async () => {
               try {
                 const customDefs = await getCustomTaskDefinitions()

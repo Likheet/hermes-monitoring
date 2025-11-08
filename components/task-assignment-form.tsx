@@ -41,6 +41,7 @@ import {
 } from "@/lib/shift-utils"
 import type { Department, Task } from "@/lib/types"
 import { Badge } from "@/components/ui/badge"
+import { Switch } from "@/components/ui/switch"
 import {
   Select,
   SelectContent,
@@ -117,7 +118,32 @@ const RECURRING_FREQUENCY_LABELS: Record<RecurringFrequency, string> = {
   weekly: "Weekly",
   biweekly: "Biweekly",
   monthly: "Monthly",
+  custom: "Custom",
 }
+
+type WeekdayCode = "sun" | "mon" | "tue" | "wed" | "thu" | "fri" | "sat"
+
+const WEEKDAY_INDEX: Record<WeekdayCode, number> = {
+  sun: 0,
+  mon: 1,
+  tue: 2,
+  wed: 3,
+  thu: 4,
+  fri: 5,
+  sat: 6,
+}
+
+const WEEKDAY_OPTIONS: Array<{ value: WeekdayCode; label: string; short: string }> = [
+  { value: "sun", label: "Sunday", short: "Sun" },
+  { value: "mon", label: "Monday", short: "Mon" },
+  { value: "tue", label: "Tuesday", short: "Tue" },
+  { value: "wed", label: "Wednesday", short: "Wed" },
+  { value: "thu", label: "Thursday", short: "Thu" },
+  { value: "fri", label: "Friday", short: "Fri" },
+  { value: "sat", label: "Saturday", short: "Sat" },
+]
+
+const DEFAULT_RECURRING_FREQUENCY: RecurringFrequency = "weekly"
 
 interface TaskAssignmentFormProps {
   task: TaskDefinition
@@ -144,6 +170,14 @@ interface TaskAssignmentFormProps {
     location?: string
     remarks?: string
   }
+  allowRecurringOverride?: boolean
+  recurringDefaults?: {
+    isRecurring?: boolean
+    recurringFrequency?: RecurringFrequency | null
+    recurringCustomDays?: WeekdayCode[] | null
+    requiresSpecificTime?: boolean
+    recurringTime?: string | null
+  }
 }
 
 export interface TaskAssignmentData {
@@ -166,13 +200,25 @@ export interface TaskAssignmentData {
   isCustomTask: boolean
   isRecurring: boolean
   recurringFrequency?: RecurringFrequency | null
+  recurringCustomDays?: WeekdayCode[] | null
   requiresSpecificTime?: boolean
   recurringTime?: string | null
   dueAt?: string | null
   metadata?: Record<string, string | undefined>
 }
 
-export function TaskAssignmentForm({ task, onCancel, onSubmit, workers, initialData, currentUser, shiftSchedules, currentTasks }: TaskAssignmentFormProps) {
+export function TaskAssignmentForm({
+  task,
+  onCancel,
+  onSubmit,
+  workers,
+  initialData,
+  currentUser,
+  shiftSchedules,
+  currentTasks,
+  allowRecurringOverride = false,
+  recurringDefaults,
+}: TaskAssignmentFormProps) {
   // Form state
   const [priority, setPriority] = useState<Priority>(task.priority)
   const [duration, setDuration] = useState(task.duration)
@@ -189,6 +235,14 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers, initialD
   const [remarks, setRemarks] = useState(initialData?.remarks || "")
   const [assignedTo, setAssignedTo] = useState<string>(initialData?.assignedTo ?? "")
   const [errors, setErrors] = useState<Record<string, string>>({})
+
+  const clearErrorByKey = (key: string) =>
+    setErrors((prev) => {
+      if (!prev[key]) return prev
+      const next = { ...prev }
+      delete next[key]
+      return next
+    })
 
   const [customTaskName, setCustomTaskName] = useState("")
   const [selectedDepartment, setSelectedDepartment] = useState<Department>(task.department)
@@ -307,9 +361,6 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers, initialD
 
   const definitionIsRecurring = Boolean(task.isRecurring)
   const definitionRecurringFrequency = task.recurringFrequency ?? null
-  const recurringFrequencyLabel = task.recurringFrequency
-    ? RECURRING_FREQUENCY_LABELS[task.recurringFrequency]
-    : null
   const definitionRequiresSpecificTime = Boolean(task.requiresSpecificTime)
   const definitionRecurringTime =
     definitionRequiresSpecificTime && task.recurringTime ? task.recurringTime : null
@@ -321,9 +372,261 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers, initialD
         })()
       : null
 
-  const locationRef = useRef<HTMLDivElement>(null)
+  const enableRecurringOverride = Boolean(allowRecurringOverride)
+
+  const [overrideIsRecurring, setOverrideIsRecurring] = useState<boolean>(() => {
+    if (!enableRecurringOverride) {
+      return definitionIsRecurring
+    }
+    if (typeof recurringDefaults?.isRecurring === "boolean") {
+      return recurringDefaults.isRecurring
+    }
+    return definitionIsRecurring
+  })
+
+  const [overrideFrequency, setOverrideFrequency] = useState<RecurringFrequency>(() => {
+    if (!enableRecurringOverride) {
+      return (definitionRecurringFrequency ?? DEFAULT_RECURRING_FREQUENCY) as RecurringFrequency
+    }
+    return (
+      recurringDefaults?.recurringFrequency ??
+      definitionRecurringFrequency ??
+      DEFAULT_RECURRING_FREQUENCY
+    ) as RecurringFrequency
+  })
+
+  const [overrideCustomDays, setOverrideCustomDays] = useState<WeekdayCode[]>(() => {
+    if (!enableRecurringOverride) {
+      return []
+    }
+    return recurringDefaults?.recurringCustomDays ?? []
+  })
+
+  const [overrideRequiresSpecificTime, setOverrideRequiresSpecificTime] = useState<boolean>(() => {
+    if (!enableRecurringOverride) {
+      return definitionRequiresSpecificTime
+    }
+    if (typeof recurringDefaults?.requiresSpecificTime === "boolean") {
+      return recurringDefaults.requiresSpecificTime
+    }
+    return definitionRequiresSpecificTime
+  })
+
+  const [overrideRecurringTime, setOverrideRecurringTime] = useState<string>(() => {
+    if (!enableRecurringOverride) {
+      return definitionRecurringTime ?? ""
+    }
+    if (recurringDefaults?.recurringTime) {
+      return recurringDefaults.recurringTime
+    }
+    return definitionRequiresSpecificTime && definitionRecurringTime ? definitionRecurringTime : ""
+  })
+
+  useEffect(() => {
+    if (!enableRecurringOverride) {
+      return
+    }
+
+    const nextIsRecurring =
+      typeof recurringDefaults?.isRecurring === "boolean"
+        ? recurringDefaults.isRecurring
+        : definitionIsRecurring
+    setOverrideIsRecurring(nextIsRecurring)
+
+    const nextFrequency =
+      recurringDefaults?.recurringFrequency ?? definitionRecurringFrequency ?? DEFAULT_RECURRING_FREQUENCY
+    setOverrideFrequency(nextFrequency as RecurringFrequency)
+
+    setOverrideCustomDays(recurringDefaults?.recurringCustomDays ?? [])
+
+    const nextRequiresSpecificTime =
+      typeof recurringDefaults?.requiresSpecificTime === "boolean"
+        ? recurringDefaults.requiresSpecificTime
+        : definitionRequiresSpecificTime
+    setOverrideRequiresSpecificTime(nextRequiresSpecificTime)
+
+    const nextTime =
+      recurringDefaults?.recurringTime ??
+      (definitionRequiresSpecificTime && definitionRecurringTime ? definitionRecurringTime : "")
+    setOverrideRecurringTime(nextTime)
+  }, [
+    enableRecurringOverride,
+    task.id,
+    definitionIsRecurring,
+    definitionRecurringFrequency,
+    definitionRequiresSpecificTime,
+    definitionRecurringTime,
+    recurringDefaults,
+  ])
+
+  useEffect(() => {
+    if (!enableRecurringOverride) {
+      return
+    }
+
+    if (!overrideIsRecurring) {
+      clearErrorByKey("recurringFrequency")
+      clearErrorByKey("recurringCustomDays")
+      clearErrorByKey("recurringTime")
+    } else {
+      if (overrideFrequency !== "custom") {
+        clearErrorByKey("recurringCustomDays")
+      }
+      if (!overrideRequiresSpecificTime) {
+        clearErrorByKey("recurringTime")
+      }
+    }
+  }, [enableRecurringOverride, overrideIsRecurring, overrideFrequency, overrideRequiresSpecificTime])
+
+  useEffect(() => {
+    if (!enableRecurringOverride) return
+    if (overrideIsRecurring && overrideRequiresSpecificTime && !overrideRecurringTime) {
+      setOverrideRecurringTime("09:00")
+    }
+  }, [enableRecurringOverride, overrideIsRecurring, overrideRequiresSpecificTime, overrideRecurringTime])
+
+  const recurringFrequencyOptions: Array<{ value: RecurringFrequency; label: string }> = [
+    { value: "daily", label: "Daily" },
+    { value: "weekly", label: "Weekly" },
+    { value: "biweekly", label: "Every 2 Weeks" },
+    { value: "monthly", label: "Monthly" },
+    { value: "custom", label: "Custom Days" },
+  ]
+
+  const handleRecurringToggle = (checked: boolean) => {
+    setOverrideIsRecurring(checked)
+    if (!checked) {
+      clearErrorByKey("recurringFrequency")
+      clearErrorByKey("recurringCustomDays")
+      clearErrorByKey("recurringTime")
+    }
+  }
+
+  const handleRecurringFrequencyChange = (value: RecurringFrequency) => {
+    setOverrideFrequency(value)
+    clearErrorByKey("recurringFrequency")
+    if (value !== "custom" && overrideCustomDays.length > 0) {
+      setOverrideCustomDays([])
+    }
+    if (value !== "custom") {
+      clearErrorByKey("recurringCustomDays")
+    }
+  }
+
+  const toggleCustomDay = (day: WeekdayCode) => {
+    setOverrideCustomDays((prev) => {
+      if (prev.includes(day)) {
+        const next = prev.filter((entry) => entry !== day)
+        if (next.length > 0) {
+          clearErrorByKey("recurringCustomDays")
+        }
+        return next
+      }
+      const next = [...prev, day].sort((a, b) => WEEKDAY_INDEX[a] - WEEKDAY_INDEX[b])
+      clearErrorByKey("recurringCustomDays")
+      return next
+    })
+  }
+
+  const handleSpecificTimeToggle = (checked: boolean) => {
+    setOverrideRequiresSpecificTime(checked)
+    if (!checked) {
+      clearErrorByKey("recurringTime")
+    } else if (!overrideRecurringTime) {
+      setOverrideRecurringTime("09:00")
+    }
+  }
+
+  const handleRecurringTimeChange = (value: string) => {
+    setOverrideRecurringTime(value)
+    clearErrorByKey("recurringTime")
+  }
+
+  const showRecurringControls = enableRecurringOverride
 
   const isOtherTask = task.id === "other-custom-task"
+
+  interface EffectiveRecurringConfig {
+    isRecurring: true
+    recurringFrequency: RecurringFrequency | null
+    recurringCustomDays: WeekdayCode[] | null
+    requiresSpecificTime: boolean
+    recurringTime: string | null
+  }
+
+  const effectiveRecurring = useMemo<EffectiveRecurringConfig | null>(() => {
+    if (enableRecurringOverride) {
+      if (!overrideIsRecurring) {
+        return null
+      }
+
+      const normalizedFrequency = overrideFrequency ?? DEFAULT_RECURRING_FREQUENCY
+      const requiresSpecificTime = Boolean(overrideRequiresSpecificTime)
+      const trimmedTime = (overrideRecurringTime ?? "").trim()
+
+      return {
+        isRecurring: true,
+        recurringFrequency: normalizedFrequency,
+        recurringCustomDays:
+          normalizedFrequency === "custom" ? [...overrideCustomDays] : null,
+        requiresSpecificTime,
+        recurringTime: requiresSpecificTime && trimmedTime ? trimmedTime : null,
+      }
+    }
+
+    if (!isOtherTask && definitionIsRecurring) {
+      const requiresSpecificTime = Boolean(definitionRequiresSpecificTime)
+      return {
+        isRecurring: true,
+        recurringFrequency: definitionRecurringFrequency ?? null,
+        recurringCustomDays: null,
+        requiresSpecificTime,
+        recurringTime:
+          requiresSpecificTime && definitionRecurringTime ? definitionRecurringTime : null,
+      }
+    }
+
+    return null
+  }, [
+    enableRecurringOverride,
+    overrideIsRecurring,
+    overrideFrequency,
+    overrideCustomDays,
+    overrideRequiresSpecificTime,
+    overrideRecurringTime,
+    isOtherTask,
+    definitionIsRecurring,
+    definitionRecurringFrequency,
+    definitionRequiresSpecificTime,
+    definitionRecurringTime,
+  ])
+
+  const effectiveRecurringFrequencyLabel = effectiveRecurring?.recurringFrequency
+    ? RECURRING_FREQUENCY_LABELS[effectiveRecurring.recurringFrequency]
+    : null
+
+  const effectiveRecurringTimeDisplay =
+    effectiveRecurring?.requiresSpecificTime && effectiveRecurring.recurringTime
+      ? effectiveRecurring.recurringTime
+      : null
+
+  const effectiveRecurringCustomDaySummary = useMemo(() => {
+    if (!effectiveRecurring || effectiveRecurring.recurringFrequency !== "custom") {
+      return null
+    }
+
+    const days = effectiveRecurring.recurringCustomDays
+    if (!days || days.length === 0) {
+      return null
+    }
+
+    const sortedDays = [...days].sort((a, b) => WEEKDAY_INDEX[a] - WEEKDAY_INDEX[b])
+    return sortedDays
+      .map((code) => WEEKDAY_OPTIONS.find((day) => day.value === code)?.short ?? code.toUpperCase())
+      .join(", ")
+  }, [effectiveRecurring])
+
+  const locationRef = useRef<HTMLDivElement>(null)
 
   type WorkerWithAvailability = ReturnType<typeof getWorkersWithShiftStatusFromUsers>[number]
 
@@ -466,13 +769,7 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers, initialD
       })()
     : undefined
 
-  const clearAssignedToError = () =>
-    setErrors((prev) => {
-      if (!prev.assignedTo) return prev
-      const rest = { ...prev }
-      delete rest.assignedTo
-      return rest
-    })
+  const clearAssignedToError = () => clearErrorByKey("assignedTo")
 
   useEffect(() => {
     if (!shouldAutoPopulate) return
@@ -634,6 +931,25 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers, initialD
       newErrors.duration = "Duration must be between 1 and 300 minutes"
     }
 
+    if (enableRecurringOverride && overrideIsRecurring) {
+      if (!overrideFrequency) {
+        newErrors.recurringFrequency = "Select how often this task should repeat"
+      }
+
+      if (overrideFrequency === "custom" && overrideCustomDays.length === 0) {
+        newErrors.recurringCustomDays = "Choose at least one weekday for the custom schedule"
+      }
+
+      if (overrideRequiresSpecificTime) {
+        const timeValue = overrideRecurringTime?.trim() ?? ""
+        if (!timeValue) {
+          newErrors.recurringTime = "Set the time the recurring task should be sent"
+        } else if (!/^\d{2}:\d{2}$/.test(timeValue)) {
+          newErrors.recurringTime = "Use HH:MM format (24-hour clock)"
+        }
+      }
+    }
+
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
   }
@@ -690,15 +1006,59 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers, initialD
       .filter(Boolean)
       .join("\n")
 
-    const metadata =
-      shouldAutoPopulate
-        ? {
-            ...(isRoomShiftingTask
-              ? { fromRoom: fromRoom || undefined, toRoom: toRoom || undefined }
-              : undefined),
-            ...(isCheckInTask ? { checkInRoom: location || undefined } : undefined),
-          }
-        : undefined
+    const baseMetadata: Record<string, string | undefined> | undefined = shouldAutoPopulate
+      ? {
+          ...(isRoomShiftingTask
+            ? { fromRoom: fromRoom || undefined, toRoom: toRoom || undefined }
+            : {}),
+          ...(isCheckInTask ? { checkInRoom: location || undefined } : {}),
+        }
+      : undefined
+
+    const includeRecurringMetadata =
+      Boolean(
+        effectiveRecurring?.recurringFrequency === "custom" &&
+          effectiveRecurring.recurringCustomDays &&
+          effectiveRecurring.recurringCustomDays.length > 0,
+      ) ||
+      Boolean(effectiveRecurring?.requiresSpecificTime && effectiveRecurring.recurringTime)
+
+    const shouldIncludeMetadata = Boolean(baseMetadata) || includeRecurringMetadata
+
+    const metadata: Record<string, string | undefined> | undefined = shouldIncludeMetadata
+      ? {
+          ...(baseMetadata ?? {}),
+          ...(
+            effectiveRecurring?.recurringFrequency === "custom" &&
+            effectiveRecurring.recurringCustomDays &&
+            effectiveRecurring.recurringCustomDays.length > 0
+              ? {
+                  recurringCustomDays: effectiveRecurring.recurringCustomDays.join(","),
+                }
+              : {}
+          ),
+          ...(
+            effectiveRecurring?.requiresSpecificTime && effectiveRecurring.recurringTime
+              ? { recurringPreferredTime: effectiveRecurring.recurringTime }
+              : {}
+          ),
+        }
+      : undefined
+
+    const isRecurring = Boolean(effectiveRecurring)
+    const requiresSpecificTime = Boolean(effectiveRecurring?.requiresSpecificTime)
+    const recurringTimeValue =
+      requiresSpecificTime && effectiveRecurring?.recurringTime
+        ? effectiveRecurring.recurringTime
+        : null
+    const recurringCustomDays =
+      isRecurring && effectiveRecurring?.recurringCustomDays
+        ? effectiveRecurring.recurringCustomDays
+        : null
+    const recurringFrequency =
+      isRecurring && effectiveRecurring?.recurringFrequency
+        ? effectiveRecurring.recurringFrequency
+        : null
 
     const data: TaskAssignmentData = {
       taskId: task.id,
@@ -714,20 +1074,17 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers, initialD
       assignedTo,
       photoRequired: isOtherTask ? photoRequired : task.photoRequired,
       photoCount: isOtherTask ? photoCount : task.photoCount,
-  photoDocumentationRequired,
-  photoCategories,
-      //
+      photoDocumentationRequired,
+      photoCategories,
       isCustomTask: isOtherTask,
-      isRecurring: !isOtherTask && definitionIsRecurring,
-      recurringFrequency: !isOtherTask && definitionIsRecurring ? definitionRecurringFrequency : null,
-      requiresSpecificTime: !isOtherTask && definitionIsRecurring ? definitionRequiresSpecificTime : false,
-      recurringTime:
-        !isOtherTask && definitionIsRecurring && definitionRequiresSpecificTime ? definitionRecurringTime : null,
+      isRecurring,
+      recurringFrequency,
+      recurringCustomDays,
+      requiresSpecificTime,
+      recurringTime: requiresSpecificTime ? recurringTimeValue : null,
       dueAt: dueAtValue,
       metadata,
     }
-
-  
     onSubmit(data)
   }
 
@@ -749,11 +1106,12 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers, initialD
             >
               {CATEGORY_LABELS[isOtherTask ? customCategory : task.category]}
             </span>
-            {!isOtherTask && definitionIsRecurring && (
+            {effectiveRecurring && (
               <Badge variant="outline" className="flex items-center gap-1 border-dashed border-muted-foreground/50">
                 <Repeat className="h-3.5 w-3.5" />
-                {recurringFrequencyLabel || "Recurring"}
-                {definitionRequiresSpecificTime && definitionRecurringTime ? ` @ ${definitionRecurringTime}` : ""}
+                {effectiveRecurringFrequencyLabel || "Recurring"}
+                {effectiveRecurringCustomDaySummary ? ` • ${effectiveRecurringCustomDaySummary}` : ""}
+                {effectiveRecurringTimeDisplay ? ` @ ${effectiveRecurringTimeDisplay}` : ""}
               </Badge>
             )}
           </div>
@@ -875,6 +1233,140 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers, initialD
                 <p className="mt-1 text-xs text-muted-foreground">
                   Specify how many photos the worker must upload (1-5)
                 </p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {showRecurringControls && (
+          <div className="rounded-xl border-2 border-dashed border-primary/30 bg-primary/5 p-4 sm:p-5">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold text-foreground">Recurring task</p>
+                <p className="text-xs text-muted-foreground">
+                  Schedule this assignment to repeat automatically.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground">Off</span>
+                <Switch
+                  checked={overrideIsRecurring}
+                  onCheckedChange={handleRecurringToggle}
+                  aria-label="Toggle recurring task"
+                />
+                <span className="text-xs text-muted-foreground">On</span>
+              </div>
+            </div>
+
+            {overrideIsRecurring && (
+              <div className="mt-4 space-y-4">
+                <div>
+                  <label className="block text-sm font-semibold text-foreground mb-2">
+                    Frequency <span className="text-destructive">*</span>
+                  </label>
+                  <Select
+                    value={overrideFrequency}
+                    onValueChange={(value) => handleRecurringFrequencyChange(value as RecurringFrequency)}
+                  >
+                    <SelectTrigger
+                      aria-invalid={Boolean(errors.recurringFrequency)}
+                      className={cn(
+                        errors.recurringFrequency ? "border-destructive focus:border-destructive" : "",
+                      )}
+                    >
+                      <SelectValue placeholder="Choose how often" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {recurringFrequencyOptions.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {errors.recurringFrequency && (
+                    <p className="mt-2 text-xs text-destructive flex items-center gap-1">
+                      <AlertCircle className="w-4 h-4 shrink-0" />
+                      <span>{errors.recurringFrequency}</span>
+                    </p>
+                  )}
+                </div>
+
+                {overrideFrequency === "custom" && (
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground mb-2">
+                      Pick the days this task should repeat
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {WEEKDAY_OPTIONS.map((day) => {
+                        const isSelected = overrideCustomDays.includes(day.value)
+                        return (
+                          <button
+                            type="button"
+                            key={day.value}
+                            onClick={() => toggleCustomDay(day.value)}
+                            className={cn(
+                              "px-3 py-2 text-sm font-medium rounded-lg border transition-colors",
+                              isSelected
+                                ? "border-primary bg-primary/10 text-primary"
+                                : "border-border bg-background text-muted-foreground hover:bg-muted",
+                            )}
+                          >
+                            {day.short}
+                          </button>
+                        )
+                      })}
+                    </div>
+                    {errors.recurringCustomDays && (
+                      <p className="mt-2 text-xs text-destructive flex items-center gap-1">
+                        <AlertCircle className="w-4 h-4 shrink-0" />
+                        <span>{errors.recurringCustomDays}</span>
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <label className="text-sm font-semibold text-foreground">
+                      Send at specific time
+                    </label>
+                    <Switch
+                      checked={overrideRequiresSpecificTime}
+                      onCheckedChange={handleSpecificTimeToggle}
+                      aria-label="Toggle specific send time"
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Enable if the task should arrive at a fixed time rather than during a shift window.
+                  </p>
+                </div>
+
+                {overrideRequiresSpecificTime && (
+                  <div>
+                    <label className="block text-sm font-semibold text-foreground mb-2">
+                      Preferred time <span className="text-destructive">*</span>
+                    </label>
+                    <div className="relative">
+                      <Clock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+                      <input
+                        type="time"
+                        value={overrideRecurringTime}
+                        onChange={(event) => handleRecurringTimeChange(event.target.value)}
+                        className={cn(
+                          "w-full pl-11 pr-4 py-3 border-2 rounded-lg focus:border-ring focus:outline-none bg-background text-foreground",
+                          errors.recurringTime ? "border-destructive" : "border-border",
+                        )}
+                      />
+                    </div>
+                    {errors.recurringTime && (
+                      <p className="mt-2 text-xs text-destructive flex items-center gap-1">
+                        <AlertCircle className="w-4 h-4 shrink-0" />
+                        <span>{errors.recurringTime}</span>
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -1367,12 +1859,13 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers, initialD
             <div className="flex items-center gap-2 text-muted-foreground">
               <span className="font-medium capitalize">{selectedDepartment}</span> Department
             </div>
-            {!isOtherTask && definitionIsRecurring && (
+            {effectiveRecurring && (
               <div className="flex items-center gap-2 text-muted-foreground">
                 <Repeat className="w-4 h-4" />
                 <span>
-                  {recurringFrequencyLabel || "Recurring"}
-                  {definitionRequiresSpecificTime && definitionRecurringTime ? ` @ ${definitionRecurringTime}` : ""}
+                  {effectiveRecurringFrequencyLabel || "Recurring"}
+                  {effectiveRecurringCustomDaySummary ? ` • ${effectiveRecurringCustomDaySummary}` : ""}
+                  {effectiveRecurringTimeDisplay ? ` @ ${effectiveRecurringTimeDisplay}` : ""}
                 </span>
               </div>
             )}

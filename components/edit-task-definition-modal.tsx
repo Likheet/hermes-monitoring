@@ -33,9 +33,10 @@ interface EditTaskDefinitionModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   onSuccess: () => void
+  createdByUserId?: string
 }
 
-export function EditTaskDefinitionModal({ task, open, onOpenChange, onSuccess }: EditTaskDefinitionModalProps) {
+export function EditTaskDefinitionModal({ task, open, onOpenChange, onSuccess, createdByUserId }: EditTaskDefinitionModalProps) {
   const { toast } = useToast()
 
   const getBooleanValue = (value: unknown, defaultValue = false): boolean => {
@@ -183,7 +184,7 @@ export function EditTaskDefinitionModal({ task, open, onOpenChange, onSuccess }:
           formData.isRecurring && formData.requiresSpecificTime && formData.recurringTime
             ? formData.recurringTime
             : undefined,
-        createdBy: "admin",
+        createdBy: createdByUserId || "admin",
       })
     }
 
