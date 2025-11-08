@@ -3,7 +3,7 @@
 import type { TaskCategory, Priority, RecurringFrequency } from "./task-definitions"
 export type { TaskCategory, Priority, RecurringFrequency } from "./task-definitions"
 
-export type UserRole = "worker" | "supervisor" | "front_office" | "admin"
+export type UserRole = "worker" | "supervisor" | "front_office" | "manager" | "admin"
 export type Department = "housekeeping" | "maintenance" | "front_office" | "admin" | "housekeeping-dept" | "maintenance-dept"
 export type TaskStatus = "PENDING" | "IN_PROGRESS" | "PAUSED" | "COMPLETED" | "REJECTED" | "VERIFIED"
 export type PriorityLevel = "GUEST_REQUEST" | "TIME_SENSITIVE" | "DAILY_TASK" | "PREVENTIVE_MAINTENANCE"

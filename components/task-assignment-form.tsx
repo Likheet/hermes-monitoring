@@ -329,14 +329,18 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers, initialD
 
   const workersWithShifts = useMemo(() => {
     // Filter workers and calculate availability
-    
+
     const allWorkers = shiftSchedules
       ? getWorkersWithShiftStatusFromUsersAndSchedules(workers, shiftSchedules, shiftOptions)
       : getWorkersWithShiftStatusFromUsers(workers, shiftOptions)
-    
-      
-    // Filter out workers from excluded departments
-    return allWorkers.filter((worker) => !EXCLUDED_TASK_ASSIGNMENT_DEPARTMENTS.includes(worker.department as Department))
+
+    // Filter out workers from excluded departments (allow managers regardless of department)
+    return allWorkers.filter((worker) => {
+      if (worker.role === "manager") {
+        return true
+      }
+      return !EXCLUDED_TASK_ASSIGNMENT_DEPARTMENTS.includes(worker.department as Department)
+    })
   }, [workers, shiftSchedules, shiftOptions])
 
   const staffIncludingCurrent = useMemo<WorkerWithAvailability[]>(() => {
@@ -376,6 +380,26 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers, initialD
     })
   }, [staffIncludingCurrent])
 
+  const selfWorker = useMemo(() => {
+    if (!currentUser) return null
+    return sortedStaff.find((worker) => worker.id === currentUser.id) ?? null
+  }, [sortedStaff, currentUser])
+
+  const showSelfOption = Boolean(selfWorker && currentUser?.role === "manager")
+
+  const selfDepartmentLabel = useMemo(() => {
+    if (!selfWorker) return null
+    const rawDepartment = selfWorker.department as string
+    const normalizedDept = normalizeDepartment(rawDepartment as Department)
+    if (normalizedDept) {
+      return displayDepartmentLabels[normalizedDept]
+    }
+    if (rawDepartment && rawDepartment in departmentLabels) {
+      return departmentLabels[rawDepartment as keyof typeof departmentLabels]
+    }
+    return rawDepartment
+  }, [selfWorker])
+
   const staffGroupedByDepartment = useMemo<Record<DisplayDepartment, WorkerWithAvailability[]>>(() => {
     const groups: Record<DisplayDepartment, WorkerWithAvailability[]> = {
       housekeeping: [],
@@ -384,13 +408,16 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers, initialD
     }
 
     sortedStaff.forEach((worker) => {
+      if (showSelfOption && selfWorker && worker.id === selfWorker.id) {
+        return
+      }
       const displayDepartment = normalizeDepartment(worker.department as Department)
       if (!displayDepartment) return
       groups[displayDepartment].push(worker)
     })
 
     return groups
-  }, [sortedStaff])
+  }, [sortedStaff, selfWorker, showSelfOption])
 
   // Freeze staff list while Select is open to prevent DOM reconciliation errors
   useEffect(() => {
@@ -424,8 +451,18 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers, initialD
             : selectedWorkerEntry.availability.status === "SHIFT_BREAK"
             ? "Shift Break"
             : "Off Duty"
-        const supervisorTag = selectedWorkerEntry.role === "supervisor" ? " • Supervisor" : ""
-        return `${selectedWorkerEntry.name} (${departmentLabel}${supervisorTag}) • ${statusLabel}`
+        const roleSegments: string[] = []
+        if (currentUser && selectedWorkerEntry.id === currentUser.id) {
+          roleSegments.push("SELF")
+        }
+        if (selectedWorkerEntry.role === "supervisor") {
+          roleSegments.push("Supervisor")
+        }
+        if (selectedWorkerEntry.role === "manager") {
+          roleSegments.push("Manager")
+        }
+        const roleSuffix = roleSegments.length > 0 ? ` • ${roleSegments.join(" • ")}` : ""
+        return `${selectedWorkerEntry.name} (${departmentLabel}${roleSuffix}) • ${statusLabel}`
       })()
     : undefined
 
@@ -466,6 +503,11 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers, initialD
     const worker = sortedStaff.find((candidate) => candidate.id === value)
     if (!worker) {
       setAssignedTo("")
+      return
+    }
+
+    if (currentUser && worker.id === currentUser.id) {
+      finalizeAssignment(worker)
       return
     }
 
@@ -1144,6 +1186,63 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers, initialD
                 <SelectValue placeholder="Select an assignee...">{selectedWorkerLabel}</SelectValue>
               </SelectTrigger>
               <SelectContent className="min-w-[18rem]">
+                {showSelfOption && selfWorker && (
+                  <SelectGroup>
+                    <SelectLabel>Yourself</SelectLabel>
+                    <SelectItem
+                      value={selfWorker.id}
+                      className={cn(selfWorker.availability.status !== "AVAILABLE" && "opacity-90")}
+                    >
+                      <div className="flex w-full items-center justify-between gap-2">
+                        <div className="flex flex-col text-left">
+                          <span className="font-medium">{selfWorker.name}</span>
+                          <div className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
+                            <span>{selfDepartmentLabel ?? selfWorker.department}</span>
+                            <Badge
+                              variant="outline"
+                              className="px-1.5 py-0 text-[10px] uppercase tracking-wide border-sky-200 bg-sky-100 text-sky-700"
+                            >
+                              Self
+                            </Badge>
+                            {selfWorker.role === "manager" && (
+                              <Badge
+                                variant="outline"
+                                className="px-1.5 py-0 text-[10px] uppercase tracking-wide border-secondary/40 bg-secondary/10 text-secondary-foreground"
+                              >
+                                Manager
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          {isWorkerBusy(selfWorker.id, currentTasks) && (
+                            <Badge
+                              variant="outline"
+                              className="text-xs shrink-0 border-orange-200 bg-orange-100 text-orange-700"
+                            >
+                              Busy
+                            </Badge>
+                          )}
+                          <Badge
+                            variant="outline"
+                            className={cn(
+                              "text-xs shrink-0",
+                              selfWorker.availability.status === "AVAILABLE"
+                                ? "border-emerald-200 bg-emerald-100 text-emerald-700"
+                                : "border-slate-200 bg-slate-100 text-slate-500",
+                            )}
+                          >
+                            {selfWorker.availability.status === "AVAILABLE"
+                              ? "On Duty"
+                              : selfWorker.availability.status === "SHIFT_BREAK"
+                              ? "Shift Break"
+                              : "Off-Duty"}
+                          </Badge>
+                        </div>
+                      </div>
+                    </SelectItem>
+                  </SelectGroup>
+                )}
                 {DEPARTMENT_ORDER.map((dept) => {
                   const workersInDept = staffToRender[dept]
                   if (!workersInDept.length) return null
@@ -1159,6 +1258,13 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers, initialD
                           ? displayDepartmentLabels[normalizedDept]
                           : departmentLabels[worker.department as Department]
                         const isSupervisor = worker.role === "supervisor"
+                        const isManager = worker.role === "manager"
+                        const isSelf = currentUser && worker.id === currentUser.id
+                        const statusLabel = isOnDuty
+                          ? "On Duty"
+                          : worker.availability.status === "SHIFT_BREAK"
+                          ? "Shift Break"
+                          : "Off-Duty"
                         return (
                           <SelectItem
                             key={worker.id}
@@ -1171,12 +1277,28 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers, initialD
                                 <span className="font-medium">{worker.name}</span>
                                 <div className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
                                   <span>{departmentLabel}</span>
+                                  {isSelf && (
+                                    <Badge
+                                      variant="outline"
+                                      className="px-1.5 py-0 text-[10px] uppercase tracking-wide border-sky-200 bg-sky-100 text-sky-700"
+                                    >
+                                      Self
+                                    </Badge>
+                                  )}
                                   {isSupervisor && (
                                     <Badge
                                       variant="outline"
                                       className="px-1.5 py-0 text-[10px] uppercase tracking-wide border-primary/30 bg-primary/5 text-primary"
                                     >
                                       Supervisor
+                                    </Badge>
+                                  )}
+                                  {isManager && (
+                                    <Badge
+                                      variant="outline"
+                                      className="px-1.5 py-0 text-[10px] uppercase tracking-wide border-secondary/40 bg-secondary/10 text-secondary-foreground"
+                                    >
+                                      Manager
                                     </Badge>
                                   )}
                                 </div>
@@ -1199,7 +1321,7 @@ export function TaskAssignmentForm({ task, onCancel, onSubmit, workers, initialD
                                       : "border-slate-200 bg-slate-100 text-slate-500",
                                   )}
                                 >
-                                  {isOnDuty ? "On Duty" : "Off-Duty"}
+                                  {statusLabel}
                                 </Badge>
                               </div>
                             </div>

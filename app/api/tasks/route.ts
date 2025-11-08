@@ -13,6 +13,12 @@ const PRIORITY_APP_TO_DB: Record<string, "low" | "medium" | "high" | "urgent"> =
   PREVENTIVE_MAINTENANCE: "high",
 }
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+
+function isValidUuid(value: unknown): value is string {
+  return typeof value === "string" && UUID_REGEX.test(value)
+}
+
 function toDualTimestamp() {
   const iso = new Date().toISOString()
   return { client: iso, server: iso }
@@ -268,7 +274,7 @@ export async function POST(request: Request) {
         : undefined
 
     // Validate assigned user availability (prevent assigning tasks to off-duty users)
-    if (assigned_to_user_id) {
+    if (assigned_to_user_id && isValidUuid(assigned_to_user_id)) {
       // Optimized: Single query to get user with their shift schedules
       const todayStr = formatDateKeyForTimezone(new Date(), timezoneOffset)
       
@@ -299,7 +305,7 @@ export async function POST(request: Request) {
       if (availability.status === "OFF_DUTY" || availability.status === "SHIFT_BREAK") {
         return NextResponse.json({ error: "Cannot assign task while the staff member is unavailable" }, { status: 400 })
       }
-    }
+  }
 
     const assigned_at = toDualTimestamp()
     const normalizedPriority = normalizePriority(priority_level) ?? "low"

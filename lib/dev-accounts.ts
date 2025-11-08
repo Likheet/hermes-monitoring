@@ -1,6 +1,6 @@
-import type { Department, User, UserRole } from "./types"
+import type { Department, UserRole } from "./types"
 
-export type DevLoginGroup = "Front Office" | "Supervisors" | "Housekeeping Workers" | "Maintenance Workers"
+export type DevLoginGroup = "Front Office" | "Managers" | "Supervisors" | "Housekeeping Workers" | "Maintenance Workers"
 
 export interface DevAccount {
   displayName: string
@@ -14,6 +14,7 @@ export interface DevAccount {
 
 export const DEV_LOGIN_GROUP_ORDER: DevLoginGroup[] = [
   "Front Office",
+  "Managers",
   "Supervisors",
   "Housekeeping Workers",
   "Maintenance Workers",
@@ -63,6 +64,24 @@ export const DEV_ACCOUNTS: DevAccount[] = [
     redirect: "/front-office",
     group: "Front Office",
     role: "front_office",
+    department: "front_office",
+  },
+  {
+    displayName: "Maya Singh",
+    username: "manager",
+    password: "manager123",
+    redirect: "/manager",
+    group: "Managers",
+    role: "manager",
+    department: "front_office",
+  },
+  {
+    displayName: "Suraj",
+    username: "suraj",
+    password: "Suraj123",
+    redirect: "/manager",
+    group: "Managers",
+    role: "manager",
     department: "front_office",
   },
   {
@@ -172,19 +191,3 @@ export function findDevAccount(username: string) {
   return DEV_ACCOUNT_LOOKUP.get(username.toLowerCase()) ?? null
 }
 
-export function devAccountToUser(account: DevAccount): User {
-  return {
-    id: `dev-${account.username}`,
-    name: account.displayName,
-    role: account.role,
-    phone: "",
-    department: account.department,
-    shift_start: "09:00",
-    shift_end: "17:00",
-    has_break: false,
-    is_dual_shift: false,
-    has_shift_2: false,
-    shift_2_has_break: false,
-    is_available: true,
-  }
-}

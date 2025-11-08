@@ -42,7 +42,8 @@ const STORAGE_KEYS = {
   shiftSchedules: "hermes-cache-shifts-v1",
 } as const
 
-const MAX_CACHED_TASKS = 100
+const MAX_CACHED_TASKS = 5000
+const MAX_PERSISTED_TASKS = 100
 const LIST_CACHE_TTL_MS = 30_000 // Reduced from 3 minutes to 30 seconds
 const REALTIME_REFRESH_DEBOUNCE_MS = 250
 const REALTIME_REFRESH_COOLDOWN_MS = 4_000
@@ -68,7 +69,7 @@ function persistToStorage(key: string, value: unknown) {
   try {
     let payload = value
     if (key === STORAGE_KEYS.tasks && Array.isArray(value)) {
-      const tasks = (value as Task[]).slice(0, MAX_CACHED_TASKS)
+      const tasks = (value as Task[]).slice(0, MAX_PERSISTED_TASKS)
       payload = tasks.map((task) =>
         task.categorized_photos ? { ...task, categorized_photos: null } : task,
       )
@@ -116,6 +117,7 @@ const DEFAULT_DEPARTMENT_FOR_ROLE: Record<NonAdminRole, Department> = {
   worker: "housekeeping",
   supervisor: "maintenance",
   front_office: "front_office",
+  manager: "front_office",
 }
 
 const DEFAULT_SHIFT_TIMING = {
@@ -359,9 +361,40 @@ export function TaskProvider({
    */
   const cacheTaskPhotos = useCallback(
     (taskId: string, photos: CategorizedPhotos | null) => {
-      categorizedPhotoCacheRef.current.set(taskId, photos ?? null)
+      const normalized = photos ?? null
+      const nextSignature = photosSignature(normalized)
+      const currentCached = categorizedPhotoCacheRef.current.get(taskId) ?? null
+      const cachedSignature = photosSignature(currentCached)
+
+      if (cachedSignature === nextSignature) {
+        return
+      }
+
+      categorizedPhotoCacheRef.current.set(taskId, normalized)
+
       setTasks((prev) => {
-        const next = prev.map((task) => (task.id === taskId ? { ...task, categorized_photos: photos ?? null } : task))
+        let changed = false
+        const next = prev.map((task) => {
+          if (task.id !== taskId) {
+            return task
+          }
+
+          const taskSignature = photosSignature(task.categorized_photos ?? null)
+          if (taskSignature === nextSignature) {
+            return task
+          }
+
+          changed = true
+          return {
+            ...task,
+            categorized_photos: normalized,
+          }
+        })
+
+        if (!changed) {
+          return prev
+        }
+
         persistToStorage(STORAGE_KEYS.tasks, next)
         return next
       })

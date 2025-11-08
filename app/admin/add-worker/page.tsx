@@ -22,12 +22,14 @@ const DEFAULT_ROLE_DEPARTMENT: Record<NonAdminRole, Department> = {
   worker: "housekeeping",
   supervisor: "maintenance",
   front_office: "front_office",
+  manager: "front_office",
 }
 
 const ROLE_DEPARTMENT_OPTIONS: Record<NonAdminRole, Department[]> = {
   worker: ["housekeeping", "maintenance"],
   supervisor: ["housekeeping", "maintenance"],
   front_office: ["front_office"],
+  manager: ["front_office", "housekeeping", "maintenance", "admin"],
 }
 
 const DEPARTMENT_LABELS: Record<Department, string> = {
@@ -118,7 +120,7 @@ function AddAccountForm() {
           <div>
             <h1 className="text-2xl font-bold">Add Team Member</h1>
             <p className="text-sm text-muted-foreground">
-              Create worker, supervisor, or front office accounts with a username and password.
+              Create worker, supervisor, manager, or front office accounts with a username and password.
             </p>
           </div>
         </div>
@@ -182,15 +184,20 @@ function AddAccountForm() {
                   <SelectContent>
                     <SelectItem value="worker">Worker</SelectItem>
                     <SelectItem value="supervisor">Supervisor</SelectItem>
+                    <SelectItem value="manager">Manager</SelectItem>
                     <SelectItem value="front_office">Front Office</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
-              {(formData.role === "worker" || formData.role === "supervisor") && (
+              {(formData.role === "worker" || formData.role === "supervisor" || formData.role === "manager") && (
                 <div className="space-y-2">
                   <Label htmlFor="department">
-                    {formData.role === "worker" ? "Worker" : "Supervisor"} department
+                    {formData.role === "worker"
+                      ? "Worker"
+                      : formData.role === "supervisor"
+                        ? "Supervisor"
+                        : "Manager"} department
                   </Label>
                   <Select
                     value={formData.department}

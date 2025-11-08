@@ -27,7 +27,7 @@ export interface DatabaseUser {
   username: string
   password_hash: string
   name: string
-  role: "worker" | "supervisor" | "front_office" | "admin"
+  role: "worker" | "supervisor" | "front_office" | "manager" | "admin"
   phone: string | null
   department: "housekeeping" | "maintenance" | "housekeeping-dept" | "maintenance-dept" | "admin" | null
   shift_timing: string | null
@@ -208,7 +208,7 @@ function normalizeDepartment(role: DatabaseUser["role"], department: DatabaseUse
     return department
   }
 
-  if (role === "front_office" || role === "admin") {
+  if (role === "front_office" || role === "manager" || role === "admin") {
     return "front_office"
   }
 

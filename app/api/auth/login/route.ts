@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { verifyPassword } from "@/lib/auth-utils"
 import { databaseUserToApp } from "@/lib/database-types"
-import { devAccountToUser, findDevAccount } from "@/lib/dev-accounts"
+import { findDevAccount } from "@/lib/dev-accounts"
 
 const SESSION_COOKIE_NAME = "session"
 const SESSION_PAYLOAD_COOKIE = "session_payload"
@@ -42,12 +42,18 @@ export async function POST(request: Request) {
           .maybeSingle()
 
         if (dbError) {
-          console.warn("[dev-login] Failed to load matching database user", dbError)
+          console.error("[dev-login] Failed to load matching database user", dbError)
+          return NextResponse.json({ error: "Unable to load account from database" }, { status: 500 })
         }
 
-        const appUser = dbUser ? databaseUserToApp(dbUser) : devAccountToUser(devAccount)
+        if (!dbUser) {
+          console.error(`[dev-login] Account ${devAccount.username} is missing from the users table`)
+          return NextResponse.json({ error: "Account not provisioned in database" }, { status: 404 })
+        }
+
+        const appUser = databaseUserToApp(dbUser)
         const response = NextResponse.json({ user: appUser })
-        response.cookies.set(SESSION_COOKIE_NAME, dbUser?.id ?? appUser.id, cookieOptions)
+        response.cookies.set(SESSION_COOKIE_NAME, dbUser.id, cookieOptions)
         response.cookies.set(SESSION_PAYLOAD_COOKIE, encodeSessionPayload(appUser), cookieOptions)
         return response
       }

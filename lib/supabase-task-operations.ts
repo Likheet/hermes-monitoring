@@ -29,8 +29,40 @@ import {
 } from "./database-types"
 
 const CACHE_TTL_MS = 30_000
-const TASK_FETCH_LIMIT = 200
+const TASK_FETCH_LIMIT = 1000
 const TASK_FETCH_LIMIT_WITH_PHOTOS = 80
+
+const TASK_SUMMARY_COLUMNS = [
+  "id",
+  "task_type",
+  "room_number",
+  "status",
+  "priority_level",
+  "assigned_to_user_id",
+  "assigned_by_user_id",
+  "created_at",
+  "updated_at",
+  "started_at",
+  "completed_at",
+  "assigned_at",
+  "estimated_duration",
+  "actual_duration",
+  "worker_remarks",
+  "supervisor_remarks",
+  "photo_requirements",
+  "requires_verification",
+  // Custom task fields
+  "is_custom_task",
+  "custom_task_name",
+  "custom_task_category",
+  "custom_task_priority",
+  "custom_task_photo_required",
+  "custom_task_photo_count",
+  "custom_task_is_recurring",
+  "custom_task_recurring_frequency",
+  "custom_task_requires_specific_time",
+  "custom_task_recurring_time",
+] as const
 
 type DatabaseTaskSummaryBase = Pick<
   DatabaseTask,
@@ -69,6 +101,17 @@ type DatabaseTaskSummary = DatabaseTaskSummaryBase & {
 }
 
 type DatabaseTaskPhotosRow = Pick<DatabaseTask, "id" | "categorized_photos" | "updated_at">
+
+const STATUS_APP_TO_DB_MAP: Record<Task["status"], DatabaseTask["status"]> = {
+  PENDING: "pending",
+  IN_PROGRESS: "in_progress",
+  PAUSED: "paused",
+  COMPLETED: "completed",
+  VERIFIED: "verified",
+  REJECTED: "rejected",
+}
+
+const DEFAULT_HISTORY_LIMIT = 120
 
 type CacheKey =
   | "tasks"
@@ -303,43 +346,12 @@ export async function loadTasksFromSupabase(
 
   try {
     const supabase = supabaseOverride ?? createClient()
-    const columns = [
-      "id",
-      "task_type",
-      "room_number",
-      "status",
-      "priority_level",
-      "assigned_to_user_id",
-      "assigned_by_user_id",
-      "created_at",
-      "updated_at",
-      "started_at",
-      "completed_at",
-      "assigned_at",
-      "estimated_duration",
-      "actual_duration",
-      "worker_remarks",
-      "supervisor_remarks",
-      "photo_requirements",
-      "requires_verification",
-      // Custom task fields
-      "is_custom_task",
-      "custom_task_name",
-      "custom_task_category",
-      "custom_task_priority",
-      "custom_task_photo_required",
-      "custom_task_photo_count",
-      "custom_task_is_recurring",
-      "custom_task_recurring_frequency",
-      "custom_task_requires_specific_time",
-      "custom_task_recurring_time",
-    ]
 
     const limit = options.includePhotos ? TASK_FETCH_LIMIT_WITH_PHOTOS : TASK_FETCH_LIMIT
 
     const { data, error } = await supabase
       .from("tasks")
-      .select(columns.join(","))
+  .select(TASK_SUMMARY_COLUMNS.join(","))
       .order("updated_at", { ascending: false })
       .limit(limit)
 
@@ -452,6 +464,88 @@ export async function loadTasksFromSupabase(
 
     throw error instanceof Error ? error : new Error(String(error))
   }
+}
+
+export interface TaskHistoryQueryOptions extends LoadOptions {
+  status: Task["status"]
+  limit?: number
+  before?: string | null
+  pendingVerificationOnly?: boolean
+}
+
+export async function loadTaskHistoryChunk(
+  options: TaskHistoryQueryOptions,
+  supabaseOverride?: SupabaseClient,
+): Promise<Task[]> {
+  const supabase = supabaseOverride ?? createClient()
+  const limitCandidate = typeof options.limit === "number" ? options.limit : DEFAULT_HISTORY_LIMIT
+  const limit = Math.min(Math.max(limitCandidate, 1), TASK_FETCH_LIMIT)
+  const status = STATUS_APP_TO_DB_MAP[options.status]
+
+  let query = supabase
+    .from("tasks")
+    .select(TASK_SUMMARY_COLUMNS.join(","))
+    .eq("status", status)
+    .order("updated_at", { ascending: false })
+    .limit(limit)
+
+  if (options.before) {
+    query = query.lt("updated_at", options.before)
+  }
+
+  const { data, error } = await query
+
+  if (error) {
+    console.error("[v0] Error loading historical tasks from Supabase:", error)
+    throw new Error(`Failed to load tasks: ${error.message}`)
+  }
+
+  const rows = (data ?? []) as DatabaseTaskSummary[]
+
+  const mapped = rows.map((row) =>
+    databaseTaskToApp({
+      id: row.id,
+      task_type: row.task_type,
+      room_number: row.room_number,
+      status: row.status,
+      priority_level: row.priority_level,
+      assigned_to_user_id: row.assigned_to_user_id,
+      assigned_by_user_id: row.assigned_by_user_id,
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+      started_at: row.started_at ?? null,
+      completed_at: row.completed_at ?? null,
+      verified_at: null,
+      verified_by_user_id: null,
+      assigned_at: row.assigned_at ?? null,
+      estimated_duration: row.estimated_duration ?? null,
+      actual_duration: row.actual_duration ?? null,
+      categorized_photos: null,
+      worker_remarks: row.worker_remarks ?? null,
+      supervisor_remarks: row.supervisor_remarks ?? null,
+      quality_rating: null,
+      requires_verification: row.requires_verification ?? false,
+      audit_log: [],
+      pause_history: [],
+      photo_requirements: row.photo_requirements ?? null,
+      is_custom_task: row.is_custom_task ?? false,
+      custom_task_name: row.custom_task_name ?? null,
+      custom_task_category: row.custom_task_category ?? null,
+      custom_task_priority: row.custom_task_priority ?? null,
+      custom_task_photo_required: row.custom_task_photo_required ?? null,
+      custom_task_photo_count: row.custom_task_photo_count ?? null,
+      custom_task_is_recurring: row.custom_task_is_recurring ?? null,
+      custom_task_recurring_frequency: row.custom_task_recurring_frequency ?? null,
+      custom_task_requires_specific_time: row.custom_task_requires_specific_time ?? null,
+      custom_task_recurring_time: row.custom_task_recurring_time ?? null,
+    } as DatabaseTask),
+  )
+
+  if (options.status === "COMPLETED" && options.pendingVerificationOnly) {
+    return mapped.filter((task) => !task.supervisor_remark || !task.supervisor_remark.trim())
+  }
+
+  return mapped
 }
 
 export async function loadTaskCategorizedPhotos(

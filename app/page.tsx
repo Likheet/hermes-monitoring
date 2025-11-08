@@ -27,6 +27,9 @@ export default function HomePage() {
         case "front_office":
           router.replace("/front-office")
           break
+        case "manager":
+          router.replace("/manager")
+          break
         case "admin":
           router.replace("/admin")
           break

@@ -67,6 +67,17 @@ export const mockUsers: User[] = [
     is_available: true,
   },
   {
+    id: "user-manager",
+    name: "Duty Manager",
+    role: "manager",
+    department: "front_office",
+    phone: "+1234567896",
+    shift_start: "09:00",
+    shift_end: "18:00",
+    has_break: false,
+    is_available: true,
+  },
+  {
     id: "user-admin",
     name: "Admin",
     role: "admin",

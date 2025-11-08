@@ -25,7 +25,12 @@ function getSubscriptionFilters(filter?: UseRealtimeTasksOptions['filter']) {
   }
 
   // Supervisors and front office see all tasks (no department filter since tasks.department doesn't exist)
-  if (filter.role === 'supervisor' || filter.role === 'front_office' || filter.role === 'admin') {
+  if (
+    filter.role === 'supervisor' ||
+    filter.role === 'front_office' ||
+    filter.role === 'manager' ||
+    filter.role === 'admin'
+  ) {
     return undefined // No filter - get all updates
   }
 

@@ -167,7 +167,10 @@ function AdminDashboard() {
   }
 
   const isManagedStaff = (user: User) =>
-    user.role === "worker" || user.role === "front_office" || user.role === "supervisor"
+    user.role === "worker" ||
+    user.role === "front_office" ||
+    user.role === "supervisor" ||
+    user.role === "manager"
 
   const workersList = useMemo(() => users.filter(isManagedStaff), [users]) // Renamed to workersList for clarity
 
