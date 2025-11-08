@@ -437,6 +437,16 @@ function SupervisorDashboard() {
                         {sortedActiveEscalations.map((escalation) => {
                           const task = tasks.find((t) => t.id === escalation.task_id)
                           const escalatedAgo = formatDistanceToNow(escalation.timestamp?.server ?? escalation.timestamp?.client ?? new Date())
+                          const workerName = task?.assigned_to_user_id
+                            ? getWorkerName(task.assigned_to_user_id)
+                            : null
+                          const startedSource =
+                            task?.started_at?.server ??
+                            task?.started_at?.client ??
+                            task?.assigned_at?.server ??
+                            task?.assigned_at?.client ??
+                            null
+                          const startedAgo = startedSource ? formatDistanceToNow(startedSource) : null
 
                           return (
                             <div key={escalation.id} className="rounded-lg border border-border bg-background p-3">
@@ -446,7 +456,13 @@ function SupervisorDashboard() {
                                   {task?.room_number && (
                                     <p className="text-sm text-muted-foreground">Room {task.room_number}</p>
                                   )}
+                                  <p className="text-sm text-muted-foreground">
+                                    {workerName ? `Assigned to ${workerName}` : "No worker assigned yet"}
+                                  </p>
                                   <p className="mt-2 text-sm text-muted-foreground">{describeEscalationLevel(escalation.level)}</p>
+                                  {startedAgo && (
+                                    <p className="text-xs text-muted-foreground">Started approximately {startedAgo}</p>
+                                  )}
                                 </div>
                                 <Badge className={getEscalationColor(escalation.level)} variant="secondary">
                                   Level {escalation.level}
@@ -486,6 +502,16 @@ function SupervisorDashboard() {
                           const acknowledgedAgo = formatDistanceToNow(
                             escalation.acknowledged_at ?? escalation.timestamp?.server ?? escalation.timestamp?.client ?? new Date(),
                           )
+                          const workerName = task?.assigned_to_user_id
+                            ? getWorkerName(task.assigned_to_user_id)
+                            : null
+                          const startedSource =
+                            task?.started_at?.server ??
+                            task?.started_at?.client ??
+                            task?.assigned_at?.server ??
+                            task?.assigned_at?.client ??
+                            null
+                          const startedAgo = startedSource ? formatDistanceToNow(startedSource) : null
                           const isRecent = recentAcknowledgedId === escalation.id
 
                           return (
@@ -501,7 +527,13 @@ function SupervisorDashboard() {
                                   {task?.room_number && (
                                     <p className="text-sm text-muted-foreground">Room {task.room_number}</p>
                                   )}
+                                  <p className="text-sm text-muted-foreground">
+                                    {workerName ? `Assigned to ${workerName}` : "No worker assigned yet"}
+                                  </p>
                                   <p className="mt-2 text-sm text-muted-foreground">{describeEscalationLevel(escalation.level)}</p>
+                                  {startedAgo && (
+                                    <p className="text-xs text-muted-foreground">Started approximately {startedAgo}</p>
+                                  )}
                                 </div>
                                 <Badge className={getEscalationColor(escalation.level)} variant="secondary">
                                   Level {escalation.level}

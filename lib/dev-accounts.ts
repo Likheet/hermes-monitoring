@@ -67,7 +67,7 @@ export const DEV_ACCOUNTS: DevAccount[] = [
     department: "front_office",
   },
   {
-    displayName: "Maya Singh",
+    displayName: "TEST",
     username: "manager",
     password: "manager123",
     redirect: "/manager",
