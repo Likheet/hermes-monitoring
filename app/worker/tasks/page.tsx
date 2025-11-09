@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import { ProtectedRoute } from "@/components/protected-route"
 import { useAuth } from "@/lib/auth-context"
@@ -27,19 +27,58 @@ function TasksPage() {
   const { user } = useAuth()
   const { tasks } = useTasks()
   const [filter, setFilter] = useState<FilterOption>("all")
+  const [nowTick, setNowTick] = useState(() => Date.now())
 
-  // Get all tasks for current worker
-  const myTasks = tasks.filter((task) => task.assigned_to_user_id === user?.id)
+  useEffect(() => {
+    if (typeof window === "undefined") return
+
+    const intervalId = window.setInterval(() => {
+      setNowTick(Date.now())
+    }, 30_000)
+
+    return () => window.clearInterval(intervalId)
+  }, [])
+
+  // Get all tasks for current worker that are ready to be shown
+  const myTasks = useMemo(() => {
+    if (!user?.id) {
+      return []
+    }
+
+    return tasks.filter((task) => {
+      if (task.assigned_to_user_id !== user.id) {
+        return false
+      }
+
+      if (task.status !== "PENDING") {
+        return true
+      }
+
+      const assignedServer = task.assigned_at?.server
+      if (!assignedServer) {
+        return true
+      }
+
+      const assignedTime = Date.parse(assignedServer)
+      if (Number.isNaN(assignedTime)) {
+        return true
+      }
+
+      return assignedTime <= nowTick
+    })
+  }, [tasks, user?.id, nowTick])
 
   // Filter tasks based on selected filter
-  const filteredTasks = myTasks.filter((task) => {
-    if (filter === "all") return true
-    if (filter === "active")
-      return task.status === "PENDING" || task.status === "IN_PROGRESS" || task.status === "PAUSED"
-    if (filter === "completed") return task.status === "COMPLETED" || task.status === "VERIFIED"
-    if (filter === "rejected") return task.status === "REJECTED"
-    return true
-  })
+  const filteredTasks = useMemo(() => {
+    return myTasks.filter((task) => {
+      if (filter === "all") return true
+      if (filter === "active")
+        return task.status === "PENDING" || task.status === "IN_PROGRESS" || task.status === "PAUSED"
+      if (filter === "completed") return task.status === "COMPLETED" || task.status === "VERIFIED"
+      if (filter === "rejected") return task.status === "REJECTED"
+      return true
+    })
+  }, [myTasks, filter])
 
   const getStatusIcon = (status: string) => {
     switch (status) {

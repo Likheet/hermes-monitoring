@@ -2,7 +2,7 @@ import { createClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
 import { cookies } from "next/headers"
 import { databaseTaskToApp, databaseUserToApp } from "@/lib/database-types"
-import type { DatabaseUser } from "@/lib/database-types"
+import type { DatabaseTask, DatabaseUser } from "@/lib/database-types"
 import { formatDateKeyForTimezone, isWorkerOnShiftWithSchedule } from "@/lib/shift-utils"
 import type { SupabaseClient } from "@supabase/supabase-js"
 
@@ -98,6 +98,7 @@ interface CreateTaskDirectParams {
   photoRequirementsPayload: unknown
   room_number: string | null | undefined
   categorizedPhotosPayload: Record<string, unknown>
+  department: string | null | undefined
   is_custom_task: unknown
   custom_task_name: unknown
   custom_task_category: unknown
@@ -108,6 +109,7 @@ interface CreateTaskDirectParams {
   custom_task_recurring_frequency: unknown
   custom_task_requires_specific_time: unknown
   custom_task_recurring_time: unknown
+  custom_task_recurring_days: unknown
   worker_remark: string | null
   supervisor_remark: string | null
 }
@@ -125,6 +127,7 @@ async function createTaskDirectly({
   photoRequirementsPayload,
   room_number,
   categorizedPhotosPayload,
+  department,
   is_custom_task,
   custom_task_name,
   custom_task_category,
@@ -135,6 +138,7 @@ async function createTaskDirectly({
   custom_task_recurring_frequency,
   custom_task_requires_specific_time,
   custom_task_recurring_time,
+  custom_task_recurring_days,
   worker_remark,
   supervisor_remark,
 }: CreateTaskDirectParams) {
@@ -192,6 +196,7 @@ async function createTaskDirectly({
   worker_remarks: worker_remark ?? "",
   supervisor_remarks: supervisor_remark ?? "",
       audit_log: [auditLogEntry],
+      department: department ?? null,
       is_custom_task: Boolean(is_custom_task),
       custom_task_name: custom_task_name ?? null,
       custom_task_category: custom_task_category ?? null,
@@ -208,6 +213,11 @@ async function createTaskDirectly({
           ? custom_task_requires_specific_time
           : null,
       custom_task_recurring_time: custom_task_recurring_time ?? null,
+      custom_task_recurring_days: Array.isArray(custom_task_recurring_days)
+        ? custom_task_recurring_days
+        : custom_task_recurring_days === null
+          ? null
+          : null,
       created_at: nowIso,
       updated_at: nowIso,
     })
@@ -244,6 +254,7 @@ export async function POST(request: Request) {
       photo_documentation_required,
       photo_categories,
       client_timezone_offset,
+  department,
       // Custom task fields
       is_custom_task,
       custom_task_name,
@@ -255,6 +266,7 @@ export async function POST(request: Request) {
       custom_task_recurring_frequency,
       custom_task_requires_specific_time,
       custom_task_recurring_time,
+      custom_task_recurring_days,
       worker_remark,
       supervisor_remark,
     } = body
@@ -354,7 +366,7 @@ export async function POST(request: Request) {
       custom_task_recurring_time: custom_task_recurring_time ?? null,
   }
 
-    const { data: task, error: taskError } = await supabase.rpc("create_task_with_autopause", rpcPayload)
+  const { data: task, error: taskError } = await supabase.rpc("create_task_with_autopause", rpcPayload)
 
     if (taskError) {
       const missingFunction =
@@ -375,6 +387,7 @@ export async function POST(request: Request) {
             photoRequirementsPayload,
             room_number,
             categorizedPhotosPayload,
+            department,
             is_custom_task,
             custom_task_name,
             custom_task_category,
@@ -385,6 +398,7 @@ export async function POST(request: Request) {
             custom_task_recurring_frequency,
             custom_task_requires_specific_time,
             custom_task_recurring_time,
+            custom_task_recurring_days,
             worker_remark: workerRemark,
             supervisor_remark: supervisorRemark,
           })
@@ -409,7 +423,47 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Failed to create task" }, { status: 400 })
     }
 
-    const appTask = databaseTaskToApp(task)
+    if (!task?.id) {
+      console.error("Task creation error: RPC returned no task id")
+      return NextResponse.json({ error: "Failed to create task" }, { status: 400 })
+    }
+
+    const updatePayload: Record<string, unknown> = {}
+    if (typeof department === "string" && department.length > 0) {
+      updatePayload.department = department
+    } else if (department === null) {
+      updatePayload.department = null
+    }
+
+    if (Array.isArray(custom_task_recurring_days)) {
+      updatePayload.custom_task_recurring_days = custom_task_recurring_days
+    } else if (custom_task_recurring_days === null) {
+      updatePayload.custom_task_recurring_days = null
+    }
+
+    if (Object.keys(updatePayload).length > 0) {
+      const { error: updateError } = await supabase
+        .from("tasks")
+        .update(updatePayload)
+        .eq("id", task.id)
+
+      if (updateError) {
+        console.error("Failed to update task with additional metadata:", updateError)
+      }
+    }
+
+    const { data: fullTask, error: fetchError } = await supabase
+      .from("tasks")
+      .select("*")
+      .eq("id", task.id)
+      .single()
+
+    if (fetchError || !fullTask) {
+      console.error("Failed to load created task after RPC:", fetchError)
+      return NextResponse.json({ error: "Unable to load created task" }, { status: 500 })
+    }
+
+    const appTask = databaseTaskToApp(fullTask as DatabaseTask)
 
     return NextResponse.json({ task: appTask }, { status: 201 })
   } catch (error) {

@@ -1177,6 +1177,7 @@ export function TaskProvider({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             ...taskData,
+            custom_task_recurring_days: taskData.custom_task_recurring_days ?? null,
             assigned_at_client: taskData.assigned_at.client,
             client_timezone_offset: clientTimezoneOffset,
           }),

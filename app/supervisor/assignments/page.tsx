@@ -197,7 +197,8 @@ function SupervisorAssignments() {
                   const priorityClass = priorityColors[task.priority_level as PriorityKey] || ""
                   const statusClass = statusColors[task.status as keyof typeof statusColors] || "bg-muted"
                   const isCustomTask = task.task_type === "Other (Custom Task)" || Boolean(task.custom_task_name)
-                  const canEdit = task.assigned_by_user_id === user?.id
+                  const canEditCustomTask = task.assigned_by_user_id === user?.id
+                  const canReassignTask = task.status === "PENDING"
 
                   return (
                     <div
@@ -247,9 +248,9 @@ function SupervisorAssignments() {
                         </div>
                       </div>
 
-                      {task.status === "PENDING" && canEdit && (
+                      {task.status === "PENDING" && (
                         <div className="flex gap-2 w-full sm:w-auto shrink-0">
-                          {isCustomTask && (
+                          {isCustomTask && canEditCustomTask && (
                             <Button
                               variant="outline"
                               size="sm"
@@ -260,16 +261,18 @@ function SupervisorAssignments() {
                               <span className="hidden sm:inline">Edit</span>
                             </Button>
                           )}
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setReassignTask(task)}
-                            className="flex-1 sm:flex-none min-h-[44px]"
-                          >
-                            <Edit className="h-4 w-4 sm:mr-2" />
-                            <span className="hidden sm:inline">Re-assign</span>
-                            <span className="sm:hidden">Reassign</span>
-                          </Button>
+                          {canReassignTask && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setReassignTask(task)}
+                              className="flex-1 sm:flex-none min-h-[44px]"
+                            >
+                              <Edit className="h-4 w-4 sm:mr-2" />
+                              <span className="hidden sm:inline">Re-assign</span>
+                              <span className="sm:hidden">Reassign</span>
+                            </Button>
+                          )}
                         </div>
                       )}
                     </div>

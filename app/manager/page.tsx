@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { Plus, PlusSquare, ClipboardList, Clock, CheckCircle2, User as UserIcon, MapPin, LogOut } from "lucide-react"
@@ -22,6 +22,7 @@ import { useAuth } from "@/lib/auth-context"
 import { useTasks } from "@/lib/task-context"
 import { useRealtimeTasks } from "@/lib/use-realtime-tasks"
 import { formatDistanceToNow } from "@/lib/date-utils"
+import { filterReadyTasks } from "@/lib/task-filters"
 
 const STATUS_COLORS: Record<string, string> = {
   PENDING: "bg-yellow-500",
@@ -44,8 +45,21 @@ function ManagerDashboard() {
 
   const [activeStatKey, setActiveStatKey] = useState<StatKey | null>(null)
   const [isTaskLibraryOpen, setIsTaskLibraryOpen] = useState(false)
+  const [nowTick, setNowTick] = useState(() => Date.now())
 
   useRealtimeTasks({ enabled: true, filter: { role: "manager" } })
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+
+    const intervalId = window.setInterval(() => {
+      setNowTick(Date.now())
+    }, 30_000)
+
+    return () => window.clearInterval(intervalId)
+  }, [])
+
+  const readyTasks = useMemo(() => filterReadyTasks(tasks, nowTick), [tasks, nowTick])
 
   const handleLogout = async () => {
     await logout()
@@ -53,16 +67,16 @@ function ManagerDashboard() {
   }
 
   const stats = useMemo(() => {
-    const now = Date.now()
+    const now = nowTick
     const DAY_MS = 24 * 60 * 60 * 1000
-    const pending = tasks.filter((task) => task.status === "PENDING").length
-    const inProgress = tasks.filter((task) => task.status === "IN_PROGRESS").length
-    const completedToday = tasks.filter((task) => {
+    const pending = readyTasks.filter((task) => task.status === "PENDING").length
+    const inProgress = readyTasks.filter((task) => task.status === "IN_PROGRESS").length
+    const completedToday = readyTasks.filter((task) => {
       if (!task.completed_at) return false
       const completedAt = new Date(task.completed_at.client ?? task.completed_at.server ?? "").getTime()
       return Number.isFinite(completedAt) && now - completedAt <= DAY_MS
     }).length
-    const assignedByMe = tasks.filter((task) => task.assigned_by_user_id === user?.id).length
+    const assignedByMe = readyTasks.filter((task) => task.assigned_by_user_id === user?.id).length
 
     return {
       pending,
@@ -70,7 +84,7 @@ function ManagerDashboard() {
       completedToday,
       assignedByMe,
     }
-  }, [tasks, user?.id])
+  }, [readyTasks, user?.id, nowTick])
 
   const statCards = useMemo(() => {
     return [
@@ -120,7 +134,7 @@ function ManagerDashboard() {
 
   const assignmentsByManager = useMemo(
     () =>
-      tasks
+      readyTasks
         .filter((task) => task.assigned_by_user_id === user?.id)
         .sort(
           (a, b) =>
@@ -128,12 +142,12 @@ function ManagerDashboard() {
             new Date(a.assigned_at.client ?? a.assigned_at.server ?? "").getTime(),
         )
         .slice(0, 5),
-    [tasks, user?.id],
+    [readyTasks, user?.id],
   )
 
   const tasksForManager = useMemo(
     () =>
-      tasks
+      readyTasks
         .filter((task) => task.assigned_to_user_id === user?.id)
         .sort(
           (a, b) =>
@@ -141,7 +155,7 @@ function ManagerDashboard() {
             new Date(a.assigned_at.client ?? a.assigned_at.server ?? "").getTime(),
         )
         .slice(0, 5),
-    [tasks, user?.id],
+    [readyTasks, user?.id],
   )
 
   const getUserName = (id: string | null | undefined) => {
@@ -150,19 +164,19 @@ function ManagerDashboard() {
   }
 
   const previewTasks = useMemo(() => {
-    if (!activeStatKey) return [] as typeof tasks
+    if (!activeStatKey) return [] as typeof readyTasks
 
     const limit = 4
     const DAY_MS = 24 * 60 * 60 * 1000
-    const now = Date.now()
+    const now = nowTick
 
     switch (activeStatKey) {
       case "pending":
-        return tasks.filter((task) => task.status === "PENDING").slice(0, limit)
+        return readyTasks.filter((task) => task.status === "PENDING").slice(0, limit)
       case "inProgress":
-        return tasks.filter((task) => task.status === "IN_PROGRESS").slice(0, limit)
+        return readyTasks.filter((task) => task.status === "IN_PROGRESS").slice(0, limit)
       case "completed":
-        return tasks
+        return readyTasks
           .filter((task) => {
             if (!task.completed_at) return false
             const completedAt = new Date(task.completed_at.client ?? task.completed_at.server ?? "").getTime()
@@ -170,11 +184,11 @@ function ManagerDashboard() {
           })
           .slice(0, limit)
       case "assignedByMe":
-        return tasks.filter((task) => task.assigned_by_user_id === user?.id).slice(0, limit)
+        return readyTasks.filter((task) => task.assigned_by_user_id === user?.id).slice(0, limit)
       default:
         return []
     }
-  }, [activeStatKey, tasks, user?.id])
+  }, [activeStatKey, readyTasks, user?.id, nowTick])
 
   return (
     <div className="min-h-screen bg-muted/30 pb-24 md:pb-12">

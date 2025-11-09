@@ -20,6 +20,7 @@ import { detectEscalationLevel, getEscalationColor, type Escalation } from "@/li
 import { createDualTimestamp } from "@/lib/mock-data"
 import { TASK_TYPE_LABELS } from "@/lib/maintenance-types"
 import { formatDistanceToNow } from "@/lib/date-utils"
+import { filterReadyTasks } from "@/lib/task-filters"
 import { SupervisorBottomNav } from "@/components/supervisor/supervisor-bottom-nav"
 import {
   Dialog,
@@ -34,6 +35,7 @@ import {
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 
 const getEscalationStorageKey = (userId: string) => `supervisor-escalations-${userId}`
+const getEscalationNotificationCountKey = (userId: string) => `supervisor-escalations-last-critical-count-${userId}`
 
 function SupervisorDashboard() {
   const { user, logout } = useAuth()
@@ -51,7 +53,9 @@ function SupervisorDashboard() {
   const [isProfileDialogOpen, setIsProfileDialogOpen] = useState(false)
   const [isNotificationDialogOpen, setIsNotificationDialogOpen] = useState(false)
   const [recentAcknowledgedId, setRecentAcknowledgedId] = useState<string | null>(null)
+  const [nowTick, setNowTick] = useState(() => Date.now())
   const previousCriticalCountRef = useRef(0)
+  const hasSyncedCriticalCountRef = useRef(false)
   const [hasLoadedEscalations, setHasLoadedEscalations] = useState(false)
 
   useEffect(() => {
@@ -87,6 +91,16 @@ function SupervisorDashboard() {
     window.localStorage.setItem(getEscalationStorageKey(user.id), JSON.stringify(escalations))
   }, [escalations, hasLoadedEscalations, user?.id])
 
+  useEffect(() => {
+    if (typeof window === "undefined") return
+
+    const intervalId = window.setInterval(() => {
+      setNowTick(Date.now())
+    }, 30_000)
+
+    return () => window.clearInterval(intervalId)
+  }, [])
+
   const acknowledgedEscalations = useMemo(
     () => escalations.filter((esc) => Boolean(esc.acknowledged_by)),
     [escalations],
@@ -106,12 +120,34 @@ function SupervisorDashboard() {
   )
 
   useEffect(() => {
+    previousCriticalCountRef.current = 0
+    hasSyncedCriticalCountRef.current = false
+  }, [user?.id])
+
+  useEffect(() => {
+    if (!user?.id) return
+    if (typeof window === "undefined") return
+
+    const storageKey = getEscalationNotificationCountKey(user.id)
+
+    if (!hasSyncedCriticalCountRef.current) {
+      const storedValue = window.sessionStorage.getItem(storageKey)
+      const parsedValue = storedValue ? Number.parseInt(storedValue, 10) : 0
+
+      if (!Number.isNaN(parsedValue)) {
+        previousCriticalCountRef.current = parsedValue
+      }
+
+      hasSyncedCriticalCountRef.current = true
+    }
+
     if (unacknowledgedCriticalCount > previousCriticalCountRef.current) {
       setIsNotificationDialogOpen(true)
     }
 
     previousCriticalCountRef.current = unacknowledgedCriticalCount
-  }, [unacknowledgedCriticalCount])
+    window.sessionStorage.setItem(storageKey, String(unacknowledgedCriticalCount))
+  }, [unacknowledgedCriticalCount, user?.id])
 
   const sortedActiveEscalations = useMemo(
     () =>
@@ -199,6 +235,8 @@ function SupervisorDashboard() {
     return () => clearInterval(interval)
   }, [tasks, escalations, hasLoadedEscalations])
 
+  const readyTasks = useMemo(() => filterReadyTasks(tasks, nowTick), [tasks, nowTick])
+
   const handleLogout = () => {
     logout()
     router.push("/login")
@@ -231,7 +269,7 @@ function SupervisorDashboard() {
     }
   }
 
-  const departmentTasks = tasks.filter((task) => {
+  const departmentTasks = readyTasks.filter((task) => {
     const worker = users.find((u) => u.id === task.assigned_to_user_id)
     const taskDepartment = worker?.department ?? task.department
     if (user?.id && task.assigned_to_user_id === user.id) return true
@@ -280,7 +318,7 @@ function SupervisorDashboard() {
   console.log("[DEBUG] Supervisor Tab - Task Filtering:", {
     userRole: user?.role,
     userDepartment: user?.department,
-    totalTasks: tasks.length,
+  totalTasks: readyTasks.length,
     filteredTasks: filteredTasks.length,
     completedTasks: completedTasks.length,
     completedTasksWithDetails: completedTasks.map(task => ({
@@ -374,7 +412,7 @@ function SupervisorDashboard() {
   }
 
   const openIssues = issues.filter((issue) => {
-    const task = tasks.find((t) => t.id === issue.task_id)
+    const task = readyTasks.find((t) => t.id === issue.task_id)
     if (!task) return false
     const worker = users.find((u) => u.id === task.assigned_to_user_id)
     const taskDepartment = worker?.department ?? task.department
@@ -435,7 +473,7 @@ function SupervisorDashboard() {
                     ) : (
                       <div className="mt-3 space-y-3">
                         {sortedActiveEscalations.map((escalation) => {
-                          const task = tasks.find((t) => t.id === escalation.task_id)
+                          const task = readyTasks.find((t) => t.id === escalation.task_id)
                           const escalatedAgo = formatDistanceToNow(escalation.timestamp?.server ?? escalation.timestamp?.client ?? new Date())
                           const workerName = task?.assigned_to_user_id
                             ? getWorkerName(task.assigned_to_user_id)
@@ -498,7 +536,7 @@ function SupervisorDashboard() {
                     ) : (
                       <div className="mt-3 space-y-3">
                         {sortedAcknowledgedEscalations.map((escalation) => {
-                          const task = tasks.find((t) => t.id === escalation.task_id)
+                          const task = readyTasks.find((t) => t.id === escalation.task_id)
                           const acknowledgedAgo = formatDistanceToNow(
                             escalation.acknowledged_at ?? escalation.timestamp?.server ?? escalation.timestamp?.client ?? new Date(),
                           )

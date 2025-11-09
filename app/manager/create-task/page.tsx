@@ -59,15 +59,24 @@ function ManagerCreateTaskForm() {
     }
 
     const priorityLevel = mapPriorityToPriorityLevel(data.priority, data.category)
-    const trimmedCustomName = data.customTaskName?.trim()
-    const isCustomTask = data.isCustomTask && !!trimmedCustomName
-    const taskName = isCustomTask ? trimmedCustomName! : data.taskName
+    const trimmedCustomName = data.customTaskName?.trim() ?? ""
+    const isCustomTask = data.isCustomTask
+    const taskName = isCustomTask ? (trimmedCustomName || data.taskName) : data.taskName
+
+    if (isCustomTask && !taskName.trim()) {
+      toast({
+        title: "Task name required",
+        description: "Provide a name for the custom task before assigning it.",
+        variant: "destructive",
+      })
+      return
+    }
 
     const success = await createTask({
       task_type: taskName,
       priority_level: priorityLevel,
       status: "PENDING",
-      department: data.department as Department,
+  department: data.department as Department,
       assigned_to_user_id: data.assignedTo,
       assigned_by_user_id: user.id,
       assigned_at: createDualTimestamp(),
@@ -89,15 +98,21 @@ function ManagerCreateTaskForm() {
       rejection_proof_photo_url: null,
       room_number: data.location || "",
       is_custom_task: isCustomTask,
-      custom_task_name: isCustomTask ? trimmedCustomName! : null,
+      custom_task_name: isCustomTask ? taskName : null,
       custom_task_category: isCustomTask ? data.category : null,
       custom_task_priority: isCustomTask ? data.priority : null,
       custom_task_photo_required: isCustomTask ? data.photoRequired : null,
       custom_task_photo_count: isCustomTask ? data.photoCount : null,
       custom_task_is_recurring: isCustomTask ? data.isRecurring : null,
       custom_task_recurring_frequency: isCustomTask ? data.recurringFrequency ?? null : null,
-      custom_task_requires_specific_time: isCustomTask ? data.requiresSpecificTime ?? null : null,
-      custom_task_recurring_time: isCustomTask ? data.recurringTime ?? null : null,
+      custom_task_requires_specific_time: isCustomTask
+        ? data.requiresSpecificTime ?? false
+        : null,
+      custom_task_recurring_time:
+        isCustomTask && data.requiresSpecificTime ? data.recurringTime ?? null : null,
+      custom_task_recurring_days: isCustomTask
+        ? data.recurringCustomDays?.map((day) => day) ?? null
+        : null,
       is_recurring: data.isRecurring,
       recurring_frequency: data.recurringFrequency ?? null,
       requires_specific_time: data.requiresSpecificTime ?? false,

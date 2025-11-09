@@ -41,6 +41,7 @@ function WorkerDashboard() {
   const [tasksFilter, setTasksFilter] = useState<"all" | "active" | "recurring" | "completed" | "rejected">("all")
 
   const [searchQuery, setSearchQuery] = useState("")
+  const [nowTick, setNowTick] = useState(() => Date.now())
 
   useEffect(() => {
     console.log("[v0] Worker dashboard loaded for user:", user?.id, user?.name)
@@ -49,9 +50,19 @@ function WorkerDashboard() {
   useEffect(() => {
     if (!user?.id) return
 
-  const cleanup = initializePauseMonitoring(tasks, maintenanceTasks ?? [], users)
+    const cleanup = initializePauseMonitoring(tasks, maintenanceTasks ?? [], users)
     return cleanup
   }, [tasks, maintenanceTasks, users, user?.id])
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+
+    const intervalId = window.setInterval(() => {
+      setNowTick(Date.now())
+    }, 30_000)
+
+    return () => window.clearInterval(intervalId)
+  }, [])
 
   const normalizedDepartment = user?.department?.toLowerCase()
   const isMaintenanceUser = normalizedDepartment === "maintenance"
@@ -62,7 +73,33 @@ function WorkerDashboard() {
         .join(" ")
     : ""
 
-  const myTasks = tasks.filter((task) => task.assigned_to_user_id === user?.id)
+  const myTasks = useMemo(() => {
+    if (!user?.id) {
+      return []
+    }
+
+    return tasks.filter((task) => {
+      if (task.assigned_to_user_id !== user.id) {
+        return false
+      }
+
+      if (task.status !== "PENDING") {
+        return true
+      }
+
+      const assignedServer = task.assigned_at?.server
+      if (!assignedServer) {
+        return true
+      }
+
+      const assignedTime = Date.parse(assignedServer)
+      if (Number.isNaN(assignedTime)) {
+        return true
+      }
+
+      return assignedTime <= nowTick
+    })
+  }, [tasks, user?.id, nowTick])
   const isRecurringTask = useCallback(
     (task: Task) =>
       Boolean(

@@ -13,6 +13,7 @@ import {
   type Priority,
   type RecurringFrequency,
 } from "@/lib/task-definitions"
+import type { CustomTaskDefinition } from "@/lib/custom-task-definitions"
 import { ALL_LOCATIONS, ALL_ROOMS, getACLocationsForRoom } from "@/lib/location-data"
 import { fetchActiveRoomInventory, type RoomInventoryItem } from "@/lib/room-inventory"
 
@@ -545,6 +546,8 @@ export function TaskAssignmentForm({
   const showRecurringControls = enableRecurringOverride
 
   const isOtherTask = task.id === "other-custom-task"
+  const isCustomTemplate = Boolean((task as CustomTaskDefinition).isCustom)
+  const usesCustomTaskFlow = isOtherTask || isCustomTemplate
 
   interface EffectiveRecurringConfig {
     isRecurring: true
@@ -1062,9 +1065,9 @@ export function TaskAssignmentForm({
 
     const data: TaskAssignmentData = {
       taskId: task.id,
-      taskName: isOtherTask ? customTaskName : task.name,
-      customTaskName: isOtherTask ? customTaskName : undefined,
-      category: isOtherTask ? customCategory : task.category,
+  taskName: isOtherTask ? customTaskName : task.name,
+  customTaskName: usesCustomTaskFlow ? (isOtherTask ? customTaskName : task.name) : undefined,
+  category: isOtherTask ? customCategory : task.category,
       department: selectedDepartment,
       priority,
       duration,
@@ -1075,8 +1078,8 @@ export function TaskAssignmentForm({
       photoRequired: isOtherTask ? photoRequired : task.photoRequired,
       photoCount: isOtherTask ? photoCount : task.photoCount,
       photoDocumentationRequired,
-      photoCategories,
-      isCustomTask: isOtherTask,
+  photoCategories,
+  isCustomTask: usesCustomTaskFlow,
       isRecurring,
       recurringFrequency,
       recurringCustomDays,
