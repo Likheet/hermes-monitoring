@@ -10,6 +10,7 @@
 # production
 /build
 packages
+/upstash-context7-mcp-1.0.26.tgz
 # debug
 npm-debug.log*
 yarn-debug.log*
