@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useMemo, useRef } from "react"
+import { useState, useEffect, useMemo, useRef, useCallback } from "react"
 import type { KeyboardEvent } from "react"
 import { ProtectedRoute } from "@/components/protected-route"
 import { useAuth } from "@/lib/auth-context"
@@ -14,12 +14,12 @@ import { LogOut, Clock, MapPin, User, AlertTriangle, XCircle, Bell, Plus } from 
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { IssueCard } from "@/components/issue-card"
-import type { User as UserType } from "@/lib/types"
+import type { User as UserType, DualTimestamp, Task } from "@/lib/types"
 import { useRealtimeTasks } from "@/lib/use-realtime-tasks"
 import { detectEscalationLevel, getEscalationColor, type Escalation } from "@/lib/escalation-utils"
 import { createDualTimestamp } from "@/lib/mock-data"
 import { TASK_TYPE_LABELS } from "@/lib/maintenance-types"
-import { formatDistanceToNow } from "@/lib/date-utils"
+import { formatDistanceToNow, formatFullTimestamp } from "@/lib/date-utils"
 import { filterReadyTasks } from "@/lib/task-filters"
 import { SupervisorBottomNav } from "@/components/supervisor/supervisor-bottom-nav"
 import {
@@ -49,6 +49,7 @@ function SupervisorDashboard() {
   const [taskFilter, setTaskFilter] = useState<"all" | "rejected" | "pending" | "in_progress">("all")
   const workerFilter = "ALL"
   const [escalations, setEscalations] = useState<Escalation[]>([])
+  const escalationsRef = useRef<Escalation[]>([])
   const [selectedWorker, setSelectedWorker] = useState<UserType | null>(null)
   const [isProfileDialogOpen, setIsProfileDialogOpen] = useState(false)
   const [isNotificationDialogOpen, setIsNotificationDialogOpen] = useState(false)
@@ -90,6 +91,10 @@ function SupervisorDashboard() {
 
     window.localStorage.setItem(getEscalationStorageKey(user.id), JSON.stringify(escalations))
   }, [escalations, hasLoadedEscalations, user?.id])
+
+  useEffect(() => {
+    escalationsRef.current = escalations
+  }, [escalations])
 
   useEffect(() => {
     if (typeof window === "undefined") return
@@ -149,6 +154,17 @@ function SupervisorDashboard() {
     window.sessionStorage.setItem(storageKey, String(unacknowledgedCriticalCount))
   }, [unacknowledgedCriticalCount, user?.id])
 
+  const describeEscalationLevel = useCallback((level: 1 | 2 | 3) => {
+    switch (level) {
+      case 3:
+        return "Task has exceeded 50% of expected duration. Immediate action required."
+      case 2:
+        return "Task has exceeded 20 minutes. Worker may need assistance."
+      default:
+        return "Task has been in progress for 15 minutes. Please check in."
+    }
+  }, [])
+
   const sortedActiveEscalations = useMemo(
     () =>
       [...activeEscalations].sort(
@@ -168,17 +184,6 @@ function SupervisorDashboard() {
       ),
     [acknowledgedEscalations],
   )
-
-  const describeEscalationLevel = (level: 1 | 2 | 3) => {
-    switch (level) {
-      case 3:
-        return "Task has exceeded 50% of expected duration. Immediate action required."
-      case 2:
-        return "Task has exceeded 20 minutes. Worker may need assistance."
-      default:
-        return "Task has been in progress for 15 minutes. Please check in."
-    }
-  }
 
   useEffect(() => {
     if (!recentAcknowledgedId) {
@@ -207,7 +212,9 @@ function SupervisorDashboard() {
           )
 
           if (level) {
-            const existingEscalation = escalations.find((esc) => esc.task_id === task.id && esc.level === level)
+            const existingEscalation = escalationsRef.current.find(
+              (esc) => esc.task_id === task.id && esc.level === level,
+            )
 
             if (!existingEscalation) {
               newEscalations.push({
@@ -230,12 +237,19 @@ function SupervisorDashboard() {
 
     evaluateEscalations()
 
-    const interval = setInterval(evaluateEscalations, 30000)
+    const interval = setInterval(evaluateEscalations, 30_000)
 
     return () => clearInterval(interval)
-  }, [tasks, escalations, hasLoadedEscalations])
+  }, [tasks, hasLoadedEscalations])
 
   const readyTasks = useMemo(() => filterReadyTasks(tasks, nowTick), [tasks, nowTick])
+  const readyTasksMap = useMemo(() => {
+    const map = new Map<string, Task>()
+    readyTasks.forEach((task) => {
+      map.set(task.id, task)
+    })
+    return map
+  }, [readyTasks])
 
   const handleLogout = () => {
     logout()
@@ -301,39 +315,8 @@ function SupervisorDashboard() {
     return statusMatch && workerMatch
   })
 
-  const completedTasks = filteredTasks.filter((t) => {
-    const isCompleted = t.status === "COMPLETED" && !t.supervisor_remark
-    if (t.status === "COMPLETED") {
-      console.log("[v0] Completed task found:", {
-        id: t.id,
-        taskType: t.task_type,
-        hasRemark: !!t.supervisor_remark,
-        willShowInVerification: isCompleted,
-      })
-    }
-    return isCompleted
-  })
-
-  // DEBUG: Log task filtering for supervisor tab
-  console.log("[DEBUG] Supervisor Tab - Task Filtering:", {
-    userRole: user?.role,
-    userDepartment: user?.department,
-  totalTasks: readyTasks.length,
-    filteredTasks: filteredTasks.length,
-    completedTasks: completedTasks.length,
-    completedTasksWithDetails: completedTasks.map(task => ({
-      id: task.id,
-      taskType: task.task_type,
-      status: task.status,
-      hasPhotoUrls: !!(task.photo_urls && task.photo_urls.length > 0),
-      hasCategorizedPhotos: !!(task.categorized_photos && Object.keys(task.categorized_photos).length > 0)
-    }))
-  })
+  const completedTasks = filteredTasks.filter((t) => t.status === "COMPLETED" && !t.supervisor_remark)
   const otherTasks = filteredTasks.filter((t) => !(t.status === "COMPLETED" && !t.supervisor_remark))
-
-  console.log("[v0] Supervisor dashboard - Completed tasks pending verification:", completedTasks.length)
-  console.log("[v0] Supervisor dashboard - Other tasks:", otherTasks.length)
-  console.log("[v0] Supervisor dashboard - Total filtered tasks:", filteredTasks.length)
 
   const myPrimaryTasks = useMemo(() => {
     if (!user?.id) return [] as typeof tasks
@@ -383,17 +366,106 @@ function SupervisorDashboard() {
     return Math.max(...taskEscalations.map((esc) => esc.level)) as 1 | 2 | 3
   }
 
-  const getWorkerName = (userId: string) => {
-    return users.find((u) => u.id === userId)?.name || "Unknown"
-  }
+  const getWorkerName = useCallback(
+    (userId: string) => users.find((u) => u.id === userId)?.name || "Unknown",
+    [users],
+  )
 
-  const getMaintenanceWorkerName = (userId?: string) => {
-    if (!userId) return "Unassigned"
-    return users.find((u) => u.id === userId)?.name || "Unknown"
-  }
+  const getMaintenanceWorkerName = useCallback(
+    (userId?: string) => {
+      if (!userId) return "Unassigned"
+      return users.find((u) => u.id === userId)?.name || "Unknown"
+    },
+    [users],
+  )
 
-  const getMaintenanceTaskLabel = (taskType: string) =>
-    TASK_TYPE_LABELS[taskType as keyof typeof TASK_TYPE_LABELS] || taskType.replace(/_/g, " ")
+const getMaintenanceTaskLabel = (taskType: string) =>
+  TASK_TYPE_LABELS[taskType as keyof typeof TASK_TYPE_LABELS] || taskType.replace(/_/g, " ")
+
+type StartTimestamp = DualTimestamp | string | null | undefined
+
+const getStartedAtText = (startedAt: StartTimestamp) => {
+  if (!startedAt) return "Not started yet"
+  return `Started ${formatFullTimestamp(startedAt)}`
+}
+
+const formatStatusWithStart = (status: Task["status"], startedAt: Task["started_at"]) => {
+  const label = status.replace(/_/g, " ")
+  if (status !== "PENDING") return label
+  const startedText = startedAt ? formatFullTimestamp(startedAt) : "Not started yet"
+  return `${label} • Started at: ${startedText}`
+}
+
+  const { activeEscalationRows, acknowledgedEscalationRows } = useMemo(() => {
+    if (!isNotificationDialogOpen) {
+      return { activeEscalationRows: [], acknowledgedEscalationRows: [] }
+    }
+
+    const buildBaseRow = (escalation: Escalation) => {
+      const task = readyTasksMap.get(escalation.task_id)
+      const workerName = task ? getWorkerName(task.assigned_to_user_id) : null
+      const startedTimestamp =
+        task?.started_at?.server ??
+        task?.started_at?.client ??
+        task?.assigned_at?.server ??
+        task?.assigned_at?.client ??
+        null
+      const startedSource =
+        task?.started_at?.server ??
+        task?.started_at?.client ??
+        task?.assigned_at?.server ??
+        task?.assigned_at?.client ??
+        null
+      const startedAgoLabel = startedSource ? `Started approximately ${formatDistanceToNow(startedSource)}` : null
+      const escalatedAgo = formatDistanceToNow(
+        escalation.timestamp?.server ?? escalation.timestamp?.client ?? new Date(),
+      )
+      const elapsedLabel =
+        startedTimestamp && task?.expected_duration_minutes
+          ? `Elapsed ${(Date.now() - new Date(startedTimestamp).getTime()) / 60000 >> 0} min / ${
+              task.expected_duration_minutes
+            } min`
+          : null
+
+      return {
+        id: escalation.id,
+        taskTitle: task?.task_type ?? "Unknown task",
+        roomNumber: task?.room_number ?? null,
+        workerName,
+        level: escalation.level,
+        escalatedAgo,
+        startedAgoLabel,
+        startedExact: startedTimestamp ? formatFullTimestamp(startedTimestamp) : null,
+        elapsedLabel,
+        levelDescription: describeEscalationLevel(escalation.level),
+      }
+    }
+
+    const activeRows = sortedActiveEscalations.map((escalation) => buildBaseRow(escalation))
+
+    const acknowledgedRows = sortedAcknowledgedEscalations.map((escalation) => {
+      const base = buildBaseRow(escalation)
+      const acknowledgedAgo = formatDistanceToNow(
+        escalation.acknowledged_at ?? escalation.timestamp?.server ?? escalation.timestamp?.client ?? new Date(),
+      )
+      return {
+        ...base,
+        acknowledgedAgoLabel: `Acknowledged ${acknowledgedAgo}`,
+        acknowledgedBy: escalation.acknowledged_by ?? null,
+        isRecent: recentAcknowledgedId === escalation.id,
+      }
+    })
+
+    return { activeEscalationRows: activeRows, acknowledgedEscalationRows: acknowledgedRows }
+  }, [
+    describeEscalationLevel,
+    getWorkerName,
+    isNotificationDialogOpen,
+    readyTasksMap,
+    recentAcknowledgedId,
+    sortedActiveEscalations,
+    sortedAcknowledgedEscalations,
+  ])
 
   const priorityColors = {
     GUEST_REQUEST: "bg-red-500 text-white",
@@ -458,56 +530,47 @@ function SupervisorDashboard() {
                   )}
                 </Button>
               </DialogTrigger>
-              <DialogContent className="sm:max-w-xl">
-                <DialogHeader>
-                  <DialogTitle>Escalation Notifications</DialogTitle>
-                  <DialogDescription>
-                    Review escalations that still need attention and those you have acknowledged.
-                  </DialogDescription>
-                </DialogHeader>
-                <div className="space-y-5">
-                  <section>
-                    <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Active Alerts</h3>
-                    {sortedActiveEscalations.length === 0 ? (
-                      <p className="mt-2 text-sm text-muted-foreground">No unacknowledged escalations. You&apos;re all caught up.</p>
-                    ) : (
-                      <div className="mt-3 space-y-3">
-                        {sortedActiveEscalations.map((escalation) => {
-                          const task = readyTasks.find((t) => t.id === escalation.task_id)
-                          const escalatedAgo = formatDistanceToNow(escalation.timestamp?.server ?? escalation.timestamp?.client ?? new Date())
-                          const workerName = task?.assigned_to_user_id
-                            ? getWorkerName(task.assigned_to_user_id)
-                            : null
-                          const startedSource =
-                            task?.started_at?.server ??
-                            task?.started_at?.client ??
-                            task?.assigned_at?.server ??
-                            task?.assigned_at?.client ??
-                            null
-                          const startedAgo = startedSource ? formatDistanceToNow(startedSource) : null
-
-                          return (
-                            <div key={escalation.id} className="rounded-lg border border-border bg-background p-3">
+              {isNotificationDialogOpen && (
+                <DialogContent className="sm:max-w-xl">
+                  <DialogHeader>
+                    <DialogTitle>Escalation Notifications</DialogTitle>
+                    <DialogDescription>
+                      Review escalations that still need attention and those you have acknowledged.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-5">
+                    <section>
+                      <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Active Alerts</h3>
+                      {activeEscalationRows.length === 0 ? (
+                        <p className="mt-2 text-sm text-muted-foreground">No unacknowledged escalations. You&apos;re all caught up.</p>
+                      ) : (
+                        <div className="mt-3 space-y-3">
+                          {activeEscalationRows.map((row) => (
+                            <div key={row.id} className="rounded-lg border border-border bg-background p-3">
                               <div className="flex items-start justify-between gap-2">
                                 <div>
-                                  <p className="font-medium leading-tight">{task?.task_type ?? "Unknown task"}</p>
-                                  {task?.room_number && (
-                                    <p className="text-sm text-muted-foreground">Room {task.room_number}</p>
-                                  )}
+                                  <p className="font-medium leading-tight">{row.taskTitle}</p>
+                                  {row.roomNumber && <p className="text-sm text-muted-foreground">Room {row.roomNumber}</p>}
                                   <p className="text-sm text-muted-foreground">
-                                    {workerName ? `Assigned to ${workerName}` : "No worker assigned yet"}
+                                    {row.workerName ? `Assigned to ${row.workerName}` : "No worker assigned yet"}
                                   </p>
-                                  <p className="mt-2 text-sm text-muted-foreground">{describeEscalationLevel(escalation.level)}</p>
-                                  {startedAgo && (
-                                    <p className="text-xs text-muted-foreground">Started approximately {startedAgo}</p>
+                                  <p className="mt-2 text-sm text-muted-foreground">{row.levelDescription}</p>
+                                  {row.startedAgoLabel && (
+                                    <p className="text-xs text-muted-foreground">{row.startedAgoLabel}</p>
+                                  )}
+                                  {row.startedExact && (
+                                    <p className="text-xs text-muted-foreground">Started at {row.startedExact}</p>
+                                  )}
+                                  {row.elapsedLabel && (
+                                    <p className="text-xs text-muted-foreground">{row.elapsedLabel}</p>
                                   )}
                                 </div>
-                                <Badge className={getEscalationColor(escalation.level)} variant="secondary">
-                                  Level {escalation.level}
+                                <Badge className={getEscalationColor(row.level)} variant="secondary">
+                                  Level {row.level}
                                 </Badge>
                               </div>
                               <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-xs text-muted-foreground">
-                                <span>Escalated {escalatedAgo}</span>
+                                <span>Escalated {row.escalatedAgo}</span>
                                 <div className="flex items-center gap-2">
                                   <Button
                                     variant="outline"
@@ -517,85 +580,75 @@ function SupervisorDashboard() {
                                   >
                                     Close
                                   </Button>
-                                  <Button size="sm" onClick={() => handleAcknowledgeEscalation(escalation.id)}>
+                                  <Button size="sm" onClick={() => handleAcknowledgeEscalation(row.id)}>
                                     Mark as read
                                   </Button>
                                 </div>
                               </div>
                             </div>
-                          )
-                        })}
-                      </div>
-                    )}
-                  </section>
+                          ))}
+                        </div>
+                      )}
+                    </section>
 
-                  <section>
-                    <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Acknowledged</h3>
-                    {sortedAcknowledgedEscalations.length === 0 ? (
-                      <p className="mt-2 text-sm text-muted-foreground">Nothing acknowledged yet.</p>
-                    ) : (
-                      <div className="mt-3 space-y-3">
-                        {sortedAcknowledgedEscalations.map((escalation) => {
-                          const task = readyTasks.find((t) => t.id === escalation.task_id)
-                          const acknowledgedAgo = formatDistanceToNow(
-                            escalation.acknowledged_at ?? escalation.timestamp?.server ?? escalation.timestamp?.client ?? new Date(),
-                          )
-                          const workerName = task?.assigned_to_user_id
-                            ? getWorkerName(task.assigned_to_user_id)
-                            : null
-                          const startedSource =
-                            task?.started_at?.server ??
-                            task?.started_at?.client ??
-                            task?.assigned_at?.server ??
-                            task?.assigned_at?.client ??
-                            null
-                          const startedAgo = startedSource ? formatDistanceToNow(startedSource) : null
-                          const isRecent = recentAcknowledgedId === escalation.id
-
-                          return (
+                    <section>
+                      <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Acknowledged</h3>
+                      {acknowledgedEscalationRows.length === 0 ? (
+                        <p className="mt-2 text-sm text-muted-foreground">Nothing acknowledged yet.</p>
+                      ) : (
+                        <div className="mt-3 space-y-3">
+                          {acknowledgedEscalationRows.map((row) => (
                             <div
-                              key={escalation.id}
+                              key={row.id}
                               className={`rounded-lg border p-3 transition-colors ${
-                                isRecent ? "border-primary bg-primary/10" : "border-border bg-background"
+                                row.isRecent ? "border-primary bg-primary/10" : "border-border bg-background"
                               }`}
                             >
                               <div className="flex items-start justify-between gap-2">
                                 <div>
-                                  <p className="font-medium leading-tight">{task?.task_type ?? "Unknown task"}</p>
-                                  {task?.room_number && (
-                                    <p className="text-sm text-muted-foreground">Room {task.room_number}</p>
-                                  )}
+                                  <p className="font-medium leading-tight">{row.taskTitle}</p>
+                                  {row.roomNumber && <p className="text-sm text-muted-foreground">Room {row.roomNumber}</p>}
                                   <p className="text-sm text-muted-foreground">
-                                    {workerName ? `Assigned to ${workerName}` : "No worker assigned yet"}
+                                    {row.workerName ? `Assigned to ${row.workerName}` : "No worker assigned yet"}
                                   </p>
-                                  <p className="mt-2 text-sm text-muted-foreground">{describeEscalationLevel(escalation.level)}</p>
-                                  {startedAgo && (
-                                    <p className="text-xs text-muted-foreground">Started approximately {startedAgo}</p>
+                                  <p className="mt-2 text-sm text-muted-foreground">{row.levelDescription}</p>
+                                  {row.startedAgoLabel && (
+                                    <p className="text-xs text-muted-foreground">{row.startedAgoLabel}</p>
+                                  )}
+                                  {row.startedExact && (
+                                    <p className="text-xs text-muted-foreground">Started at {row.startedExact}</p>
+                                  )}
+                                  {row.elapsedLabel && (
+                                    <p className="text-xs text-muted-foreground">{row.elapsedLabel}</p>
                                   )}
                                 </div>
-                                <Badge className={getEscalationColor(escalation.level)} variant="secondary">
-                                  Level {escalation.level}
+                                <Badge className={getEscalationColor(row.level)} variant="secondary">
+                                  Level {row.level}
                                 </Badge>
                               </div>
                               <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-xs text-muted-foreground">
-                                <span>Acknowledged {acknowledgedAgo}</span>
-                                <span>{escalation.acknowledged_by ? `by ${escalation.acknowledged_by}` : ""}</span>
+                                <span>{row.acknowledgedAgoLabel}</span>
+                                <span>
+                                  {row.acknowledgedBy
+                                    ? `by ${getWorkerName(row.acknowledgedBy) ?? row.acknowledgedBy}`
+                                    : ""}
+                                </span>
                               </div>
                             </div>
-                          )
-                        })}
-                      </div>
-                    )}
-                  </section>
-                </div>
-                <DialogFooter className="border-t border-border pt-4">
-                  <DialogClose asChild>
-                    <Button variant="ghost" className="justify-center">
-                      Close
-                    </Button>
-                  </DialogClose>
-                </DialogFooter>
-              </DialogContent>
+                          ))}
+                        </div>
+                      )}
+                    </section>
+                  </div>
+                  <DialogFooter className="border-t border-border pt-4">
+                    <DialogClose asChild>
+                      <Button variant="ghost" className="justify-center">
+                        Close
+                      </Button>
+                    </DialogClose>
+                  </DialogFooter>
+                </DialogContent>
+              )}
             </Dialog>
             <Button
               variant="outline"
@@ -712,6 +765,7 @@ function SupervisorDashboard() {
                 const assignedTimestamp = task.assigned_at?.client ?? task.assigned_at?.server
                 const assignedAgo = assignedTimestamp ? formatDistanceToNow(assignedTimestamp) : null
                 const escalationLevel = getTaskEscalation(task.id)
+                const startTimeText = getStartedAtText(task.started_at)
                 const navigateToTask = () => router.push(`/worker/${task.id}`)
                 const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
                   if (event.key === "Enter" || event.key === " ") {
@@ -737,6 +791,7 @@ function SupervisorDashboard() {
                             {task.priority_level.replace(/_/g, " ")}
                           </Badge>
                           {escalationLevel && <EscalationBadge level={escalationLevel} />}
+                          <span className="text-[11px] text-muted-foreground">{startTimeText}</span>
                         </div>
                       </div>
                     </CardHeader>
@@ -756,7 +811,9 @@ function SupervisorDashboard() {
                       {assignedAgo && <p className="text-xs">Assigned {assignedAgo}</p>}
                       <div className="flex items-center gap-2 pt-1">
                         <div className={`h-2 w-2 rounded-full ${statusColors[task.status]}`} />
-                        <span className="text-xs sm:text-sm font-medium">{task.status.replace(/_/g, " ")}</span>
+                        <span className="text-xs sm:text-sm font-medium">
+                          {formatStatusWithStart(task.status, task.started_at)}
+                        </span>
                       </div>
                     </CardContent>
                   </Card>
@@ -767,6 +824,11 @@ function SupervisorDashboard() {
                 const assignedAgo = task.created_at ? formatDistanceToNow(task.created_at) : null
                 const statusKey = task.status.toUpperCase() as keyof typeof statusColors
                 const statusColor = statusColors[statusKey] ?? "bg-slate-400"
+                const startTimeText = getStartedAtText(task.started_at)
+                const maintenanceStatus = task.status.toUpperCase() as Task["status"]
+                const maintenanceStartedAt = task.started_at
+                  ? ({ client: task.started_at, server: task.started_at } satisfies DualTimestamp)
+                  : null
                 const navigateToMaintenanceTask = () => {
                   if (task.room_number && task.task_type && task.location) {
                     const room = encodeURIComponent(task.room_number)
@@ -800,9 +862,12 @@ function SupervisorDashboard() {
                     <CardHeader className="pb-3">
                       <div className="flex items-start justify-between gap-2">
                         <CardTitle className="text-lg">{getMaintenanceTaskLabel(task.task_type)}</CardTitle>
-                        <Badge variant="outline" className="text-[11px] uppercase tracking-wide">
-                          Maintenance
-                        </Badge>
+                        <div className="flex flex-col gap-1 items-end">
+                          <Badge variant="outline" className="text-[11px] uppercase tracking-wide">
+                            Maintenance
+                          </Badge>
+                          <span className="text-[11px] text-muted-foreground">{startTimeText}</span>
+                        </div>
                       </div>
                     </CardHeader>
                     <CardContent className="space-y-2 text-sm text-muted-foreground">
@@ -819,7 +884,9 @@ function SupervisorDashboard() {
                       {assignedAgo && <p className="text-xs">Assigned {assignedAgo}</p>}
                       <div className="flex items-center gap-2 pt-1">
                         <div className={`h-2 w-2 rounded-full ${statusColor}`} />
-                        <span className="text-xs sm:text-sm font-medium">{task.status.replace(/_/g, " ")}</span>
+                        <span className="text-xs sm:text-sm font-medium">
+                          {formatStatusWithStart(maintenanceStatus, maintenanceStartedAt)}
+                        </span>
                       </div>
                     </CardContent>
                   </Card>
@@ -833,17 +900,22 @@ function SupervisorDashboard() {
           <section>
             <h2 className="text-base sm:text-lg font-semibold mb-3">Pending Verification</h2>
             <div className="grid gap-3 sm:gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {completedTasks.map((task) => (
-                <Link key={task.id} href={`/supervisor/verify/${task.id}`}>
-                  <Card className="hover:shadow-md transition-shadow cursor-pointer">
-                    <CardHeader className="pb-3">
-                      <div className="flex items-start justify-between gap-2">
-                        <CardTitle className="text-lg">{task.task_type}</CardTitle>
-                        <Badge className={priorityColors[task.priority_level]} variant="secondary">
-                          {task.priority_level.replace(/_/g, " ")}
-                        </Badge>
-                      </div>
-                    </CardHeader>
+              {completedTasks.map((task) => {
+                const startTimeText = getStartedAtText(task.started_at)
+                return (
+                  <Link key={task.id} href={`/supervisor/verify/${task.id}`}>
+                    <Card className="hover:shadow-md transition-shadow cursor-pointer">
+                      <CardHeader className="pb-3">
+                        <div className="flex items-start justify-between gap-2">
+                          <CardTitle className="text-lg">{task.task_type}</CardTitle>
+                          <div className="flex flex-col gap-1 items-end">
+                            <Badge className={priorityColors[task.priority_level]} variant="secondary">
+                              {task.priority_level.replace(/_/g, " ")}
+                            </Badge>
+                            <span className="text-[11px] text-muted-foreground">{startTimeText}</span>
+                          </div>
+                        </div>
+                      </CardHeader>
                     <CardContent className="space-y-2">
                       <div className="flex items-center gap-2 text-sm text-muted-foreground">
                         <User className="h-4 w-4" />
@@ -864,9 +936,10 @@ function SupervisorDashboard() {
                         <span className="text-sm font-medium">Needs Verification</span>
                       </div>
                     </CardContent>
-                  </Card>
-                </Link>
-              ))}
+                    </Card>
+                  </Link>
+                )
+              })}
             </div>
           </section>
         )}
@@ -950,9 +1023,7 @@ function SupervisorDashboard() {
                     key={issue.id}
                     issue={issue}
                     task={task}
-                    onResolve={(issueId) => {
-                      console.log("[v0] Resolving issue:", issueId)
-                    }}
+                    onResolve={() => undefined}
                   />
                 )
               })}
@@ -1035,7 +1106,9 @@ function SupervisorDashboard() {
                       </div>
                       <div className="flex items-center gap-2 pt-2">
                         <div className={`h-2 w-2 rounded-full ${statusColors[task.status]}`} />
-                        <span className="text-sm font-medium">{task.status.replace(/_/g, " ")}</span>
+                        <span className="text-sm font-medium">
+                          {formatStatusWithStart(task.status, task.started_at)}
+                        </span>
                       </div>
                       {task.status === "COMPLETED" && task.supervisor_remark && (
                         <Button
@@ -1072,3 +1145,4 @@ export default function SupervisorPage() {
     </ProtectedRoute>
   )
 }
+

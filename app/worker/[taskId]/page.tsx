@@ -607,6 +607,7 @@ function TaskDetail({ params }: TaskDetailProps) {
   const photoRequirementText = getPhotoRequirementText()
   const combinedCategorizedPhotos = categorizedPhotos ?? task.categorized_photos ?? null
   const categorizedSections = getCategorizedPhotoSections(combinedCategorizedPhotos)
+  const startedTimestamp = task?.started_at?.client ?? task?.started_at?.server ?? null
 
   return (
     <div className="min-h-screen bg-muted/30">
@@ -642,6 +643,12 @@ function TaskDetail({ params }: TaskDetailProps) {
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Clock className="h-4 w-4 shrink-0" />
               <span className="truncate">Assigned at: {formatExactTimestamp(task.assigned_at.client)}</span>
+            </div>
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Play className="h-4 w-4 shrink-0" />
+              <span>
+                {startedTimestamp ? `Started at: ${formatExactTimestamp(startedTimestamp)}` : "Not started yet"}
+              </span>
             </div>
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <MapPin className="h-4 w-4 shrink-0" />

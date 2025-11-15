@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { LogOut, Bell, AlertCircle, X, Clock, CheckCircle2, XCircle, TrendingUp, ListTodo } from "lucide-react"
+import { LogOut, AlertCircle, X, Clock, CheckCircle2, XCircle, TrendingUp, ListTodo } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { useRealtimeTasks } from "@/lib/use-realtime-tasks"
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -35,7 +35,6 @@ function WorkerDashboard() {
     enabled: true,
     filter: { userId: user?.id },
   })
-  const [urgentTaskAlert, setUrgentTaskAlert] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState("home")
 
   const [tasksFilter, setTasksFilter] = useState<"all" | "active" | "recurring" | "completed" | "rejected">("all")
@@ -301,14 +300,6 @@ function WorkerDashboard() {
     })
     .filter((room) => room.isPartial)
     .sort((a, b) => b.completedCount - a.completedCount)
-
-  useEffect(() => {
-    const urgentTask = pendingTasks.find((t) => t.priority_level === "GUEST_REQUEST")
-    if (urgentTask) {
-      setUrgentTaskAlert(urgentTask.id)
-      setTimeout(() => setUrgentTaskAlert(null), 10000)
-    }
-  }, [pendingTasks])
 
   const handleLogout = () => {
     logout()
@@ -747,15 +738,6 @@ function WorkerDashboard() {
       default:
         return (
           <main className="container mx-auto px-4 py-6 space-y-6">
-            {urgentTaskAlert && (
-              <Alert className="border-destructive/50 bg-destructive/10">
-                <Bell className="h-4 w-4 text-destructive" />
-                <AlertDescription className="text-destructive">
-                  <strong>Urgent Guest Request!</strong> A new high-priority task has been assigned to you.
-                </AlertDescription>
-              </Alert>
-            )}
-
             {recurringTasks.length > 0 && (
               <Alert className="border-primary/40 bg-primary/10">
                 <ListTodo className="h-4 w-4 text-primary" />

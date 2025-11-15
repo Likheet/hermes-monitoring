@@ -65,6 +65,18 @@ type ShiftDraft = {
   shift2End: string
 }
 
+const getTaskStartedAtText = (startedAt: Task["started_at"]) => {
+  if (!startedAt) return "Not started yet"
+  return `Started ${formatFullTimestamp(startedAt)}`
+}
+
+const getTaskStatusLabel = (task: Task) => {
+  const label = task.status.replace(/_/g, " ")
+  if (task.status !== "PENDING") return label
+  const startText = task.started_at ? formatFullTimestamp(task.started_at) : "Not started yet"
+  return `${label} • Started at: ${startText}`
+}
+
 const priorityColors = {
   GUEST_REQUEST: "bg-red-500 text-white",
   TIME_SENSITIVE: "bg-orange-500 text-white",
@@ -1009,6 +1021,7 @@ function FrontOfficeDashboard() {
                     const allCandidates = [...proofPhotoUrls, ...roomPhotoUrls, ...legacyPhotoUrls, ...legacySingle]
                     const primaryPhoto = allCandidates.find((url) => url.length > 0) ?? null
                     const documentationPhotoCount = proofPhotoUrls.length + roomPhotoUrls.length + legacyPhotoUrls.length + legacySingle.length
+                    const startedAtText = getTaskStartedAtText(task.started_at)
 
                     return (
                       <Link key={task.id} href={`/front-office/supervisor/verify/${task.id}`}>
@@ -1042,6 +1055,7 @@ function FrontOfficeDashboard() {
                                     <Badge variant="secondary" className="bg-yellow-100 text-yellow-800 text-xs">Pending</Badge>
                                   )}
                                 </div>
+                                <span className="text-[11px] text-muted-foreground">{startedAtText}</span>
                                 {task.completed_at && (
                                   <span className="text-xs text-orange-600 font-medium">
                                     {formatDistanceToNow(task.completed_at.client)}
@@ -1104,28 +1118,38 @@ function FrontOfficeDashboard() {
                 </div>
               ) : (
                 <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                  {supervisorInProgressTasks.map((task) => (
-                    <Card key={task.id}>
-                      <CardHeader className="pb-2">
-                        <CardTitle className="text-base">{task.task_type}</CardTitle>
-                        <Badge variant="outline" className="capitalize">{task.status.replace(/_/g, " ")}</Badge>
-                      </CardHeader>
-                      <CardContent className="space-y-2 text-sm text-muted-foreground">
-                        <div className="flex items-center gap-2">
-                          <UserIcon className="h-4 w-4" />
-                          <span>{getWorkerName(task.assigned_to_user_id)}</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <MapPin className="h-4 w-4" />
-                          <span>{task.room_number || "N/A"}</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <CalendarClock className="h-4 w-4" />
-                          <span>Updated {formatFullTimestamp(task.assigned_at.client)}</span>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
+                  {supervisorInProgressTasks.map((task) => {
+                    const startedAtText = getTaskStartedAtText(task.started_at)
+                    return (
+                      <Card key={task.id}>
+                        <CardHeader className="pb-2">
+                          <div className="flex items-start justify-between gap-2">
+                            <CardTitle className="text-base">{task.task_type}</CardTitle>
+                            <div className="flex flex-col gap-1 items-end">
+                              <Badge variant="outline" className="capitalize">
+                                {getTaskStatusLabel(task)}
+                              </Badge>
+                              <span className="text-[11px] text-muted-foreground">{startedAtText}</span>
+                            </div>
+                          </div>
+                        </CardHeader>
+                        <CardContent className="space-y-2 text-sm text-muted-foreground">
+                          <div className="flex items-center gap-2">
+                            <UserIcon className="h-4 w-4" />
+                            <span>{getWorkerName(task.assigned_to_user_id)}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <MapPin className="h-4 w-4" />
+                            <span>{task.room_number || "N/A"}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <CalendarClock className="h-4 w-4" />
+                            <span>Updated {formatFullTimestamp(task.assigned_at.client)}</span>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    )
+                  })}
                 </div>
               )}
             </section>
@@ -1279,7 +1303,7 @@ function FrontOfficeDashboard() {
 
                             <div className="flex items-center gap-2">
                               <div className={`h-2 w-2 rounded-full ${statusColors[task.status]} shrink-0`} />
-                              <span className="text-xs sm:text-sm font-medium">{task.status.replace(/_/g, " ")}</span>
+                              <span className="text-xs sm:text-sm font-medium">{getTaskStatusLabel(task)}</span>
                             </div>
                           </div>
                           {task.status === "PENDING" && canEdit && (
@@ -1344,7 +1368,7 @@ function FrontOfficeDashboard() {
                     >
                       <CardHeader className="pb-3">
                         <CardTitle className="text-base">{task.task_type}</CardTitle>
-                        <Badge variant="secondary" className="capitalize">{task.status.replace(/_/g, " ")}</Badge>
+                        <Badge variant="secondary" className="capitalize">{getTaskStatusLabel(task)}</Badge>
                       </CardHeader>
                       <CardContent className="space-y-2 text-sm text-muted-foreground">
                         <div className="flex items-center gap-2">
