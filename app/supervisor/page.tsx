@@ -1145,4 +1145,3 @@ export default function SupervisorPage() {
     </ProtectedRoute>
   )
 }
-
