@@ -245,13 +245,13 @@ function TaskDetail({ params }: TaskDetailProps) {
       console.log("[worker] Server has different photos - applying update")
       applyLocalCategorizedPhotos(incomingPhotos)
       lastTaskVersionRef.current = incomingVersion ?? lastTaskVersionRef.current
-    } 
+    }
     // Server has no photos, we have no photos, and this is initial load
     else if (!incomingHas && !localHas && lastSavedHash === null) {
       console.log("[worker] No photos anywhere - initializing empty")
       applyLocalCategorizedPhotos(incomingPhotos)
       lastTaskVersionRef.current = incomingVersion ?? lastTaskVersionRef.current
-    } 
+    }
     // Version changed - check if we should update
     else if (incomingVersion && incomingVersion !== lastTaskVersionRef.current) {
       console.log("[worker] Server version changed - checking if update needed")
@@ -528,9 +528,9 @@ function TaskDetail({ params }: TaskDetailProps) {
           categorizedPhotos: task.photo_documentation_required
             ? sourcePhotos
             : {
-                room_photos: photos.slice(0, Math.ceil(photos.length / 2)),
-                proof_photos: photos.slice(Math.ceil(photos.length / 2)),
-              },
+              room_photos: photos.slice(0, Math.ceil(photos.length / 2)),
+              proof_photos: photos.slice(Math.ceil(photos.length / 2)),
+            },
           remark,
         },
       })
@@ -544,13 +544,13 @@ function TaskDetail({ params }: TaskDetailProps) {
 
     const photosToSubmit = task.photo_documentation_required
       ? sourcePhotos ?? {
-          room_photos: [],
-          proof_photos: [],
-        }
+        room_photos: [],
+        proof_photos: [],
+      }
       : {
-          room_photos: photos.slice(0, Math.ceil(photos.length / 2)),
-          proof_photos: photos.slice(Math.ceil(photos.length / 2)),
-        }
+        room_photos: photos.slice(0, Math.ceil(photos.length / 2)),
+        proof_photos: photos.slice(Math.ceil(photos.length / 2)),
+      }
 
     await completeTask(taskId, user!.id, photosToSubmit, remark)
     stopPauseMonitoring()
@@ -610,217 +610,199 @@ function TaskDetail({ params }: TaskDetailProps) {
   const startedTimestamp = task?.started_at?.client ?? task?.started_at?.server ?? null
 
   return (
-    <div className="min-h-screen bg-muted/30">
+    <div className="min-h-screen bg-gray-50/50 pb-24">
       <OfflineIndicator />
 
-      <header className="border-b bg-background sticky top-0 z-40">
-        <div className="container mx-auto flex items-center gap-2 sm:gap-4 px-3 sm:px-4 py-3 sm:py-4">
+      {/* Header */}
+      <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-md border-b border-gray-100">
+        <div className="container max-w-md mx-auto px-4 h-16 flex items-center justify-between">
           <Button
             variant="ghost"
             size="icon"
             onClick={() => router.back()}
-            className="shrink-0 min-h-[44px] min-w-[44px]"
+            className="h-10 w-10 rounded-full hover:bg-gray-100 -ml-2"
           >
-            <ArrowLeft className="h-5 w-5" />
+            <ArrowLeft className="h-5 w-5 text-gray-700" />
           </Button>
-          <div className="min-w-0 flex-1">
-            <h1 className="text-lg sm:text-xl font-bold truncate">Task Details</h1>
-          </div>
+          <span className="font-semibold text-gray-900">Task Details</span>
+          <div className="w-10" /> {/* Spacer for balance */}
         </div>
       </header>
 
-      <main className="container mx-auto px-3 sm:px-4 py-4 sm:py-6 max-w-2xl space-y-4 sm:space-y-6">
-        <Card>
-          <CardHeader className="pb-3 sm:pb-6">
-            <div className="flex items-start justify-between gap-2">
-              <CardTitle className="text-xl sm:text-2xl leading-tight">{task.task_type}</CardTitle>
-              <Badge className={priorityColors[task.priority_level]} variant="secondary">
-                {task.priority_level.replace(/_/g, " ")}
-              </Badge>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-3 sm:space-y-4">
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Clock className="h-4 w-4 shrink-0" />
-              <span className="truncate">Assigned at: {formatExactTimestamp(task.assigned_at.client)}</span>
-            </div>
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Play className="h-4 w-4 shrink-0" />
-              <span>
-                {startedTimestamp ? `Started at: ${formatExactTimestamp(startedTimestamp)}` : "Not started yet"}
-              </span>
-            </div>
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <MapPin className="h-4 w-4 shrink-0" />
-              <span>Room {task.room_number}</span>
-            </div>
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Clock className="h-4 w-4 shrink-0" />
-              <span>Expected: {task.expected_duration_minutes} minutes</span>
-            </div>
-            {task.worker_remark && (
-              <div className="mt-4 rounded-xl border border-blue-500/70 bg-blue-500/15 px-4 py-3 shadow-sm dark:border-blue-400/60 dark:bg-blue-900/40">
-                <div className="flex items-start gap-3">
-                  <AlertTriangle className="h-5 w-5 text-blue-600 dark:text-blue-300 shrink-0 mt-0.5" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-blue-900 dark:text-blue-50 mb-1">
-                      Instructions from Front Office
-                    </p>
-                    <p className="text-sm text-blue-950 dark:text-blue-100 leading-relaxed break-words whitespace-normal">
-                      {task.worker_remark}
-                    </p>
+      <main className="container max-w-md mx-auto px-4 py-6 space-y-6">
+        {/* Task Title & Status */}
+        <div className="space-y-4">
+          <div className="flex items-start justify-between gap-4">
+            <h1 className="text-3xl font-bold text-gray-900 leading-tight tracking-tight">
+              {task.task_type}
+            </h1>
+            <Badge
+              className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold shadow-sm ${priorityColors[task.priority_level]}`}
+              variant="secondary"
+            >
+              {task.priority_level.replace(/_/g, " ")}
+            </Badge>
+          </div>
+
+          <div className="flex items-center gap-2 text-sm text-gray-500">
+            <Clock className="h-4 w-4" />
+            <span>Assigned {formatExactTimestamp(task.assigned_at.client)}</span>
+          </div>
+        </div>
+
+        {/* Info Grid (Bento Style) */}
+        <div className="grid grid-cols-2 gap-3">
+          {/* Location Card */}
+          <Card className="col-span-1 bg-white border-0 shadow-sm rounded-2xl overflow-hidden">
+            <CardContent className="p-4 flex flex-col items-start justify-between h-full gap-3">
+              <div className="p-2 bg-blue-50 rounded-xl">
+                <MapPin className="h-5 w-5 text-blue-600" />
+              </div>
+              <div>
+                <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">Location</p>
+                <p className="text-lg font-bold text-gray-900">Room {task.room_number}</p>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Duration Card */}
+          <Card className="col-span-1 bg-white border-0 shadow-sm rounded-2xl overflow-hidden">
+            <CardContent className="p-4 flex flex-col items-start justify-between h-full gap-3">
+              <div className="p-2 bg-orange-50 rounded-xl">
+                <Clock className="h-5 w-5 text-orange-600" />
+              </div>
+              <div>
+                <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">Est. Time</p>
+                <p className="text-lg font-bold text-gray-900">{task.expected_duration_minutes} min</p>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Timer Card (Full Width if Active) */}
+          {task.status === "IN_PROGRESS" && (
+            <Card className="col-span-2 bg-gray-900 text-white border-0 shadow-lg rounded-2xl overflow-hidden relative">
+              <div className="absolute top-0 right-0 p-3 opacity-10">
+                <Clock className="h-24 w-24" />
+              </div>
+              <CardContent className="p-6 flex items-center justify-between relative z-10">
+                <div>
+                  <p className="text-sm font-medium text-gray-300 mb-1">Time Elapsed</p>
+                  <div className="text-4xl font-mono font-bold tracking-wider">
+                    {formatDuration(elapsedTime)}
                   </div>
                 </div>
-              </div>
-            )}
-            {photoRequirementText && (
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Camera className="h-4 w-4 shrink-0" />
-                <span>{photoRequirementText}</span>
-              </div>
-            )}
-            {task.task_type === "Housekeeping" && (
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <span>Housekeeping Task</span>
-              </div>
-            )}
-            {task.task_type === "Maintenance" && (
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <span>Maintenance Task</span>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {task.status === "IN_PROGRESS" && (
-          <Card>
-            <CardHeader>
-              <CardTitle>Timer</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-center">
-                <div className="text-4xl font-bold font-mono">{formatDuration(elapsedTime)}</div>
-                <p className="text-sm text-muted-foreground mt-2">Expected: {task.expected_duration_minutes} min</p>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {task.status === "PAUSED" && (
-          <Card className="border-destructive">
-            <CardContent className="pt-6">
-              <p className="text-center text-destructive font-medium">Task is currently paused</p>
-            </CardContent>
-          </Card>
-        )}
-
-        {(task.status === "IN_PROGRESS" || task.status === "PAUSED") &&
-          task.photo_documentation_required &&
-          task.photo_categories && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Photo Documentation</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <Button onClick={() => setShowCategorizedPhotoModal(true)} variant="outline" className="w-full">
-                  <Camera className="mr-2 h-4 w-4" />
-                  Capture Photos ({
-                    task.photo_categories
-                      .filter((category): category is PhotoCategoryRequirement => Boolean(category))
-                      .reduce((sum, category) => sum + category.count, 0)
-                  }{" "}
-                  required)
-                </Button>
-
-                {categorizedSections.length > 0 ? (
-                  <div className="space-y-4">
-                    {categorizedSections.map((section, sectionIndex) => (
-                      <div key={section.key} className="space-y-2">
-                        <p className="text-sm font-semibold text-muted-foreground">{section.label}</p>
-                        <div className="grid grid-cols-3 gap-2 sm:gap-3">
-                          {section.urls.map((url, index) => (
-                            <div key={`${section.key}-${index}`} className="relative w-full aspect-square">
-                              <TaskImage
-                                src={url}
-                                alt={`${section.label} ${index + 1}`}
-                                fill
-                                className="rounded-lg object-cover border border-border"
-                                priority={sectionIndex === 0 && index === 0}
-                                sizes="(max-width: 768px) 28vw, 160px"
-                              />
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-xs text-muted-foreground text-center">
-                    No photos captured yet. Use the button above to start documenting the task.
-                  </p>
-                )}
+                <div className="h-12 w-12 rounded-full border-2 border-white/20 flex items-center justify-center animate-pulse">
+                  <div className="h-3 w-3 bg-green-500 rounded-full" />
+                </div>
               </CardContent>
             </Card>
           )}
+        </div>
 
-        {(task.status === "IN_PROGRESS" || task.status === "PAUSED") &&
-          task.photo_required &&
-          !task.photo_documentation_required && (
-            <SimplePhotoCapture
-              taskId={taskId}
-              existingPhotos={photos}
-              onPhotosChange={handlePhotosChange}
-              minPhotos={task.photo_count || task.custom_task_photo_count || 1}
-            />
-          )}
-
-        {task.status === "COMPLETED" && totalPhotos > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle>Photos Submitted ({totalPhotos})</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-3 gap-2">
-                {photos.map((photo, index) => (
-                  <div key={index} className="relative w-full aspect-square">
-                    <TaskImage
-                      src={photo}
-                      alt={`Photo ${index + 1}`}
-                      fill
-                      className="rounded-lg border object-cover"
-                      sizes="(max-width: 768px) 28vw, 160px"
-                    />
-                  </div>
-                ))}
+        {/* Instructions / Remarks */}
+        {task.worker_remark && (
+          <Card className="bg-blue-50/50 border-blue-100 shadow-sm rounded-2xl">
+            <CardContent className="p-5">
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="h-5 w-5 text-blue-600 shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                  <p className="text-sm font-bold text-blue-900">Front Office Instructions</p>
+                  <p className="text-sm text-blue-800 leading-relaxed">
+                    {task.worker_remark}
+                  </p>
+                </div>
               </div>
             </CardContent>
           </Card>
         )}
 
-        {(task.status === "IN_PROGRESS" || task.status === "PAUSED") && (
-          <Card>
-            <CardHeader>
-              <CardTitle>Remarks</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Label htmlFor="remark">Add any notes about this task</Label>
-              <Textarea
-                id="remark"
-                placeholder="Enter your remarks here..."
-                value={remark}
-                onChange={(e) => setRemark(e.target.value)}
-                className="mt-2"
-                rows={4}
-              />
-            </CardContent>
-          </Card>
+        {/* Photo Documentation Section */}
+        {(task.photo_documentation_required || task.photo_required) && (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between px-1">
+              <h3 className="font-semibold text-gray-900">Photos</h3>
+              <span className="text-xs font-medium text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
+                {getPhotoRequirementText()}
+              </span>
+            </div>
+
+            <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
+              {/* Photo Grid */}
+              <div className="grid grid-cols-3 gap-3 mb-4">
+                {/* Existing Photos */}
+                {(categorizedSections.length > 0 ? categorizedSections.flatMap(s => s.urls) : photos).map((url, idx) => (
+                  <div key={idx} className="relative aspect-square rounded-xl overflow-hidden bg-gray-100 border border-gray-200">
+                    <TaskImage
+                      src={url}
+                      alt={`Task photo ${idx + 1}`}
+                      fill
+                      className="object-cover"
+                      sizes="(max-width: 768px) 33vw, 120px"
+                    />
+                  </div>
+                ))}
+
+                {/* Add Photo Button */}
+                {(task.status === "IN_PROGRESS" || task.status === "PAUSED") && (
+                  <button
+                    onClick={() => task.photo_documentation_required ? setShowCategorizedPhotoModal(true) : null}
+                    className="aspect-square rounded-xl border-2 border-dashed border-gray-300 flex flex-col items-center justify-center gap-2 text-gray-400 hover:border-primary hover:text-primary hover:bg-primary/5 transition-colors"
+                  >
+                    <Camera className="h-6 w-6" />
+                    <span className="text-xs font-medium">Add</span>
+                  </button>
+                )}
+              </div>
+
+              {/* Simple Photo Capture Fallback */}
+              {(task.status === "IN_PROGRESS" || task.status === "PAUSED") &&
+                task.photo_required &&
+                !task.photo_documentation_required && (
+                  <SimplePhotoCapture
+                    taskId={taskId}
+                    existingPhotos={photos}
+                    onPhotosChange={handlePhotosChange}
+                    minPhotos={task.photo_count || task.custom_task_photo_count || 1}
+                  />
+                )}
+
+              {categorizedSections.length === 0 && photos.length === 0 && (
+                <p className="text-sm text-gray-400 text-center py-4">No photos added yet</p>
+              )}
+            </div>
+          </div>
         )}
 
-        {task.pause_history.length > 0 && <PauseTimeline pauseHistory={task.pause_history} />}
+        {/* Worker Remarks Input */}
+        {(task.status === "IN_PROGRESS" || task.status === "PAUSED") && (
+          <div className="space-y-3">
+            <h3 className="font-semibold text-gray-900 px-1">Your Notes</h3>
+            <Textarea
+              placeholder="Add any observations or notes about the task..."
+              value={remark}
+              onChange={(e) => setRemark(e.target.value)}
+              className="min-h-[100px] rounded-2xl border-gray-200 bg-white shadow-sm resize-none focus:ring-primary/20"
+            />
+          </div>
+        )}
 
-        <div className="flex flex-col gap-2 sm:gap-3">
+        {/* Pause History */}
+        {task.pause_history.length > 0 && (
+          <div className="pt-2">
+            <PauseTimeline pauseHistory={task.pause_history} />
+          </div>
+        )}
+      </main>
+
+      {/* Sticky Action Bar */}
+      <div className="fixed bottom-0 left-0 right-0 px-4 pt-4 pb-[calc(1rem+env(safe-area-inset-bottom))] bg-white/90 backdrop-blur-xl border-t border-gray-200 z-50">
+        <div className="container max-w-md mx-auto flex gap-3">
           {task.status === "PENDING" && (
-            <Button onClick={handleStart} size="lg" className="w-full min-h-[48px] sm:min-h-[52px]">
+            <Button
+              onClick={handleStart}
+              size="lg"
+              className="flex-1 h-14 text-lg font-semibold rounded-2xl shadow-lg shadow-primary/20"
+            >
               <Play className="mr-2 h-5 w-5" />
               Start Task
             </Button>
@@ -831,68 +813,71 @@ function TaskDetail({ params }: TaskDetailProps) {
               {user?.department === "housekeeping" && (
                 <Button
                   onClick={handlePause}
-                  variant="outline"
-                  size="lg"
-                  className="w-full min-h-[48px] sm:min-h-[52px] bg-transparent"
+                  variant="secondary"
+                  size="icon"
+                  className="h-14 w-14 rounded-2xl shrink-0 bg-gray-100 hover:bg-gray-200 text-gray-700"
                   disabled={!canPauseTask()}
                 >
-                  <Pause className="mr-2 h-5 w-5" />
-                  <span className="truncate">Pause Task{!canPauseTask() && " (Need 2+ tasks)"}</span>
+                  <Pause className="h-6 w-6" />
                 </Button>
               )}
-              <Button onClick={handleComplete} size="lg" className="w-full min-h-[48px] sm:min-h-[52px]">
+
+              <Button
+                onClick={handleComplete}
+                size="lg"
+                className="flex-1 h-14 text-lg font-semibold rounded-2xl shadow-lg shadow-primary/20 bg-primary hover:bg-primary/90"
+              >
                 <CheckCircle className="mr-2 h-5 w-5" />
-                Complete Task
+                Complete
               </Button>
+
               <Button
                 onClick={() => setIssueModalOpen(true)}
                 variant="destructive"
-                size="lg"
-                className="w-full min-h-[48px] sm:min-h-[52px]"
+                size="icon"
+                className="h-14 w-14 rounded-2xl shrink-0 shadow-lg shadow-destructive/20"
               >
-                <AlertTriangle className="mr-2 h-5 w-5" />
-                Raise Issue!
+                <AlertTriangle className="h-6 w-6" />
               </Button>
             </>
           )}
 
           {task.status === "PAUSED" && (
             <>
-              <Button onClick={handleResume} size="lg" className="w-full min-h-[48px] sm:min-h-[52px]">
-                <Play className="mr-2 h-5 w-5" />
-                Resume Task
-              </Button>
               <Button
-                onClick={handleComplete}
-                variant="outline"
+                onClick={handleResume}
                 size="lg"
-                className="w-full min-h-[48px] sm:min-h-[52px] bg-transparent"
+                className="flex-1 h-14 text-lg font-semibold rounded-2xl shadow-lg shadow-primary/20"
               >
-                <CheckCircle className="mr-2 h-5 w-5" />
-                Complete Task
+                <Play className="mr-2 h-5 w-5" />
+                Resume
               </Button>
+
               <Button
                 onClick={() => setIssueModalOpen(true)}
                 variant="destructive"
-                size="lg"
-                className="w-full min-h-[48px] sm:min-h-[52px]"
+                size="icon"
+                className="h-14 w-14 rounded-2xl shrink-0 shadow-lg shadow-destructive/20"
               >
-                <AlertTriangle className="mr-2 h-5 w-5" />
-                Raise Issue!
+                <AlertTriangle className="h-6 w-6" />
               </Button>
             </>
           )}
 
           {task.status === "COMPLETED" && (
-            <div className="text-center py-8">
-              <CheckCircle className="h-16 w-16 text-primary mx-auto mb-4" />
-              <p className="text-lg font-medium">Task Completed</p>
-              <p className="text-sm text-muted-foreground">Completed in {task.actual_duration_minutes} minutes</p>
-            </div>
+            <Button
+              variant="outline"
+              className="w-full h-14 rounded-2xl border-green-200 bg-green-50 text-green-700 hover:bg-green-100 hover:text-green-800"
+              disabled
+            >
+              <CheckCircle className="mr-2 h-5 w-5" />
+              Task Completed
+            </Button>
           )}
         </div>
-      </main>
+      </div>
 
+      {/* Modals */}
       {task.photo_documentation_required && task.photo_categories && (
         <CategorizedPhotoCaptureModal
           open={showCategorizedPhotoModal}
@@ -902,9 +887,6 @@ function TaskDetail({ params }: TaskDetailProps) {
           existingPhotos={categorizedPhotos ? categorizedPhotosToBucket(categorizedPhotos) : undefined}
           onSave={async (photoBucket) => {
             const nextCategorized = bucketToCategorizedPhotos(photoBucket)
-            console.log("[worker] Saving photos from modal:", nextCategorized)
-            
-            // Apply immediately to local state
             applyLocalCategorizedPhotos(nextCategorized)
 
             if (!isOnline()) {
@@ -916,21 +898,16 @@ function TaskDetail({ params }: TaskDetailProps) {
               return
             }
 
-            // Save to server
             const success = await updateTask(task.id, { categorized_photos: nextCategorized })
-            
+
             if (success) {
-              console.log("[worker] Photos saved to server successfully")
-              // Force update local state again to ensure it's in sync
               applyLocalCategorizedPhotos(nextCategorized)
-              
               setShowCategorizedPhotoModal(false)
               toast({
                 title: "Photos Saved",
                 description: "Your photo documentation is stored safely.",
               })
             } else {
-              console.error("[worker] Failed to save photos to server")
               setShowCategorizedPhotoModal(false)
               toast({
                 title: "Save Failed",
@@ -945,14 +922,13 @@ function TaskDetail({ params }: TaskDetailProps) {
       <RaiseIssueModal open={issueModalOpen} onOpenChange={setIssueModalOpen} onSubmit={handleRaiseIssue} />
 
       <AlertDialog open={swapDialogOpen} onOpenChange={setSwapDialogOpen}>
-        <AlertDialogContent>
+        <AlertDialogContent className="rounded-2xl">
           <AlertDialogHeader>
-            <AlertDialogTitle>Can&apos;t Pause Multiple Tasks</AlertDialogTitle>
+            <AlertDialogTitle>Swap Active Task?</AlertDialogTitle>
             <AlertDialogDescription>
-              You already have a paused task: <strong>{pausedTaskToSwap?.name}</strong>
+              You have another paused task: <strong>{pausedTaskToSwap?.name}</strong>.
               <br />
-              <br />
-              Would you like to pause this task and resume the other one instead?
+              Do you want to pause the current task and resume that one instead?
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -961,10 +937,14 @@ function TaskDetail({ params }: TaskDetailProps) {
                 setSwapDialogOpen(false)
                 setPausedTaskToSwap(null)
               }}
+              className="rounded-xl"
             >
               Cancel
             </AlertDialogCancel>
-            <AlertDialogAction onClick={() => swapTasks(taskId, pausedTaskToSwap!.id, user!.id)}>
+            <AlertDialogAction
+              onClick={() => swapTasks(taskId, pausedTaskToSwap!.id, user!.id)}
+              className="rounded-xl"
+            >
               Yes, Swap Tasks
             </AlertDialogAction>
           </AlertDialogFooter>
