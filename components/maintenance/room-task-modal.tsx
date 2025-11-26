@@ -38,6 +38,11 @@ export function RoomTaskModal({ roomNumber, tasks, onClose, onTaskComplete }: Ro
 
   const selectedTask = tasks.find((t) => t.id === selectedTaskId)
   const availableACLocations = getACLocationsForRoom(roomNumber)
+  
+  // Check if this is a lift task modal
+  const isLiftTask = tasks.length > 0 && tasks[0].task_type === "lift"
+  const displayLabel = isLiftTask ? (tasks[0].lift_id || tasks[0].location || roomNumber) : roomNumber
+  const entityType = isLiftTask ? "Lift" : "Room"
 
   // Timer update interval
   useEffect(() => {
@@ -208,7 +213,7 @@ async function compressImage(file: File): Promise<File> {
     const taskPhotos = categorizedPhotos[task.id]
 
     if (!taskPhotos || taskPhotos.room_photos.length === 0 || taskPhotos.proof_photos.length === 0) {
-      alert("Please upload at least 1 room photo and 1 proof photo before completing the task.")
+      alert(`Please upload at least 1 ${isLiftTask ? "lift" : "room"} photo and 1 proof photo before completing the task.`)
       return
     }
 
@@ -254,7 +259,7 @@ async function compressImage(file: File): Promise<File> {
             <ArrowLeft className="w-5 h-5 text-muted-foreground" />
           </button>
           <div className="flex-1">
-            <h2 className="text-2xl font-bold text-foreground">Room {roomNumber}</h2>
+            <h2 className="text-2xl font-bold text-foreground">{entityType} {displayLabel}</h2>
             <p className="text-muted-foreground">
               {tasks.filter((t) => t.status === "completed").length}/{tasks.length} tasks completed
             </p>
@@ -319,14 +324,14 @@ async function compressImage(file: File): Promise<File> {
           })}
         </div>
 
-        {/* Complete Room Button */}
+        {/* Complete Button */}
         {allTasksCompleted && (
           <div className="sticky bottom-0 bg-card border-t-2 border-border p-6">
             <button
               onClick={onClose}
               className="w-full px-6 py-4 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 font-bold text-lg"
             >
-              ✓ Room {roomNumber} Complete - Return to Calendar
+              ✓ {entityType} {displayLabel} Complete - Return to Calendar
             </button>
           </div>
         )}
@@ -349,7 +354,7 @@ async function compressImage(file: File): Promise<File> {
         </button>
         <div className="flex-1">
           <h2 className="text-2xl font-bold text-foreground">{TASK_TYPE_LABELS[task.task_type]}</h2>
-          <p className="text-muted-foreground">Room {roomNumber}</p>
+          <p className="text-muted-foreground">{entityType} {displayLabel}</p>
         </div>
       </div>
 
@@ -422,7 +427,7 @@ async function compressImage(file: File): Promise<File> {
           <div className="mb-6">
             <div className="flex items-center justify-between mb-3">
               <label className="text-sm font-semibold text-foreground">
-                Room Photos * ({taskPhotos.room_photos.length})
+                {isLiftTask ? "Lift" : "Room"} Photos * ({taskPhotos.room_photos.length})
               </label>
               <label className="cursor-pointer">
                 <input
@@ -456,7 +461,7 @@ async function compressImage(file: File): Promise<File> {
                     {/* eslint-disable-next-line @next/next/no-img-element -- Captured maintenance photos are stored as in-memory URLs */}
                     <img
                       src={url || "/placeholder.svg"}
-                      alt={`Room ${index + 1}`}
+                      alt={`${isLiftTask ? "Lift" : "Room"} ${index + 1}`}
                       className="w-full h-24 object-cover rounded-lg border-2 border-border"
                     />
                     <button

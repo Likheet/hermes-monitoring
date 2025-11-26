@@ -43,7 +43,6 @@ import {
   type PhotoBucket,
 } from "@/lib/photo-utils"
 import { formatDuration } from "@/lib/time-utils"
-import { isOnline } from "@/lib/timer-utils"
 
 interface MaintenanceTaskPageProps {
   params:
@@ -106,21 +105,36 @@ function MaintenanceTaskPage({ params }: MaintenanceTaskPageProps) {
 
   const router = useRouter()
   const { user } = useAuth()
-  const { maintenanceTasks, updateMaintenanceTask, tasks, updateTask } = useTasks()
+  const { maintenanceTasks, updateMaintenanceTask, tasks } = useTasks()
   const { toast } = useToast()
 
-  const task = maintenanceTasks.find(
-    (t) => t.room_number === roomNumber && t.task_type === taskType && t.location === location,
-  )
+  // Check if this is a lift task (lift IDs look like "A-Lift-1", "B-Lift-1", etc.)
+  const isLiftTask = roomNumber.includes("Lift") || taskType === "lift"
+
+  // For lift tasks, find by lift_id; for room tasks, find by room_number
+  const task = isLiftTask
+    ? maintenanceTasks.find(
+        (t) => (t.lift_id === roomNumber || t.lift_id === location) && t.task_type === "lift"
+      )
+    : maintenanceTasks.find(
+        (t) => t.room_number === roomNumber && t.task_type === taskType && t.location === location,
+      )
+
+  // Entity label for display
+  const entityLabel = isLiftTask ? "Lift" : "Room"
+  const entityId = isLiftTask ? (task?.lift_id || roomNumber) : roomNumber
 
   console.log("[v0] Task detail page loaded:", {
     roomNumber,
     taskType,
     location,
+    isLiftTask,
     taskFound: !!task,
     taskId: task?.id,
     totalMaintenanceTasks: maintenanceTasks.length,
-    matchingRoomTasks: maintenanceTasks.filter((t) => t.room_number === roomNumber).length,
+    matchingTasks: isLiftTask 
+      ? maintenanceTasks.filter((t) => t.task_type === "lift").length
+      : maintenanceTasks.filter((t) => t.room_number === roomNumber).length,
   })
 
   const [remark, setRemark] = useState("")
@@ -294,9 +308,9 @@ function MaintenanceTaskPage({ params }: MaintenanceTaskPageProps) {
           This maintenance task doesn&apos;t exist or hasn&apos;t been scheduled yet. Please check the maintenance calendar for
           available tasks.
         </p>
-        <Button onClick={() => router.push("/worker")} variant="default" size="lg">
+        <Button onClick={() => router.back()} variant="default" size="lg">
           <ArrowLeft className="mr-2 h-4 w-4" />
-          Back to Home
+          Go Back
         </Button>
       </div>
     )
@@ -457,23 +471,14 @@ function MaintenanceTaskPage({ params }: MaintenanceTaskPageProps) {
     const afterPhotos = updatedPhotos.after_photos ?? []
 
     setCategorizedPhotos(updatedPhotos)
+    
+    // Use updateMaintenanceTask for maintenance tasks (not updateTask which is for regular tasks)
     updateMaintenanceTask(task.id, {
       categorized_photos: {
         before_photos: beforePhotos,
         after_photos: afterPhotos,
       },
     })
-
-    if (isOnline()) {
-      const success = await updateTask(task.id, { categorized_photos: updatedPhotos })
-      if (!success) {
-        toast({
-          title: "Sync failed",
-          description: "Could not persist photos to the server. They remain saved locally.",
-          variant: "destructive",
-        })
-      }
-    }
 
     const totalPhotos = beforePhotos.length + afterPhotos.length
 
@@ -505,9 +510,15 @@ function MaintenanceTaskPage({ params }: MaintenanceTaskPageProps) {
   const handleGoToOngoingTask = () => {
     if (!ongoingTask) return
     setOngoingTaskDialogOpen(false)
-    router.push(
-      `/worker/maintenance/${ongoingTask.room_number}/${ongoingTask.task_type}/${encodeURIComponent(ongoingTask.location)}`,
-    )
+    // Handle lift tasks differently - they use lift_id instead of room_number
+    if (ongoingTask.task_type === "lift") {
+      const liftId = ongoingTask.lift_id || ongoingTask.location || "Lift"
+      router.push(`/worker/maintenance/${liftId}/lift/${encodeURIComponent(ongoingTask.location || liftId)}`)
+    } else {
+      router.push(
+        `/worker/maintenance/${ongoingTask.room_number}/${ongoingTask.task_type}/${encodeURIComponent(ongoingTask.location)}`,
+      )
+    }
   }
 
   const handleSwapConfirm = () => {
@@ -570,7 +581,7 @@ function MaintenanceTaskPage({ params }: MaintenanceTaskPageProps) {
               {TASK_TYPE_LABELS[taskType as keyof typeof TASK_TYPE_LABELS]}
             </h1>
             <p className="text-xs sm:text-sm text-muted-foreground truncate">
-              Room {roomNumber} • {location}
+              {entityLabel} {entityId} {!isLiftTask && `• ${location}`}
             </p>
           </div>
         </div>
@@ -606,7 +617,7 @@ function MaintenanceTaskPage({ params }: MaintenanceTaskPageProps) {
             <div className="flex items-center gap-2 text-sm sm:text-base text-muted-foreground">
               <MapPin className="h-4 w-4 shrink-0" />
               <span className="truncate">
-                Room {roomNumber} - {location}
+                {entityLabel} {entityId} {!isLiftTask && `- ${location}`}
               </span>
             </div>
             <div className="flex items-center gap-2 text-sm sm:text-base text-muted-foreground">
@@ -848,10 +859,9 @@ function MaintenanceTaskPage({ params }: MaintenanceTaskPageProps) {
           <AlertDialogHeader>
             <AlertDialogTitle>You Have Another Task Active</AlertDialogTitle>
             <AlertDialogDescription>
-              You currently have a task <strong>in progress</strong> in Room {taskToSwap?.room_number}:{" "}
+              You currently have a task <strong>in progress</strong> in {taskToSwap?.task_type === "lift" ? "Lift" : "Room"} {taskToSwap?.task_type === "lift" ? (taskToSwap?.lift_id || taskToSwap?.location) : taskToSwap?.room_number}:{" "}
               <strong>
-                {taskToSwap?.task_type && TASK_TYPE_LABELS[taskToSwap.task_type as keyof typeof TASK_TYPE_LABELS]} -{" "}
-                {taskToSwap?.location}
+                {taskToSwap?.task_type && TASK_TYPE_LABELS[taskToSwap.task_type as keyof typeof TASK_TYPE_LABELS]} {taskToSwap?.task_type !== "lift" && `- ${taskToSwap?.location}`}
               </strong>
               <br />
               <br />
@@ -878,8 +888,8 @@ function MaintenanceTaskPage({ params }: MaintenanceTaskPageProps) {
           <DialogHeader>
             <DialogTitle>You Still Have an Ongoing Task</DialogTitle>
             <DialogDescription>
-              You currently have a task {ongoingTask?.status === "paused" ? "paused" : "in progress"} in Room{" "}
-              {ongoingTask?.room_number}. Please complete that task before starting a new one.
+              You currently have a task {ongoingTask?.status === "paused" ? "paused" : "in progress"} in {ongoingTask?.task_type === "lift" ? "Lift" : "Room"}{" "}
+              {ongoingTask?.task_type === "lift" ? (ongoingTask?.lift_id || ongoingTask?.location) : ongoingTask?.room_number}. Please complete that task before starting a new one.
             </DialogDescription>
           </DialogHeader>
           <div className="py-4">
@@ -887,14 +897,14 @@ function MaintenanceTaskPage({ params }: MaintenanceTaskPageProps) {
               <CardContent className="pt-6">
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium">Room {ongoingTask?.room_number}</span>
+                    <span className="text-sm font-medium">{ongoingTask?.task_type === "lift" ? "Lift" : "Room"} {ongoingTask?.task_type === "lift" ? (ongoingTask?.lift_id || ongoingTask?.location) : ongoingTask?.room_number}</span>
                     <Badge variant={ongoingTask?.status === "paused" ? "outline" : "default"}>
                       {ongoingTask?.status === "paused" ? "Paused" : "In Progress"}
                     </Badge>
                   </div>
                   <p className="text-sm text-muted-foreground">
                     {ongoingTask?.task_type && TASK_TYPE_LABELS[ongoingTask.task_type as keyof typeof TASK_TYPE_LABELS]}{" "}
-                    - {ongoingTask?.location}
+                    {ongoingTask?.task_type !== "lift" && `- ${ongoingTask?.location}`}
                   </p>
                 </div>
               </CardContent>

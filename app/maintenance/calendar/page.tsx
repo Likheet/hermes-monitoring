@@ -14,7 +14,7 @@ import { useRouter } from "next/navigation"
 function MaintenanceCalendarContent() {
   const [selectedRoom, setSelectedRoom] = useState<string | null>(null)
   const [selectedTasks, setSelectedTasks] = useState<MaintenanceTask[]>([])
-  const { updateMaintenanceTask, maintenanceTasks } = useTasks()
+  const { updateMaintenanceTask, maintenanceTasks, schedules } = useTasks()
   const router = useRouter()
 
   const handleRoomClick = (roomNumber: string, tasks: MaintenanceTask[]) => {
@@ -63,7 +63,7 @@ function MaintenanceCalendarContent() {
         </Button>
       </div>
 
-      <MaintenanceCalendar onRoomClick={handleRoomClick} tasks={maintenanceTasks ?? []} />
+      <MaintenanceCalendar onRoomClick={handleRoomClick} tasks={maintenanceTasks ?? []} schedules={schedules} />
 
       {selectedRoom && (
         <RoomTaskModal

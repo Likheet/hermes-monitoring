@@ -7,18 +7,18 @@ import { formatTimestamp, calculateDuration } from "@/lib/date-utils"
 import { TaskImage } from "@/components/task-image"
 
 const priorityColors = {
-  GUEST_REQUEST: "bg-destructive text-destructive-foreground",
-  TIME_SENSITIVE: "bg-accent text-accent-foreground",
-  DAILY_TASK: "bg-muted text-muted-foreground",
-  PREVENTIVE_MAINTENANCE: "bg-secondary text-secondary-foreground",
+  GUEST_REQUEST: "bg-red-50 text-red-600 border-red-100",
+  TIME_SENSITIVE: "bg-orange-50 text-orange-600 border-orange-100",
+  DAILY_TASK: "bg-gray-100 text-gray-600 border-gray-200",
+  PREVENTIVE_MAINTENANCE: "bg-blue-50 text-blue-600 border-blue-100",
 }
 
 const statusColors = {
-  PENDING: "bg-muted",
-  IN_PROGRESS: "bg-primary",
-  PAUSED: "bg-accent",
-  COMPLETED: "bg-secondary",
-  REJECTED: "bg-destructive",
+  PENDING: "bg-gray-200",
+  IN_PROGRESS: "bg-black",
+  PAUSED: "bg-orange-400",
+  COMPLETED: "bg-green-500",
+  REJECTED: "bg-red-500",
 }
 
 interface TaskCardProps {
@@ -44,123 +44,125 @@ export function TaskCard({ task, href }: TaskCardProps) {
   }
 
   const photoText = getPhotoRequirementText()
-  // </CHANGE>
 
   const destination = href ?? `/worker/${task.id}`
 
   return (
     <Link href={destination}>
-      <Card className="hover:shadow-md transition-shadow cursor-pointer active:scale-[0.98] min-h-[120px] touch-manipulation">
-        <CardHeader className="pb-3 px-4 sm:px-6 pt-4 sm:pt-6">
-          <div className="flex items-start justify-between gap-2">
-            <CardTitle className="text-base sm:text-lg line-clamp-2">{task.task_type}</CardTitle>
-            <Badge
-              className={`${priorityColors[task.priority_level]} text-xs px-2 sm:px-3 py-1 shrink-0`}
-              variant="secondary"
-            >
-              <span className="hidden sm:inline">{task.priority_level.replace(/_/g, " ")}</span>
-              <span className="sm:hidden">{task.priority_level.split("_")[0]}</span>
-            </Badge>
+      <div className="bg-white rounded-xl p-5 shadow-[0_2px_12px_-4px_rgba(0,0,0,0.08)] transition-all duration-200 hover:shadow-md active:scale-[0.99] touch-manipulation border-none">
+        <div className="flex items-start justify-between gap-3 mb-3">
+          <h3 className="text-lg font-bold text-black line-clamp-2 leading-tight">{task.task_type}</h3>
+          <Badge
+            className={`${priorityColors[task.priority_level]} text-[10px] uppercase tracking-wider font-bold px-2 py-1 shrink-0 border shadow-none rounded-lg`}
+            variant="secondary"
+          >
+            <span className="hidden sm:inline">{task.priority_level.replace(/_/g, " ")}</span>
+            <span className="sm:hidden">{task.priority_level.split("_")[0]}</span>
+          </Badge>
+        </div>
+        
+        {/* Display both worker and supervisor remarks */}
+        {task.worker_remark && (
+          <p className="text-sm text-blue-600 mb-3 line-clamp-2 italic bg-blue-50 p-2 rounded-lg">
+            <span className="font-bold not-italic text-blue-700 text-xs uppercase tracking-wide block mb-1">Remark</span> 
+            &quot;{task.worker_remark}&quot;
+          </p>
+        )}
+        {task.supervisor_remark && (
+          <p className="text-sm text-orange-600 mb-3 line-clamp-2 italic bg-orange-50 p-2 rounded-lg">
+            <span className="font-bold not-italic text-orange-700 text-xs uppercase tracking-wide block mb-1">Supervisor</span> 
+            &quot;{task.supervisor_remark}&quot;
+          </p>
+        )}
+
+        <div className="space-y-2 mb-4">
+          <div className="flex items-center gap-2.5 text-sm text-gray-500">
+            <MapPin className="h-4 w-4 shrink-0 text-gray-400" />
+            <span className="truncate font-medium text-black">Room {task.room_number}</span>
           </div>
-          {/* Display both worker and supervisor remarks */}
-          {task.worker_remark && (
-            <p className="text-sm text-blue-600 mt-2 line-clamp-2 italic">
-              <span className="font-medium">Remark:</span> &quot;{task.worker_remark}&quot;
-            </p>
-          )}
-          {task.supervisor_remark && (
-            <p className="text-sm text-orange-600 mt-2 line-clamp-2 italic">
-              <span className="font-medium">Supervisor:</span> &quot;{task.supervisor_remark}&quot;
-            </p>
-          )}
-          {/* </CHANGE> */}
-        </CardHeader>
-        <CardContent className="space-y-2 px-4 sm:px-6 pb-4 sm:pb-6">
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <MapPin className="h-4 w-4 sm:h-5 sm:w-5 shrink-0" />
-            <span className="truncate">Room {task.room_number}</span>
-          </div>
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Clock className="h-4 w-4 sm:h-5 sm:w-5 shrink-0" />
+          <div className="flex items-center gap-2.5 text-sm text-gray-500">
+            <Clock className="h-4 w-4 shrink-0 text-gray-400" />
             <span className="truncate">{task.expected_duration_minutes} min expected</span>
           </div>
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <CalendarClock className="h-4 w-4 sm:h-5 sm:w-5 shrink-0" />
+          <div className="flex items-center gap-2.5 text-sm text-gray-500">
+            <CalendarClock className="h-4 w-4 shrink-0 text-gray-400" />
             <span className="truncate">Assigned {formatTimestamp(task.assigned_at)}</span>
           </div>
           {/* Enhanced photo display with categorized photos support */}
           {photoText && (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Camera className="h-4 w-4 sm:h-5 sm:w-5 shrink-0" />
+            <div className="flex items-center gap-2.5 text-sm text-gray-500">
+              <Camera className="h-4 w-4 shrink-0 text-gray-400" />
               <span>{photoText}</span>
             </div>
           )}
 
           {/* Display categorized photos if available */}
           {task.categorized_photos && (
-            <div className="mt-2 space-y-1">
-              <div className="text-sm font-medium text-muted-foreground mb-1">
-                <Camera className="h-3 w-3 mr-1" />
-                Task Photos ({task.categorized_photos.room_photos?.length || 0 + task.categorized_photos.proof_photos?.length || 0})
-              </div>
-              <div className="flex gap-1">
-                {task.categorized_photos.room_photos?.slice(0, 3).map((url, index) => (
-                  <TaskImage
-                    key={`room-${index}`}
-                    src={url}
-                    alt="Room photo"
-                    width={48}
-                    height={48}
-                    className="w-12 h-12 object-cover rounded border cursor-pointer hover:opacity-80"
-                    onClick={() => console.log("Room photo clicked:", url)}
-                  />
-                ))}
-                {task.categorized_photos.room_photos?.length > 3 && (
-                  <div className="w-12 h-12 bg-muted rounded flex items-center justify-center text-xs text-muted-foreground">
-                    +{task.categorized_photos.room_photos.length - 3}
+            <div className="mt-3 space-y-2">
+              {(task.categorized_photos.room_photos?.length || 0) > 0 && (
+                <div>
+                  <div className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1.5 flex items-center gap-1">
+                    Task Photos
                   </div>
-                )}
-              </div>
+                  <div className="flex gap-2">
+                    {task.categorized_photos.room_photos?.slice(0, 3).map((url, index) => (
+                      <TaskImage
+                        key={`room-${index}`}
+                        src={url}
+                        alt="Room photo"
+                        width={48}
+                        height={48}
+                        className="w-12 h-12 object-cover rounded-lg border border-gray-100 cursor-pointer hover:opacity-80 shadow-sm"
+                        onClick={() => console.log("Room photo clicked:", url)}
+                      />
+                    ))}
+                    {(task.categorized_photos.room_photos?.length || 0) > 3 && (
+                      <div className="w-12 h-12 bg-gray-50 rounded-lg flex items-center justify-center text-xs font-bold text-gray-500 border border-gray-100">
+                        +{(task.categorized_photos.room_photos?.length || 0) - 3}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
 
-              {task.categorized_photos.proof_photos?.length > 0 && (
-                <>
-                  <div className="text-sm font-medium text-muted-foreground mb-1 mt-2">
-                    <Camera className="h-3 w-3 mr-1" />
-                    Proof Photos ({task.categorized_photos.proof_photos.length})
+              {(task.categorized_photos.proof_photos?.length || 0) > 0 && (
+                <div>
+                  <div className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1.5 flex items-center gap-1 mt-2">
+                    Proof Photos
                   </div>
-                  <div className="flex gap-1">
-                    {task.categorized_photos.proof_photos.slice(0, 2).map((url, index) => (
+                  <div className="flex gap-2">
+                    {task.categorized_photos.proof_photos?.slice(0, 2).map((url, index) => (
                       <TaskImage
                         key={`proof-${index}`}
                         src={url}
                         alt="Proof photo"
                         width={64}
                         height={64}
-                        className="w-16 h-16 object-cover rounded border cursor-pointer hover:opacity-80"
+                        className="w-16 h-16 object-cover rounded-lg border border-gray-100 cursor-pointer hover:opacity-80 shadow-sm"
                         onClick={() => console.log("Proof photo clicked:", url)}
                       />
                     ))}
-                    {task.categorized_photos.proof_photos.length > 2 && (
-                      <div className="w-16 h-16 bg-muted rounded flex items-center justify-center text-xs text-muted-foreground">
-                        +{task.categorized_photos.proof_photos.length - 2}
+                    {(task.categorized_photos.proof_photos?.length || 0) > 2 && (
+                      <div className="w-16 h-16 bg-gray-50 rounded-lg flex items-center justify-center text-xs font-bold text-gray-500 border border-gray-100">
+                        +{(task.categorized_photos.proof_photos?.length || 0) - 2}
                       </div>
                     )}
                   </div>
-                </>
+                </div>
               )}
             </div>
           )}
-          {/* </CHANGE> */}
-          <div className="flex items-center gap-2 pt-2">
-            <div className={`h-3 w-3 rounded-full ${statusColors[task.status]} shrink-0`} />
-            <span className="text-xs sm:text-sm font-medium truncate">
-              {task.status === "COMPLETED" && task.started_at && task.completed_at
-                ? `COMPLETED in ${calculateDuration(task.started_at, task.completed_at)}`
-                : task.status.replace(/_/g, " ")}
-            </span>
-          </div>
-        </CardContent>
-      </Card>
+        </div>
+        
+        <div className="flex items-center gap-2 pt-3 border-t border-gray-50">
+          <div className={`h-2.5 w-2.5 rounded-full ${statusColors[task.status]} shrink-0`} />
+          <span className="text-xs font-bold uppercase tracking-wide text-gray-600 truncate">
+            {task.status === "COMPLETED" && task.started_at && task.completed_at
+              ? `COMPLETED in ${calculateDuration(task.started_at, task.completed_at)}`
+              : task.status.replace(/_/g, " ")}
+          </span>
+        </div>
+      </div>
     </Link>
   )
 }

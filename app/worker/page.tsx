@@ -9,11 +9,11 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { LogOut, Bell, AlertCircle, X, Clock, CheckCircle2, XCircle, TrendingUp, ListTodo } from "lucide-react"
-import { useRouter } from "next/navigation"
+import { LogOut, Bell, AlertCircle, X, Clock, CheckCircle2, XCircle, TrendingUp, ListTodo, Sparkles, Target, Calendar } from "lucide-react"
+import { useRouter, useSearchParams } from "next/navigation"
 import { useRealtimeTasks } from "@/lib/use-realtime-tasks"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState, Suspense } from "react"
 import { BottomNav } from "@/components/mobile/bottom-nav"
 import { MaintenanceCalendar } from "@/components/maintenance/maintenance-calendar"
 import type { MaintenanceTask } from "@/lib/maintenance-types"
@@ -29,14 +29,22 @@ const REJECTION_QUOTA = 5 // Updated quota from 3 to 5 per month
 
 function WorkerDashboard() {
   const { user, logout } = useAuth()
-  const { tasks, dismissRejectedTask, maintenanceTasks, users } = useTasks()
+  const { tasks, dismissRejectedTask, maintenanceTasks, users, schedules } = useTasks()
   const router = useRouter()
+  const searchParams = useSearchParams()
   useRealtimeTasks({
     enabled: true,
     filter: { userId: user?.id },
   })
   const [urgentTaskAlert, setUrgentTaskAlert] = useState<string | null>(null)
-  const [activeTab, setActiveTab] = useState("home")
+  
+  // Get active tab from URL, default to "home"
+  const activeTab = searchParams.get("tab") || "home"
+  
+  // Function to change tab via URL
+  const setActiveTab = useCallback((tab: string) => {
+    router.replace(`/worker?tab=${tab}`, { scroll: false })
+  }, [router])
 
   const [tasksFilter, setTasksFilter] = useState<"all" | "active" | "recurring" | "completed" | "rejected">("all")
 
@@ -68,9 +76,9 @@ function WorkerDashboard() {
   const isMaintenanceUser = normalizedDepartment === "maintenance"
   const departmentDisplay = user?.department
     ? user.department
-        .split("_")
-        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-        .join(" ")
+      .split("_")
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(" ")
     : ""
 
   const myTasks = useMemo(() => {
@@ -104,9 +112,9 @@ function WorkerDashboard() {
     (task: Task) =>
       Boolean(
         task.is_recurring ||
-          task.recurring_frequency ||
-          task.custom_task_is_recurring ||
-          task.custom_task_recurring_frequency,
+        task.recurring_frequency ||
+        task.custom_task_is_recurring ||
+        task.custom_task_recurring_frequency,
       ),
     [],
   )
@@ -211,12 +219,12 @@ function WorkerDashboard() {
 
   const currentMaintenanceTask = myActiveMaintenanceTasks.length
     ? [...myActiveMaintenanceTasks].sort((a, b) => {
-        const statusPriority = (status: MaintenanceTask["status"]) => (status === "in_progress" ? 0 : 1)
-        const statusDiff = statusPriority(a.status) - statusPriority(b.status)
-        if (statusDiff !== 0) return statusDiff
+      const statusPriority = (status: MaintenanceTask["status"]) => (status === "in_progress" ? 0 : 1)
+      const statusDiff = statusPriority(a.status) - statusPriority(b.status)
+      if (statusDiff !== 0) return statusDiff
 
-        return getMaintenanceTaskTimestamp(b) - getMaintenanceTaskTimestamp(a)
-      })[0]
+      return getMaintenanceTaskTimestamp(b) - getMaintenanceTaskTimestamp(a)
+    })[0]
     : null
 
   const handleNavigateToMaintenanceTask = (task: MaintenanceTask) => {
@@ -386,6 +394,25 @@ function WorkerDashboard() {
       ? Math.round((totalRegularMinutes + totalMaintenanceMinutes) / totalCompletedAssignments)
       : 0
 
+  const speedMetrics = completedTasks.reduce((acc, t) => {
+    if (!t.actual_duration_minutes || !t.expected_duration_minutes || t.expected_duration_minutes === 0) return acc
+    // Skip obvious bad data (actual < 1 minute or more than 10x expected)
+    if (t.actual_duration_minutes < 1 || t.actual_duration_minutes > t.expected_duration_minutes * 10) return acc
+    // Calculate percentage: (expected - actual) / expected * 100
+    // Positive = faster, Negative = slower
+    const percentDiff = ((t.expected_duration_minutes - t.actual_duration_minutes) / t.expected_duration_minutes) * 100
+    return {
+      totalPercent: acc.totalPercent + percentDiff,
+      count: acc.count + 1
+    }
+  }, { totalPercent: 0, count: 0 })
+
+  const rawSpeedPercent = speedMetrics.count > 0 ? speedMetrics.totalPercent / speedMetrics.count : 0
+  // Cap the percentage between -100% and +100% for display
+  const avgSpeedPercent = Math.max(-100, Math.min(100, rawSpeedPercent))
+  const isFaster = avgSpeedPercent >= 0
+  const hasSpeedData = speedMetrics.count > 0
+
   const initials = user?.name
     .split(" ")
     .map((n) => n[0])
@@ -420,245 +447,219 @@ function WorkerDashboard() {
         })
 
         return (
-          <main className="container mx-auto px-4 py-6 space-y-4">
-            <div className="flex gap-2 overflow-x-auto pb-2">
+          <main className="container mx-auto px-5 py-5 space-y-4 animate-in fade-in duration-500">
+            <div className="flex gap-5 overflow-x-auto pb-2 -mx-5 px-5 scrollbar-hide border-b border-gray-100">
               {[
                 { value: "all", label: "All" },
-                { value: "active", label: "Active" },
+                { value: "active", label: "Active", count: myTasks.filter(t => ["PENDING", "IN_PROGRESS", "PAUSED"].includes(t.status)).length },
                 { value: "recurring", label: "Recurring" },
-                { value: "completed", label: "Completed" },
-                { value: "rejected", label: "Rejected" },
+                { value: "completed", label: "Past" },
+                { value: "rejected", label: "Issues" },
               ].map((tab) => (
-                <Button
+                <button
                   key={tab.value}
-                  variant={tasksFilter === tab.value ? "default" : "outline"}
-                  size="sm"
                   onClick={() => setTasksFilter(tab.value as typeof tasksFilter)}
-                  className="whitespace-nowrap"
+                  className={cn(
+                    "whitespace-nowrap pb-3 text-sm font-semibold transition-all relative flex items-center gap-1.5",
+                    tasksFilter === tab.value
+                      ? "text-black"
+                      : "text-gray-400 hover:text-gray-600"
+                  )}
                 >
                   {tab.label}
-                </Button>
+                  {tab.count !== undefined && tab.count > 0 && (
+                    <span className={cn(
+                      "text-[10px] font-bold rounded-full px-1.5 py-0.5 min-w-[18px] text-center",
+                      tasksFilter === tab.value ? "bg-black text-white" : "bg-gray-200 text-gray-500"
+                    )}>
+                      {tab.count}
+                    </span>
+                  )}
+                  {tasksFilter === tab.value && (
+                    <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-black rounded-full" />
+                  )}
+                </button>
               ))}
             </div>
 
             {filteredTasks.length === 0 ? (
-              <div className="text-center py-12">
-                <p className="text-muted-foreground">No tasks found</p>
+              <div className="text-center py-16">
+                <div className="w-14 h-14 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-3">
+                  <ListTodo className="w-5 h-5 text-gray-400" />
+                </div>
+                <p className="text-base font-semibold text-black mb-1">No tasks</p>
+                <p className="text-sm text-gray-400">You don't have any tasks in this view.</p>
               </div>
             ) : (
-              filteredTasks.map((task) => (
+              <div className="space-y-3">
+                {filteredTasks.map((task) => (
                 <Card
                   key={task.id}
-                  className="p-4 cursor-pointer hover:shadow-md transition-shadow"
+                  className="group relative overflow-hidden rounded-xl border-none shadow-sm bg-white hover:shadow-md transition-all duration-200 cursor-pointer active:scale-[0.99]"
                   onClick={() => router.push(`/worker/${task.id}`)}
                 >
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-2">
-                        <Badge variant="outline" className={cn("gap-1", getStatusColor(task.status))}>
-                          {getStatusIcon(task.status)}
-                          {task.status.replace("_", " ")}
-                        </Badge>
-                        {task.priority_level === "GUEST_REQUEST" && (
-                          <Badge variant="destructive" className="text-xs">
-                            High Priority
-                          </Badge>
-                        )}
-                        {isRecurringTask(task) && (
-                          <Badge
-                            variant="secondary"
-                            className="text-xs border-amber-200 bg-amber-50 text-amber-700"
-                          >
-                            Recurring
-                          </Badge>
-                        )}
-                      </div>
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-2">
+                          {task.status === "IN_PROGRESS" && (
+                            <Badge className="rounded-md px-2 py-0.5 bg-black text-white border-none font-medium text-[10px] tracking-wide uppercase">
+                              In Progress
+                            </Badge>
+                          )}
+                          {task.status === "PENDING" && (
+                            <Badge variant="secondary" className="rounded-md px-2 py-0.5 bg-gray-100 text-gray-600 border-none font-medium text-[10px] tracking-wide uppercase">
+                              Pending
+                            </Badge>
+                          )}
+                          {task.status === "PAUSED" && (
+                            <Badge variant="secondary" className="rounded-md px-2 py-0.5 bg-amber-100 text-amber-800 border-none font-medium text-[10px] tracking-wide uppercase">
+                              Paused
+                            </Badge>
+                          )}
+                          {task.status === "COMPLETED" && (
+                            <Badge variant="secondary" className="rounded-md px-2 py-0.5 bg-gray-100 text-gray-500 border-none font-medium text-[10px] tracking-wide uppercase">
+                              Completed
+                            </Badge>
+                          )}
+                          {task.status === "REJECTED" && (
+                            <Badge className="rounded-md px-2 py-0.5 bg-red-50 text-red-600 border-none font-medium text-[10px] tracking-wide uppercase">
+                              Rejected
+                            </Badge>
+                          )}
 
-                      <h3 className="font-semibold text-lg mb-1">{task.task_type}</h3>
-
-                      <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                        <span>Room {task.room_number}</span>
-                        {task.assigned_at && <span>Assigned {formatDistanceToNow(task.assigned_at.client)}</span>}
-                      </div>
-
-                      {task.rating && (
-                        <div className="mt-2 flex items-center gap-1">
-                          <span className="text-sm font-medium">Rating:</span>
-                          <span className="text-accent-foreground">{"★".repeat(task.rating)}</span>
-                          <span className="text-muted">{"★".repeat(5 - task.rating)}</span>
+                          {task.priority_level === "GUEST_REQUEST" && (
+                            <Badge className="rounded-md px-2 py-0.5 bg-red-600 text-white border-none font-medium text-[10px] tracking-wide uppercase">
+                              Urgent
+                            </Badge>
+                          )}
                         </div>
-                      )}
+
+                        <div className="flex items-baseline gap-2 mb-1">
+                          <h3 className="text-xl font-bold text-black tracking-tight">
+                            {task.room_number}
+                          </h3>
+                          <p className="text-sm text-gray-500 truncate">
+                            {task.task_type}
+                          </p>
+                        </div>
+
+                        <div className="flex items-center gap-1.5 text-[11px] text-gray-400">
+                          <Clock className="h-3 w-3" />
+                          <span>
+                            {task.assigned_at
+                              ? formatDistanceToNow(task.assigned_at.client)
+                              : "Just now"}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="h-9 w-9 rounded-full bg-gray-50 flex items-center justify-center shrink-0">
+                        <TrendingUp className="h-4 w-4 text-gray-400" />
+                      </div>
                     </div>
-                  </div>
+                  </CardContent>
                 </Card>
-              ))
+                ))}
+              </div>
             )}
           </main>
         )
 
       case "profile":
         return (
-          <main className="container mx-auto px-4 py-6 space-y-6">
-            <Card>
-              <CardContent className="pt-6">
-                <div className="flex items-start gap-4">
-                  <Avatar className="h-20 w-20">
-                    <AvatarFallback className="text-2xl">{initials}</AvatarFallback>
-                  </Avatar>
-                  <div className="flex-1">
-                    <h2 className="text-2xl font-bold">{user?.name}</h2>
-                    <p className="text-muted-foreground">{user?.role}</p>
-                    <div className="mt-2 space-y-1">
-                      <Badge variant="secondary">{departmentDisplay}</Badge>
-                      {user?.phone && <p className="text-sm text-muted-foreground">📞 {user.phone}</p>}
-                      {user?.shift_start && user?.shift_end && (
-                        <p className="text-sm text-muted-foreground">
-                          🕐 {formatShiftRange(user.shift_start, user.shift_end)}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                  {/* CHANGE: Replaced simple badge with sophisticated rejection display card */}
-                  <div className="shrink-0">
-                    <Card
-                      className={cn(
-                        "border-2 transition-all duration-300 min-w-[140px]",
-                        rejectedThisMonth === 0 && "bg-green-50/50 border-green-200/50",
-                        rejectedThisMonth >= 1 && rejectedThisMonth <= 2 && "bg-green-50 border-green-300",
-                        rejectedThisMonth === 3 && "bg-yellow-50 border-yellow-300",
-                        rejectedThisMonth === 4 && "bg-orange-50 border-orange-400",
-                        rejectedThisMonth >= REJECTION_QUOTA && "bg-red-50 border-red-400 shadow-md",
-                      )}
-                    >
-                      <CardContent className="p-3">
-                        <div className="flex items-center gap-2 mb-2">
-                          {rejectedThisMonth === 0 && <CheckCircle2 className="h-4 w-4 text-green-600" />}
-                          {rejectedThisMonth >= 1 && rejectedThisMonth <= 2 && (
-                            <CheckCircle2 className="h-4 w-4 text-green-600" />
-                          )}
-                          {rejectedThisMonth === 3 && <AlertCircle className="h-4 w-4 text-yellow-600" />}
-                          {rejectedThisMonth === 4 && <AlertCircle className="h-4 w-4 text-orange-600" />}
-                          {rejectedThisMonth >= REJECTION_QUOTA && <XCircle className="h-4 w-4 text-red-600" />}
-                          <span className="text-xs font-medium text-muted-foreground">Quality</span>
-                        </div>
-                        <div className="flex items-baseline gap-1 mb-2">
-                          <span
-                            className={cn(
-                              "text-2xl font-bold",
-                              rejectedThisMonth === 0 && "text-green-600",
-                              rejectedThisMonth >= 1 && rejectedThisMonth <= 2 && "text-green-700",
-                              rejectedThisMonth === 3 && "text-yellow-700",
-                              rejectedThisMonth === 4 && "text-orange-700",
-                              rejectedThisMonth >= REJECTION_QUOTA && "text-red-700",
-                            )}
-                          >
-                            {rejectedThisMonth}
-                          </span>
-                          <span className="text-sm text-muted-foreground">/{REJECTION_QUOTA}</span>
-                        </div>
-                        <div className="w-full h-1.5 bg-muted/30 rounded-full overflow-hidden mb-2">
-                          <div
-                            className={cn(
-                              "h-full transition-all duration-500",
-                              rejectedThisMonth === 0 && "bg-green-500",
-                              rejectedThisMonth >= 1 && rejectedThisMonth <= 2 && "bg-green-500",
-                              rejectedThisMonth === 3 && "bg-yellow-500",
-                              rejectedThisMonth === 4 && "bg-orange-500",
-                              rejectedThisMonth >= REJECTION_QUOTA && "bg-red-600",
-                            )}
-                            style={{ width: `${Math.min((rejectedThisMonth / REJECTION_QUOTA) * 100, 100)}%` }}
-                          />
-                        </div>
-                        <p
-                          className={cn(
-                            "text-xs font-medium",
-                            rejectedThisMonth === 0 && "text-green-600",
-                            rejectedThisMonth >= 1 && rejectedThisMonth <= 2 && "text-green-700",
-                            rejectedThisMonth === 3 && "text-yellow-700",
-                            rejectedThisMonth === 4 && "text-orange-700",
-                            rejectedThisMonth >= REJECTION_QUOTA && "text-red-700",
-                          )}
-                        >
-                          {rejectedThisMonth === 0 && "Perfect!"}
-                          {rejectedThisMonth >= 1 && rejectedThisMonth <= 2 && `${quotaRemaining} left`}
-                          {rejectedThisMonth === 3 && "Be careful"}
-                          {rejectedThisMonth === 4 && "Last chance"}
-                          {rejectedThisMonth >= REJECTION_QUOTA && "Retraining"}
-                        </p>
-                      </CardContent>
-                    </Card>
-                  </div>
-                  {/* </CHANGE> */}
-                </div>
-              </CardContent>
-            </Card>
-
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Total Assignments</CardTitle>
-                  <CheckCircle2 className="h-4 w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{totalAssignments}</div>
-                  <p className="text-xs text-muted-foreground">
-                    {totalCompletedAssignments} completed ({completedMaintenanceTasks.length} scheduled)
-                  </p>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Completion Rate</CardTitle>
-                  <TrendingUp className="h-4 w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{completionRate}%</div>
-                  <p className="text-xs text-muted-foreground">Across guest & scheduled work</p>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Avg. Completion Time</CardTitle>
-                  <Clock className="h-4 w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{avgCompletionTime}m</div>
-                  <p className="text-xs text-muted-foreground">Per assignment (including scheduled)</p>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Average Rating</CardTitle>
-                  <TrendingUp className="h-4 w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{avgRating}</div>
-                  <p className="text-xs text-muted-foreground">Out of 5 stars</p>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">On-Time Rate</CardTitle>
-                  <CheckCircle2 className="h-4 w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{onTimeRate}%</div>
-                  <p className="text-xs text-muted-foreground">Tasks completed on time</p>
-                </CardContent>
-              </Card>
+          <main className="container mx-auto px-5 py-6 space-y-5 animate-in fade-in duration-500">
+            {/* Profile Header */}
+            <div className="flex items-center gap-4">
+              <Avatar className="h-16 w-16 ring-2 ring-white shadow-md shrink-0">
+                <AvatarFallback className="text-lg font-bold bg-black text-white">
+                  {initials}
+                </AvatarFallback>
+              </Avatar>
+              <div className="flex-1 min-w-0">
+                <h2 className="text-xl font-bold text-black truncate">{user?.name}</h2>
+                <p className="text-sm text-gray-500 capitalize">{departmentDisplay} • {user?.role}</p>
+                {user?.phone && (
+                  <p className="text-xs text-gray-400 mt-0.5">{user.phone}</p>
+                )}
+              </div>
             </div>
 
+            {/* Stats Grid - 2x2 */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="bg-white rounded-2xl p-4 shadow-sm">
+                <p className="text-[10px] text-gray-400 font-semibold uppercase tracking-wider">Tasks</p>
+                <p className="text-2xl font-bold text-black tabular-nums mt-1">{totalAssignments}</p>
+                <p className="text-[10px] text-gray-400">{totalCompletedAssignments} done</p>
+              </div>
+
+              <div className="bg-white rounded-2xl p-4 shadow-sm">
+                <p className="text-[10px] text-gray-400 font-semibold uppercase tracking-wider">On Time</p>
+                <p className="text-2xl font-bold text-black tabular-nums mt-1">{onTimeRate}%</p>
+                <p className="text-[10px] text-gray-400">completion</p>
+              </div>
+
+              <div className="bg-white rounded-2xl p-4 shadow-sm">
+                <p className="text-[10px] text-gray-400 font-semibold uppercase tracking-wider">Speed</p>
+                {hasSpeedData ? (
+                  <>
+                    <p className={cn("text-2xl font-bold tabular-nums mt-1", isFaster ? "text-green-600" : "text-red-600")}>
+                      {isFaster ? "+" : ""}{Math.round(avgSpeedPercent)}%
+                    </p>
+                    <p className="text-[10px] text-gray-400">{isFaster ? "faster" : "slower"}</p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-2xl font-bold text-gray-300 mt-1">—</p>
+                    <p className="text-[10px] text-gray-400">no data</p>
+                  </>
+                )}
+              </div>
+
+              <div className="bg-white rounded-2xl p-4 shadow-sm">
+                <p className="text-[10px] text-gray-400 font-semibold uppercase tracking-wider">Rating</p>
+                <p className="text-2xl font-bold text-black tabular-nums mt-1">{avgRating}</p>
+                <p className="text-[10px] text-gray-400">average</p>
+              </div>
+            </div>
+
+            {/* Quality Score */}
+            <div className="bg-white rounded-2xl p-4 shadow-sm">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-bold text-black">Quality Score</p>
+                  <p className="text-[10px] text-gray-400 mt-0.5">
+                    {rejectedThisMonth === 0 ? "No issues this month" : `${quotaRemaining} remaining`}
+                  </p>
+                </div>
+                <div className="flex items-baseline gap-0.5">
+                  <span className={cn(
+                    "text-2xl font-bold tabular-nums",
+                    rejectedThisMonth === 0 ? "text-green-600" : 
+                    rejectedThisMonth >= REJECTION_QUOTA ? "text-red-600" : "text-black"
+                  )}>
+                    {rejectedThisMonth}
+                  </span>
+                  <span className="text-sm text-gray-400">/{REJECTION_QUOTA}</span>
+                </div>
+              </div>
+              <div className="w-full h-1 bg-gray-100 rounded-full overflow-hidden mt-3">
+                <div
+                  className={cn(
+                    "h-full rounded-full transition-all duration-500",
+                    rejectedThisMonth === 0 ? "bg-green-500" : 
+                    rejectedThisMonth >= REJECTION_QUOTA ? "bg-red-500" : "bg-black"
+                  )}
+                  style={{ width: `${Math.max(Math.min((rejectedThisMonth / REJECTION_QUOTA) * 100, 100), rejectedThisMonth === 0 ? 0 : 8)}%` }}
+                />
+              </div>
+            </div>
+
+            {/* Recent Activity */}
             {canAccessMaintenance && myCompletedMaintenanceTasksForDisplay.length > 0 && (
-              <section>
-                <h2 className="text-base md:text-lg font-semibold mb-3">✅ Recently Completed Tasks</h2>
-                <p className="text-sm text-muted-foreground mb-3">
-                  Tap to view room details and complete remaining tasks
-                </p>
-                <div className="space-y-3">
+              <div>
+                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3 px-1">Recent Activity</p>
+                <div className="space-y-2">
                   {myCompletedMaintenanceTasksForDisplay
                     .sort((a, b) => {
                       const aReference = a.completed_at ?? a.started_at ?? a.created_at
@@ -667,56 +668,35 @@ function WorkerDashboard() {
                       const bTime = new Date(bReference ?? b.created_at).getTime()
                       return bTime - aTime
                     })
-                    .slice(0, 10)
+                    .slice(0, 5)
                     .map((task) => {
                       const roomTasks = maintenanceTasksForDisplay.filter((t) => t.room_number === task.room_number)
                       const completedCount = roomTasks.filter((t) => t.status === "completed").length
-                      const remainingCount = Math.max(roomTasks.length - completedCount, 0)
 
                       return (
-                        <Card
+                        <div
                           key={task.id}
-                          className="cursor-pointer hover:shadow-md transition-shadow border-accent/30 bg-accent/5"
+                          className="flex items-center gap-4 p-4 bg-white rounded-xl cursor-pointer hover:bg-gray-50 transition-colors"
                           onClick={() => router.push(`/worker/maintenance/${task.room_number}`)}
                         >
-                          <CardContent className="p-4">
-                            <div className="flex items-center justify-between gap-4">
-                              <div className="flex-1">
-                                <div className="flex items-center gap-2 mb-1">
-                                  <h3 className="font-semibold text-lg">Room {task.room_number}</h3>
-                                  <Badge
-                                    variant="outline"
-                                    className="text-xs bg-green-50 text-green-700 border-green-300"
-                                  >
-                                    ✓ Completed
-                                  </Badge>
-                                </div>
-                                <p className="text-sm text-muted-foreground mb-2">
-                                  {getMaintenanceTaskLabel(task)}
-                                  {task.location && ` • ${task.location}`}
-                                </p>
-                                <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                                  <span>
-                                    {completedCount}/{roomTasks.length} tasks done
-                                  </span>
-                                  {remainingCount > 0 && (
-                                    <span className="text-orange-600 font-medium">{remainingCount} remaining</span>
-                                  )}
-                                  {task.completed_at && <span>{formatDistanceToNow(task.completed_at)}</span>}
-                                </div>
-                              </div>
-                              <div className="text-right shrink-0">
-                                <Button size="sm" variant={remainingCount > 0 ? "default" : "outline"}>
-                                  {remainingCount > 0 ? "Continue" : "View"}
-                                </Button>
-                              </div>
-                            </div>
-                          </CardContent>
-                        </Card>
+                          <div className="h-10 w-10 rounded-full bg-gray-100 flex items-center justify-center shrink-0">
+                            <CheckCircle2 className="h-5 w-5 text-black" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="font-semibold text-black truncate">Room {task.room_number}</p>
+                            <p className="text-xs text-gray-400 truncate">{getMaintenanceTaskLabel(task)}</p>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <p className="text-xs font-medium text-gray-500">{completedCount}/{roomTasks.length}</p>
+                            {task.completed_at && (
+                              <p className="text-[10px] text-gray-400">{formatDistanceToNow(task.completed_at)}</p>
+                            )}
+                          </div>
+                        </div>
                       )
                     })}
                 </div>
-              </section>
+              </div>
             )}
           </main>
         )
@@ -724,22 +704,29 @@ function WorkerDashboard() {
       case "scheduled":
         if (!canAccessMaintenance) {
           return (
-            <main className="container mx-auto px-4 py-6 space-y-4">
-              <Card>
-                <CardContent className="p-6 text-center text-muted-foreground">
-                  Scheduled maintenance is only available when you have maintenance tasks assigned.
+            <main className="container mx-auto px-4 py-6 space-y-4 animate-in fade-in duration-300">
+              <Card className="rounded-3xl border-2 border-dashed border-border">
+                <CardContent className="p-10 text-center">
+                  <div className="w-16 h-16 rounded-full bg-muted/50 flex items-center justify-center mx-auto mb-4">
+                    <Calendar className="w-8 h-8 text-muted-foreground" />
+                  </div>
+                  <p className="text-lg font-medium text-foreground mb-2">No Scheduled Tasks</p>
+                  <p className="text-sm text-muted-foreground max-w-sm mx-auto">
+                    Scheduled maintenance is only available when you have maintenance tasks assigned.
+                  </p>
                 </CardContent>
               </Card>
             </main>
           )
         }
         return (
-          <main className="container mx-auto px-4 py-6">
+          <main className="container mx-auto px-4 py-6 animate-in fade-in duration-300">
             <MaintenanceCalendar
               onRoomClick={handleRoomClick}
               searchQuery={searchQuery}
               onSearchChange={setSearchQuery}
               tasks={maintenanceTasksForDisplay}
+              schedules={schedules}
             />
           </main>
         )
@@ -747,45 +734,40 @@ function WorkerDashboard() {
       case "home":
       default:
         return (
-          <main className="container mx-auto px-4 py-6 space-y-6">
-            {urgentTaskAlert && (
-              <Alert className="border-destructive/50 bg-destructive/10">
-                <Bell className="h-4 w-4 text-destructive" />
-                <AlertDescription className="text-destructive">
-                  <strong>Urgent Guest Request!</strong> A new high-priority task has been assigned to you.
-                </AlertDescription>
-              </Alert>
-            )}
-
+          <main className="container mx-auto px-6 py-6 space-y-6 animate-in fade-in duration-500">
             {recurringTasks.length > 0 && (
-              <Alert className="border-primary/40 bg-primary/10">
-                <ListTodo className="h-4 w-4 text-primary" />
-                <AlertDescription className="text-primary">
-                  Recurring tasks are waiting in the Tasks tab. Tap "Tasks" below to review, start, or complete them.
+              <Alert className="border-l-4 border-black bg-white shadow-sm rounded-r-xl rounded-l-none">
+                <ListTodo className="h-5 w-5 text-black" />
+                <AlertDescription className="text-black font-medium">
+                  You have {recurringTasks.length} recurring {recurringTasks.length === 1 ? 'task' : 'tasks'} waiting.
                 </AlertDescription>
               </Alert>
             )}
 
             {canAccessMaintenance && currentMaintenanceTask && currentMaintenanceTask.room_number && (
               <Card
-                className="cursor-pointer border-2 border-accent bg-accent/20 shadow-lg transition-all hover:shadow-xl hover:border-accent/80"
+                className="cursor-pointer border-none shadow-[0_4px_20px_-4px_rgba(0,0,0,0.1)] bg-black text-white transition-all hover:scale-[1.01] active:scale-[0.99] rounded-xl overflow-hidden"
                 onClick={() => handleNavigateToMaintenanceTask(currentMaintenanceTask)}
               >
-                <CardContent className="p-6 flex flex-col gap-4">
-                  <div className="flex items-start justify-between gap-4 flex-wrap">
+                <CardContent className="p-6 flex flex-col gap-6">
+                  <div className="flex items-start justify-between gap-4">
                     <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-2">
+                      <div className="flex items-center gap-2 mb-4">
                         <Badge
-                          variant={currentMaintenanceTask.status === "in_progress" ? "default" : "secondary"}
-                          className="text-sm font-semibold"
+                          className={cn(
+                            "text-xs font-bold px-2 py-1 rounded-md uppercase tracking-wider",
+                            currentMaintenanceTask.status === "in_progress" 
+                              ? "bg-white text-black" 
+                              : "bg-gray-800 text-gray-300"
+                          )}
                         >
-                          {currentMaintenanceTask.status === "in_progress" ? "● WORKING NOW" : "⏸ PAUSED"}
+                          {currentMaintenanceTask.status === "in_progress" ? "In Progress" : "Paused"}
                         </Badge>
                       </div>
-                      <h2 className="text-2xl font-bold text-foreground mb-1">
+                      <h2 className="text-3xl font-bold text-white mb-1">
                         {getMaintenanceTaskLabel(currentMaintenanceTask)}
                       </h2>
-                      <p className="text-base font-medium text-muted-foreground">
+                      <p className="text-lg font-medium text-gray-400">
                         Room {currentMaintenanceTask.room_number}
                         {currentMaintenanceTask.location && ` • ${currentMaintenanceTask.location}`}
                       </p>
@@ -797,7 +779,8 @@ function WorkerDashboard() {
                         if (Number.isNaN(date.getTime())) return null
 
                         return (
-                          <p className="text-sm text-muted-foreground mt-2">
+                          <p className="text-sm text-gray-500 mt-3 flex items-center gap-2">
+                            <Clock className="w-4 h-4" />
                             {currentMaintenanceTask.status === "paused" ? "Paused" : "Started"}{" "}
                             {formatDistanceToNow(date)}
                           </p>
@@ -806,14 +789,8 @@ function WorkerDashboard() {
                     </div>
                   </div>
 
-                  <p className="text-base font-medium text-foreground">
-                    {currentMaintenanceTask.status === "in_progress"
-                      ? "👉 Tap to continue your active maintenance task"
-                      : "👉 Tap to resume this paused task"}
-                  </p>
-
-                  <Button size="lg" className="w-full sm:w-auto font-semibold">
-                    {currentMaintenanceTask.status === "in_progress" ? "Continue Task →" : "Resume Task →"}
+                  <Button size="lg" className="w-full font-bold text-base h-12 rounded-lg bg-white text-black hover:bg-gray-200 border-none">
+                    {currentMaintenanceTask.status === "in_progress" ? "Continue Task" : "Resume Task"}
                   </Button>
                 </CardContent>
               </Card>
@@ -821,33 +798,70 @@ function WorkerDashboard() {
 
             {/* Progress card showing task completion */}
             {canAccessMaintenance && maintenanceTasksForDisplay.length > 0 && (
-              <Card className="bg-primary/5 border-primary/20">
-                <CardContent className="p-6">
-                  <div className="flex items-center justify-between mb-3">
-                    <h2 className="text-lg font-semibold text-foreground">
-                      {new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" })} Progress
-                    </h2>
-                    <div className="text-2xl font-bold text-primary">
-                      {completedMaintenanceTasksForDisplay.length}/{maintenanceTasksForDisplay.length}
+              <Card className="rounded-xl border-none shadow-[0_2px_12px_-4px_rgba(0,0,0,0.08)] bg-white overflow-hidden">
+                <CardContent className="p-6 flex items-center justify-between gap-6">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-2">
+                      <h2 className="text-sm font-bold text-black uppercase tracking-wider">
+                        Monthly Goal
+                      </h2>
+                    </div>
+                    <div className="mb-4">
+                      <div className="flex items-baseline gap-1 mb-1">
+                        <span className="text-4xl font-bold text-black tabular-nums">
+                          {completedMaintenanceTasksForDisplay.length}
+                        </span>
+                        <span className="text-lg text-gray-400">
+                          / {maintenanceTasksForDisplay.length}
+                        </span>
+                      </div>
+                      <p className="text-xs text-gray-500 font-medium">
+                        tasks completed
+                      </p>
+                    </div>
+                    {/* Progress bar */}
+                    <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-black rounded-full transition-all duration-700 ease-out"
+                        style={{ width: `${maintenanceProgressPercentage}%` }}
+                      />
                     </div>
                   </div>
-                  <div className="w-full bg-muted rounded-full h-3">
-                    <div
-                      className="bg-primary h-3 rounded-full transition-all"
-                      style={{ width: `${maintenanceProgressRatio * 100}%` }}
-                    />
+
+                  <div className="relative h-20 w-20 shrink-0">
+                    <svg className="h-full w-full -rotate-90" viewBox="0 0 36 36">
+                      <path
+                        className="text-gray-100"
+                        d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2.5"
+                        strokeLinecap="round"
+                      />
+                      <path
+                        className="text-black transition-all duration-1000 ease-out"
+                        strokeDasharray={`${maintenanceProgressPercentage}, 100`}
+                        d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2.5"
+                        strokeLinecap="round"
+                      />
+                    </svg>
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <span className="text-sm font-bold text-black">{maintenanceProgressPercentage}%</span>
+                    </div>
                   </div>
-                  <p className="text-sm text-muted-foreground mt-2">
-                    {maintenanceProgressPercentage}% of tasks completed this month
-                  </p>
                 </CardContent>
               </Card>
             )}
 
             {canAccessMaintenance && Object.keys(activeMaintenanceByRoom).length > 0 && (
               <section>
-                <h2 className="text-base md:text-lg font-semibold mb-3 text-black">🔧 Active Maintenance Tasks</h2>
-                <div className="space-y-3">
+                <h2 className="text-lg font-bold mb-4 px-1 flex items-center gap-2 text-black">
+                  Active Rooms
+                </h2>
+                <div className="flex overflow-x-auto snap-x snap-mandatory gap-4 pb-4 -mx-6 px-6 scrollbar-hide">
                   {Object.entries(activeMaintenanceByRoom).map(([roomNumber, tasks]) => {
                     const inProgressCount = tasks.filter((t) => t.status === "in_progress").length
                     const pausedCount = tasks.filter((t) => t.status === "paused").length
@@ -855,46 +869,57 @@ function WorkerDashboard() {
                     return (
                       <Card
                         key={roomNumber}
-                        className="cursor-pointer hover:shadow-md transition-shadow border-accent/50 bg-accent/5"
+                        className="snap-center shrink-0 w-[85vw] max-w-[320px] rounded-xl border-none shadow-[0_2px_12px_-4px_rgba(0,0,0,0.08)] bg-white cursor-pointer active:scale-[0.98] transition-all hover:shadow-md"
                         onClick={() => router.push(`/worker/maintenance/${roomNumber}`)}
                       >
-                        <CardContent className="p-4">
-                          <div className="flex items-center justify-between">
-                            <div className="flex-1">
-                              <h3 className="font-semibold text-lg mb-1">Room {roomNumber}</h3>
-                              <p className="text-sm text-muted-foreground mb-2">
-                                {inProgressCount > 0 && (
-                                  <span className="text-accent font-medium">● {inProgressCount} in progress</span>
+                        <CardContent className="p-6">
+                          <div className="flex items-start justify-between mb-6">
+                            <div>
+                              <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Room</p>
+                              <h3 className="text-3xl font-bold text-black">
+                                {roomNumber}
+                              </h3>
+                            </div>
+                            <div className="h-10 w-10 rounded-full bg-gray-50 flex items-center justify-center">
+                              <Clock className="h-5 w-5 text-black" />
+                            </div>
+                          </div>
+
+                          <div className="space-y-3 mb-6">
+                            {tasks.slice(0, 3).map((task) => (
+                              <div key={task.id} className="flex items-center gap-3 text-sm">
+                                {task.status === "in_progress" ? (
+                                  <div className="h-2 w-2 rounded-full bg-black animate-pulse" />
+                                ) : (
+                                  <div className="h-2 w-2 rounded-full bg-gray-300" />
                                 )}
-                                {inProgressCount > 0 && pausedCount > 0 && <span className="mx-2">•</span>}
-                                {pausedCount > 0 && (
-                                  <span className="text-muted-foreground">⏸ {pausedCount} paused</span>
-                                )}
-                              </p>
-                              <div className="flex gap-2 flex-wrap">
-                                {tasks.map((task) => (
-                                  <Badge
-                                    key={task.id}
-                                    variant={task.status === "in_progress" ? "default" : "outline"}
-                                    className="text-xs"
-                                  >
-                                    {task.task_type === "ac_indoor"
-                                      ? "AC Indoor"
-                                      : task.task_type === "ac_outdoor"
-                                        ? "AC Outdoor"
-                                        : task.task_type === "fan"
-                                          ? "Fan"
-                                          : "Exhaust"}
-                                    {task.status === "in_progress" && " ●"}
-                                    {task.status === "paused" && " ⏸"}
-                                  </Badge>
-                                ))}
+                                <span className="truncate font-medium text-gray-700">
+                                  {task.task_type === "ac_indoor"
+                                    ? "AC Indoor"
+                                    : task.task_type === "ac_outdoor"
+                                      ? "AC Outdoor"
+                                      : task.task_type === "fan"
+                                        ? "Fan"
+                                        : "Exhaust"}
+                                </span>
                               </div>
+                            ))}
+                            {tasks.length > 3 && (
+                              <p className="text-xs text-gray-400 pl-5 font-medium">
+                                +{tasks.length - 3} more tasks
+                              </p>
+                            )}
+                          </div>
+
+                          <div className="flex items-center justify-between pt-4 border-t border-gray-100">
+                            <div className="flex gap-2">
+                              <span className="text-xs font-medium text-gray-500">
+                                {tasks.length} tasks total
+                              </span>
                             </div>
-                            <div className="text-right">
-                              <div className="text-2xl font-bold text-accent">{tasks.length}</div>
-                              <p className="text-xs text-muted-foreground bg-background">Active</p>
-                            </div>
+                            <span className="text-black font-bold text-sm">
+                              View
+                            </span>
                           </div>
                         </CardContent>
                       </Card>
@@ -906,23 +931,23 @@ function WorkerDashboard() {
 
             {unacknowledgedRejectedTasks.length > 0 && (
               <section>
-                <h2 className="text-base md:text-lg font-semibold mb-3 text-destructive">
-                  ⚠️ Rejected Tasks - Action Required
+                <h2 className="text-base md:text-lg font-semibold mb-3 text-red-600">
+                  Action Required
                 </h2>
                 <div className="space-y-4">
                   {unacknowledgedRejectedTasks.map((task) => (
-                    <Card key={task.id} className="border-destructive/50 bg-destructive/10">
+                    <Card key={task.id} className="border-l-4 border-red-500 bg-white shadow-sm rounded-r-xl rounded-l-none">
                       <CardHeader className="pb-3">
                         <div className="flex items-start justify-between gap-2">
                           <div className="flex items-start gap-2 flex-1">
-                            <AlertCircle className="h-5 w-5 text-destructive shrink-0 mt-0.5" />
-                            <CardTitle className="text-lg">{task.task_type}</CardTitle>
+                            <AlertCircle className="h-5 w-5 text-red-500 shrink-0 mt-0.5" />
+                            <CardTitle className="text-lg text-black">{task.task_type}</CardTitle>
                           </div>
                           <Button
                             variant="ghost"
                             size="icon"
                             onClick={() => handleDismissRejection(task.id)}
-                            className="h-8 w-8 text-destructive hover:bg-destructive/20"
+                            className="h-8 w-8 text-gray-400 hover:text-black"
                             title="Acknowledge rejection"
                           >
                             <X className="h-4 w-4" />
@@ -930,26 +955,21 @@ function WorkerDashboard() {
                         </div>
                       </CardHeader>
                       <CardContent className="space-y-2">
-                        <p className="text-sm font-medium text-destructive">
-                          <strong>Rejection Reason:</strong> {task.supervisor_remark || "No reason provided"}
+                        <p className="text-sm font-medium text-red-600">
+                          {task.supervisor_remark || "No reason provided"}
                         </p>
                         {task.rejection_proof_photo_url && (
                           <div className="mt-2">
-                            <p className="text-sm font-medium text-destructive mb-2">Proof Photo:</p>
                             <TaskImage
                               src={task.rejection_proof_photo_url}
                               alt="Rejection proof"
                               width={640}
                               height={480}
-                              className="w-full max-w-sm rounded-lg border-2 border-destructive/50 object-cover"
+                              className="w-full max-w-sm rounded-lg border border-gray-200 object-cover"
                             />
                           </div>
                         )}
-                        <p className="text-xs text-muted-foreground">Room: {task.room_number}</p>
-                        <p className="text-xs text-muted-foreground mt-2">
-                          Click X to acknowledge this rejection. The task will remain in your history for
-                          record-keeping.
-                        </p>
+                        <p className="text-xs text-gray-400">Room: {task.room_number}</p>
                       </CardContent>
                     </Card>
                   ))}
@@ -959,31 +979,22 @@ function WorkerDashboard() {
 
             {acknowledgedRejectedTasks.length > 0 && (
               <section>
-                <h2 className="text-base md:text-lg font-semibold mb-3 text-muted-foreground">
-                  📋 Acknowledged Rejections (Record)
+                <h2 className="text-base md:text-lg font-semibold mb-3 text-gray-400">
+                  History
                 </h2>
-                <p className="text-sm text-muted-foreground mb-3">
-                  These tasks are kept for audit and training purposes
-                </p>
                 <div className="space-y-3">
                   {acknowledgedRejectedTasks.map((task) => (
-                    <Card key={task.id} className="border-muted bg-muted/30 opacity-75">
+                    <Card key={task.id} className="border-none bg-gray-50 opacity-75 rounded-xl">
                       <CardContent className="p-4">
                         <div className="flex items-start gap-3">
-                          <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/30">
+                          <Badge variant="outline" className="bg-white text-gray-500 border-gray-200 text-[10px]">
                             REJECTED
                           </Badge>
                           <div className="flex-1 min-w-0">
-                            <h3 className="font-semibold text-sm mb-1">{task.task_type}</h3>
-                            <p className="text-xs text-muted-foreground mb-1">
-                              Room {task.room_number} • {task.supervisor_remark || "No reason provided"}
+                            <h3 className="font-semibold text-sm mb-1 text-gray-700">{task.task_type}</h3>
+                            <p className="text-xs text-gray-400 mb-1">
+                              Room {task.room_number}
                             </p>
-                            {task.rejection_acknowledged_at && (
-                              <p className="text-xs text-muted-foreground">
-                                Acknowledged{" "}
-                                {formatDistanceToNow(task.rejection_acknowledged_at.client)}
-                              </p>
-                            )}
                           </div>
                         </div>
                       </CardContent>
@@ -995,7 +1006,7 @@ function WorkerDashboard() {
 
             {homeInProgressTasks.length > 0 && (
               <section>
-                <h2 className="text-base md:text-lg font-semibold mb-3">In Progress</h2>
+                <h2 className="text-lg font-bold mb-3 text-black">In Progress</h2>
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                   {homeInProgressTasks.map((task) => (
                     <TaskCard key={task.id} task={task} />
@@ -1006,7 +1017,7 @@ function WorkerDashboard() {
 
             {homePendingTasks.length > 0 && (
               <section>
-                <h2 className="text-base md:text-lg font-semibold mb-3">Pending Tasks</h2>
+                <h2 className="text-lg font-bold mb-3 text-black">Pending</h2>
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                   {homePendingTasks.map((task) => (
                     <TaskCard key={task.id} task={task} />
@@ -1017,7 +1028,7 @@ function WorkerDashboard() {
 
             {homeCompletedTasks.length > 0 && (
               <section>
-                <h2 className="text-base md:text-lg font-semibold mb-3">Completed</h2>
+                <h2 className="text-lg font-bold mb-3 text-black">Completed</h2>
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                   {homeCompletedTasks.map((task) => (
                     <TaskCard key={task.id} task={task} />
@@ -1029,78 +1040,74 @@ function WorkerDashboard() {
             {nonRecurringTasks.length === 0 &&
               myActiveMaintenanceTasks.length === 0 &&
               partiallyCompletedRooms.length === 0 && (
-              <div className="flex min-h-[400px] items-center justify-center">
-                <div className="text-center space-y-2">
-                  {recurringTasks.length > 0 ? (
-                    <>
-                      <p className="text-muted-foreground">Recurring tasks are ready in the Tasks tab.</p>
-                      <p className="text-sm text-muted-foreground">
-                        Tap "Tasks" below to start, pause, or complete your recurring work.
-                      </p>
-                    </>
-                  ) : (
-                    <>
-                      <p className="text-muted-foreground">No tasks assigned</p>
-                      {(completedTasks.length > 0 || myCompletedMaintenanceTasksForDisplay.length > 0) && (
-                        <p className="text-sm text-muted-foreground">
-                          You&apos;ve completed {completedTasks.length + myCompletedMaintenanceTasksForDisplay.length} task(s)
-                          today
-                        </p>
+                <div className="flex min-h-[400px] items-center justify-center">
+                  <div className="text-center space-y-4 max-w-sm mx-auto">
+                    <div className="w-20 h-20 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-2">
+                      {recurringTasks.length > 0 ? (
+                        <ListTodo className="w-8 h-8 text-gray-400" />
+                      ) : (
+                        <CheckCircle2 className="w-8 h-8 text-black" />
                       )}
-                    </>
-                  )}
+                    </div>
+                    {recurringTasks.length > 0 ? (
+                      <>
+                        <p className="text-lg font-bold text-black">Recurring tasks ready</p>
+                        <p className="text-sm text-gray-500">
+                          Check the Tasks tab to continue.
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <p className="text-lg font-bold text-black">All caught up</p>
+                        {(completedTasks.length > 0 || myCompletedMaintenanceTasksForDisplay.length > 0) && (
+                          <p className="text-sm text-gray-500">
+                            You've completed <span className="font-bold text-black">{completedTasks.length + myCompletedMaintenanceTasksForDisplay.length}</span> tasks today.
+                          </p>
+                        )}
+                        {completedTasks.length === 0 && myCompletedMaintenanceTasksForDisplay.length === 0 && (
+                          <p className="text-sm text-gray-500">
+                            No tasks assigned yet.
+                          </p>
+                        )}
+                      </>
+                    )}
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
           </main>
         )
     }
   }
 
   return (
-    <div className="flex flex-col h-screen bg-muted/30">
-      <header className="border-b bg-background sticky top-0 z-40 shrink-0">
-        <div className="container mx-auto flex items-center justify-between px-3 sm:px-4 py-3 sm:py-4 gap-2 sm:gap-4">
-          <div className="min-w-0 flex-1">
-            <h1 className="text-lg sm:text-xl md:text-2xl font-bold truncate">
-              {activeTab === "home"
-                ? "My Tasks"
-                : activeTab === "tasks"
-                  ? "All Tasks"
-                  : activeTab === "profile"
-                    ? "Profile"
-                    : "Schedule"}
-            </h1>
-            {activeTab !== "scheduled" && (
-              <p className="text-xs sm:text-sm text-muted-foreground truncate">
-                {user?.name}
-                {departmentDisplay && (
-                  <span className="ml-1 text-muted-foreground hidden sm:inline">- {departmentDisplay}</span>
-                )}
-                {(inProgressTasks.length > 0 || myActiveMaintenanceTasks.length > 0) && (
-                  <span className="ml-2 text-accent font-medium">● Busy</span>
-                )}
-                {inProgressTasks.length === 0 && myActiveMaintenanceTasks.length === 0 && (
-                  <span className="ml-2 text-muted-foreground">○ Available</span>
-                )}
+    <div className="flex flex-col h-screen bg-[#F6F6F6]">
+      {activeTab === "home" && (
+        <header className="bg-white sticky top-0 z-40 shrink-0 border-b border-gray-100 shadow-[0_4px_20px_-4px_rgba(0,0,0,0.02)]">
+          <div className="container mx-auto flex items-center justify-between px-6 py-5">
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight text-black">
+                Hi, {user?.name?.split(" ")[0]}
+              </h1>
+              <p className="text-sm text-gray-500 mt-1 font-medium">
+                {inProgressTasks.length > 0 || myActiveMaintenanceTasks.length > 0 
+                  ? "You have active tasks" 
+                  : "You are online"}
               </p>
-            )}
-          </div>
-          <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+            </div>
             <Button
-              variant="outline"
-              size="sm"
+              variant="ghost"
+              size="icon"
               onClick={handleLogout}
-              className="min-h-[44px] min-w-[44px] px-2 sm:px-3 bg-transparent"
+              className="rounded-full h-10 w-10 hover:bg-gray-50 text-gray-400 hover:text-gray-600 transition-all duration-200"
+              title="Logout"
             >
-              <LogOut className="h-4 w-4 sm:h-5 sm:w-5 sm:mr-2" />
-              <span className="hidden sm:inline">Logout</span>
+              <LogOut className="h-[18px] w-[18px]" />
             </Button>
           </div>
-        </div>
-      </header>
+        </header>
+      )}
 
-      <div className="flex-1 overflow-y-auto pb-20">{renderContent()}</div>
+      <div className={`flex-1 overflow-y-auto pb-24 ${activeTab !== "home" ? "pt-6" : ""}`}>{renderContent()}</div>
 
       <BottomNav activeTab={activeTab} onTabChange={setActiveTab} />
     </div>
@@ -1110,7 +1117,9 @@ function WorkerDashboard() {
 export default function WorkerPage() {
   return (
     <ProtectedRoute allowedRoles={["worker", "front_office"]}>
-      <WorkerDashboard />
+      <Suspense fallback={<div className="flex h-screen items-center justify-center bg-[#F6F6F6]"><div className="animate-pulse text-gray-400">Loading...</div></div>}>
+        <WorkerDashboard />
+      </Suspense>
     </ProtectedRoute>
   )
 }

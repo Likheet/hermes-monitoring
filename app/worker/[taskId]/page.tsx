@@ -346,9 +346,9 @@ function TaskDetail({ params }: TaskDetailProps) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-4 p-4">
         <p className="text-muted-foreground">Task not found</p>
-        <Button onClick={() => router.push("/worker")} variant="outline">
+        <Button onClick={() => router.back()} variant="outline">
           <ArrowLeft className="mr-2 h-4 w-4" />
-          Back to Dashboard
+          Go Back
         </Button>
       </div>
     )
@@ -618,7 +618,7 @@ function TaskDetail({ params }: TaskDetailProps) {
           <Button
             variant="ghost"
             size="icon"
-            onClick={() => router.push("/worker")}
+            onClick={() => router.back()}
             className="shrink-0 min-h-[44px] min-w-[44px]"
           >
             <ArrowLeft className="h-5 w-5" />

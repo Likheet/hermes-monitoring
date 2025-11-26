@@ -271,6 +271,7 @@ export function TaskProvider({
     ),
   )
   const categorizedPhotoCacheRef = useRef(new Map<string, CategorizedPhotos | null>())
+  const pendingTaskGenerationRef = useRef(new Set<string>())
 
   /**
    * Merges incoming tasks with previous tasks while preserving cached photos.
@@ -706,8 +707,8 @@ export function TaskProvider({
   )
 
   const refreshMaintenanceData = useCallback(
-    (options?: RefreshOptions & { cleanupOrphans?: boolean }) => {
-      const { useGlobalLoader = true, cleanupOrphans = false, ...loadOptions } = options ?? {}
+    (options?: RefreshOptions & { cleanupOrphans?: boolean; generateMissingTasks?: boolean }) => {
+      const { useGlobalLoader = true, cleanupOrphans = false, generateMissingTasks = false, ...loadOptions } = options ?? {}
 
       const execute = async () => {
         try {
@@ -726,6 +727,28 @@ export function TaskProvider({
           console.log(`[v0] Loaded ${schedulesData.length} maintenance schedules and ${tasksData.length} maintenance tasks`)
           setSchedules(schedulesData)
           setMaintenanceTasks(tasksData)
+
+          // Check for active schedules that need task generation
+          if (generateMissingTasks && schedulesData.length > 0) {
+            const currentDate = new Date()
+            const currentMonth = currentDate.getMonth() + 1
+            const currentYear = currentDate.getFullYear()
+
+            for (const schedule of schedulesData) {
+              if (!schedule.active) continue
+
+              // Check if this schedule has any tasks for current period
+              const existingTasks = tasksData.filter(
+                (t) => t.schedule_id === schedule.id && t.period_month === currentMonth && t.period_year === currentYear
+              )
+
+              if (existingTasks.length === 0) {
+                console.log(`[v0] Schedule ${schedule.id} (${schedule.task_type}) has no tasks for ${currentMonth}/${currentYear}. Will generate after context ready.`)
+                // Store schedule ID to generate tasks later (after component is fully initialized)
+                pendingTaskGenerationRef.current.add(schedule.id)
+              }
+            }
+          }
         } catch (error) {
           console.error("Error loading maintenance data from Supabase:", error)
         }
@@ -954,7 +977,7 @@ export function TaskProvider({
       try {
         await Promise.all([
           refreshDashboardSnapshot({ useGlobalLoader: false }),
-          refreshMaintenanceData({ useGlobalLoader: false, cleanupOrphans: true }),
+          refreshMaintenanceData({ useGlobalLoader: false, cleanupOrphans: true, generateMissingTasks: true }),
         ])
       } catch (error) {
         console.error("Error loading data:", error)
@@ -1800,19 +1823,32 @@ export function TaskProvider({
 
     const tasksToPersist: MaintenanceTask[] = []
 
-    roomsToGenerate.forEach((room) => {
-      const maintenanceItems = getMaintenanceItemsForRoom(room.number)
+    // Special handling for lift maintenance - these are building-level tasks, not room-level
+    // A Block has 2 lifts, B Block has 1 lift
+    if (schedule.task_type === "lift") {
+      // Generate lift tasks for each block based on area
+      const liftsToGenerate: { liftId: string; block: string; description: string }[] = []
+      
+      if (schedule.area === "both" || schedule.area === "a_block") {
+        liftsToGenerate.push(
+          { liftId: "A-Lift-1", block: "A", description: "Lift 1 - A Block" },
+          { liftId: "A-Lift-2", block: "A", description: "Lift 2 - A Block" },
+        )
+      }
+      if (schedule.area === "both" || schedule.area === "b_block") {
+        liftsToGenerate.push(
+          { liftId: "B-Lift-1", block: "B", description: "Lift 1 - B Block" },
+        )
+      }
 
-      const filteredItems = maintenanceItems.filter((item) => taskTypesToGenerate.includes(item.type))
-
-      filteredItems.forEach((item) => {
+      liftsToGenerate.forEach((lift) => {
         const newTask: MaintenanceTask = {
           id: generateUuid(),
           schedule_id: schedule.id,
-          room_number: room.number,
-          task_type: item.type,
-          location: item.location,
-          description: `${item.description} - room ${room.number}`,
+          lift_id: lift.liftId,
+          task_type: "lift",
+          location: lift.block + " Block",
+          description: lift.description,
           status: "pending",
           photos: [],
           categorized_photos: {
@@ -1823,13 +1859,45 @@ export function TaskProvider({
           period_month: currentMonth,
           period_year: currentYear,
           created_at: new Date().toISOString(),
-          expected_duration_minutes: DEFAULT_MAINTENANCE_DURATION[item.type] ?? DEFAULT_MAINTENANCE_DURATION.all,
+          expected_duration_minutes: DEFAULT_MAINTENANCE_DURATION.lift ?? 60,
         }
         tasksToPersist.push(newTask)
       })
-    })
 
-    console.log("[v0] Generated", tasksToPersist.length, "maintenance tasks")
+      console.log("[v0] Generated", tasksToPersist.length, "lift maintenance tasks")
+    } else {
+      // Room-based tasks (AC, fan, exhaust)
+      roomsToGenerate.forEach((room) => {
+        const maintenanceItems = getMaintenanceItemsForRoom(room.number)
+
+        const filteredItems = maintenanceItems.filter((item) => taskTypesToGenerate.includes(item.type))
+
+        filteredItems.forEach((item) => {
+          const newTask: MaintenanceTask = {
+            id: generateUuid(),
+            schedule_id: schedule.id,
+            room_number: room.number,
+            task_type: item.type,
+            location: item.location,
+            description: `${item.description} - room ${room.number}`,
+            status: "pending",
+            photos: [],
+            categorized_photos: {
+              before_photos: [],
+              during_photos: [],
+              after_photos: [],
+            },
+            period_month: currentMonth,
+            period_year: currentYear,
+            created_at: new Date().toISOString(),
+            expected_duration_minutes: DEFAULT_MAINTENANCE_DURATION[item.type] ?? DEFAULT_MAINTENANCE_DURATION.all,
+          }
+          tasksToPersist.push(newTask)
+        })
+      })
+
+      console.log("[v0] Generated", tasksToPersist.length, "maintenance tasks")
+    }
 
     if (tasksToPersist.length === 0) {
       return
@@ -1851,6 +1919,27 @@ export function TaskProvider({
       console.warn("[v0] Failed to persist maintenance tasks:", failedTasks)
     }
   }
+
+  // Effect to process pending task generations after initial load
+  useEffect(() => {
+    if (pendingTaskGenerationRef.current.size === 0) return
+    if (schedules.length === 0) return
+
+    const processPending = async () => {
+      const pendingIds = Array.from(pendingTaskGenerationRef.current)
+      pendingTaskGenerationRef.current.clear()
+
+      for (const scheduleId of pendingIds) {
+        const schedule = schedules.find((s) => s.id === scheduleId)
+        if (schedule && schedule.active) {
+          console.log(`[v0] Generating missing tasks for schedule ${scheduleId} (${schedule.task_type})`)
+          await generateMaintenanceTasksFromSchedule(schedule)
+        }
+      }
+    }
+
+    void processPending()
+  }, [schedules])
 
   const updateMaintenanceTask = (taskId: string, updates: Partial<MaintenanceTask>) => {
     console.log("[v0] Updating maintenance task:", taskId, updates)

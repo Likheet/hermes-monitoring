@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { ArrowLeft, ChevronDown, ChevronRight } from "lucide-react"
 import { useTasks } from "@/lib/task-context"
@@ -16,11 +16,32 @@ export default function MaintenanceRoomPage() {
   const { maintenanceTasks } = useTasks()
 
   const [expandedTaskType, setExpandedTaskType] = useState<string | null>(null)
+  const [isRedirecting, setIsRedirecting] = useState(false)
 
-  const tasks = maintenanceTasks.filter((t) => t.room_number === roomNumber)
+  // Check if this is a lift task (lift IDs look like "A-Lift-1", "B-Lift-1", etc.)
+  const isLiftTask = roomNumber.includes("Lift")
+  
+  // For lift tasks, filter by lift_id; for room tasks, filter by room_number
+  const tasks = isLiftTask
+    ? maintenanceTasks.filter((t) => t.lift_id === roomNumber || t.task_type === "lift" && t.location?.includes(roomNumber.split("-")[0]))
+    : maintenanceTasks.filter((t) => t.room_number === roomNumber)
+
+  // For lift tasks, if we have exactly one task, navigate directly to the task detail page
+  const singleLiftTask = isLiftTask && tasks.length === 1 ? tasks[0] : null
+
+  // Redirect for single lift task - must be in useEffect to avoid render-time navigation
+  // Use replace() to avoid adding to history stack (prevents back button loop)
+  useEffect(() => {
+    if (singleLiftTask && !isRedirecting) {
+      setIsRedirecting(true)
+      const liftLocation = singleLiftTask.location || singleLiftTask.lift_id || "Lift"
+      router.replace(`/worker/maintenance/${roomNumber}/lift/${encodeURIComponent(liftLocation)}`)
+    }
+  }, [singleLiftTask, roomNumber, router, isRedirecting])
 
   console.log("[v0] Room page loaded:", {
     roomNumber,
+    isLiftTask,
     totalTasks: tasks.length,
     taskTypes: Array.from(new Set(tasks.map((t) => t.task_type))),
   })
@@ -41,13 +62,26 @@ export default function MaintenanceRoomPage() {
   const totalTasks = tasks.length
   const completedTasks = tasks.filter((t) => t.status === "completed").length
 
-  const currentRoomIndex = ALL_ROOMS.findIndex((r) => r.number === roomNumber)
+  // For room navigation, only applicable to actual rooms, not lifts
+  const currentRoomIndex = isLiftTask ? -1 : ALL_ROOMS.findIndex((r) => r.number === roomNumber)
   const previousRoom = currentRoomIndex > 0 ? ALL_ROOMS[currentRoomIndex - 1] : null
   const nextRoom = currentRoomIndex < ALL_ROOMS.length - 1 ? ALL_ROOMS[currentRoomIndex + 1] : null
+
+  // Entity label for display
+  const entityLabel = isLiftTask ? "Lift" : "Room"
 
   const handleLocationSelect = (taskType: string, location: string) => {
     console.log("[v0] Navigating to task:", { roomNumber, taskType, location })
     router.push(`/worker/maintenance/${roomNumber}/${taskType}/${encodeURIComponent(location)}`)
+  }
+
+  // Show loading state while redirecting for single lift task
+  if (singleLiftTask || isRedirecting) {
+    return (
+      <div className="min-h-screen bg-muted/30 flex items-center justify-center">
+        <p className="text-muted-foreground">Loading lift maintenance...</p>
+      </div>
+    )
   }
 
   if (tasks.length === 0) {
@@ -62,13 +96,13 @@ export default function MaintenanceRoomPage() {
               <ArrowLeft className="w-6 h-6 text-muted-foreground" />
             </button>
             <div className="flex-1">
-              <h1 className="text-2xl font-bold text-foreground">Room {roomNumber}</h1>
+              <h1 className="text-2xl font-bold text-foreground">{entityLabel} {roomNumber}</h1>
               <p className="text-sm text-muted-foreground">No maintenance tasks scheduled</p>
             </div>
           </div>
         </div>
         <div className="container mx-auto px-4 py-12 text-center">
-          <p className="text-muted-foreground">No maintenance tasks are currently scheduled for this room.</p>
+          <p className="text-muted-foreground">No maintenance tasks are currently scheduled for this {entityLabel.toLowerCase()}.</p>
           <Button onClick={() => router.back()} variant="outline" className="mt-4">
             <ArrowLeft className="mr-2 h-4 w-4" />
             Back to Calendar
@@ -90,7 +124,7 @@ export default function MaintenanceRoomPage() {
             <ArrowLeft className="w-6 h-6 text-muted-foreground" />
           </button>
           <div className="flex-1">
-            <h1 className="text-2xl font-bold text-foreground">Room {roomNumber}</h1>
+            <h1 className="text-2xl font-bold text-foreground">{entityLabel} {roomNumber}</h1>
             <p className="text-sm text-muted-foreground">
               {completedTasks}/{totalTasks} tasks completed
             </p>
@@ -211,7 +245,8 @@ export default function MaintenanceRoomPage() {
         })}
       </div>
 
-      {/* Navigation Buttons */}
+      {/* Navigation Buttons - Only for rooms, not lifts */}
+      {!isLiftTask && (previousRoom || nextRoom) && (
       <div className="fixed bottom-0 left-0 right-0 bg-card border-t-2 border-border p-4">
         <div className="container mx-auto flex gap-3">
           {previousRoom && (
@@ -238,6 +273,7 @@ export default function MaintenanceRoomPage() {
           )}
         </div>
       </div>
+      )}
     </div>
   )
 }

@@ -60,8 +60,8 @@ export function BottomNav({ activeTab, onTabChange }: BottomNavProps) {
   }
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 pb-safe">
-      <div className="flex items-center justify-around h-16 px-2">
+    <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-gray-100 bg-white pb-safe shadow-[0_-4px_20px_-4px_rgba(0,0,0,0.02)]">
+      <div className="flex items-center justify-around h-[72px] px-2">
         {navItems.map((item) => {
           const isActive = activeTab === item.id
           const Icon = item.icon
@@ -71,23 +71,23 @@ export function BottomNav({ activeTab, onTabChange }: BottomNavProps) {
               key={item.id}
               onClick={() => handleTabClick(item.id)}
               className={cn(
-                "relative flex flex-col items-center justify-center gap-1 flex-1 h-full min-w-[64px] rounded-lg",
-                "active:scale-95 transition-all duration-150",
+                "relative flex flex-col items-center justify-center gap-1.5 flex-1 h-full min-w-[64px] mx-1",
+                "active:scale-95 transition-all duration-200",
                 isActive
-                  ? "text-primary bg-primary/10"
-                  : "text-muted-foreground hover:text-foreground hover:bg-muted/50",
+                  ? "text-black"
+                  : "text-gray-400 hover:text-gray-600",
               )}
               aria-label={item.label}
               aria-current={isActive ? "page" : undefined}
             >
               {item.showDot && (
                 <>
-                  <span className="absolute top-2 right-6 h-2 w-2 rounded-full bg-red-500" aria-hidden="true" />
+                  <span className="absolute top-3 right-6 h-2 w-2 rounded-full bg-black ring-2 ring-white" aria-hidden="true" />
                   <span className="sr-only">Recurring tasks pending</span>
                 </>
               )}
-              <Icon className={cn("h-6 w-6 transition-transform", isActive && "scale-110")} />
-              <span className={cn("text-xs font-medium", isActive && "font-semibold")}>{item.label}</span>
+              <Icon className={cn("h-6 w-6 transition-all duration-200", isActive && "stroke-[2.5px]")} />
+              <span className={cn("text-[10px] font-medium tracking-wide uppercase transition-all", isActive && "font-bold")}>{item.label}</span>
             </button>
           )
         })}

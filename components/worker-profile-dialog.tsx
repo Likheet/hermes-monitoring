@@ -73,6 +73,25 @@ export function WorkerProfileDialog({ worker, open, onOpenChange }: WorkerProfil
         )
       : 0
 
+  const speedMetrics = completedTasks.reduce((acc, t) => {
+    if (!t.actual_duration_minutes || !t.expected_duration_minutes || t.expected_duration_minutes === 0) return acc
+    // Skip obvious bad data (actual < 1 minute or more than 10x expected)
+    if (t.actual_duration_minutes < 1 || t.actual_duration_minutes > t.expected_duration_minutes * 10) return acc
+    // Calculate percentage: (expected - actual) / expected * 100
+    // Positive = faster, Negative = slower
+    const percentDiff = ((t.expected_duration_minutes - t.actual_duration_minutes) / t.expected_duration_minutes) * 100
+    return {
+      totalPercent: acc.totalPercent + percentDiff,
+      count: acc.count + 1
+    }
+  }, { totalPercent: 0, count: 0 })
+
+  const rawSpeedPercent = speedMetrics.count > 0 ? speedMetrics.totalPercent / speedMetrics.count : 0
+  // Cap the percentage between -100% and +100% for display
+  const avgSpeedPercent = Math.max(-100, Math.min(100, rawSpeedPercent))
+  const isFaster = avgSpeedPercent >= 0
+  const hasSpeedData = speedMetrics.count > 0
+
   const now = new Date()
   const monthStart = startOfMonth(now)
   const monthEnd = endOfMonth(now)
@@ -108,158 +127,152 @@ export function WorkerProfileDialog({ worker, open, onOpenChange }: WorkerProfil
 
         <div className="space-y-4">
           {/* Profile Header */}
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex flex-col sm:flex-row items-start gap-4">
-                <div className="relative shrink-0 flex flex-col items-center gap-2">
-                  <div className="relative">
-                    {/* Circular progress ring */}
-                    <svg className="absolute inset-0 -rotate-90" width="88" height="88" viewBox="0 0 88 88">
-                      <circle
-                        cx="44"
-                        cy="44"
-                        r="42"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="3"
-                        className="text-muted/20"
-                      />
-                      <circle
-                        cx="44"
-                        cy="44"
-                        r="42"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="3"
-                        strokeDasharray={circumference}
-                        strokeDashoffset={strokeDashoffset}
-                        strokeLinecap="round"
-                        className="text-yellow-500 transition-all duration-500"
-                      />
-                    </svg>
-                    <Avatar className="h-20 w-20 m-1">
-                      <AvatarFallback className="text-2xl">{initials}</AvatarFallback>
-                    </Avatar>
-                  </div>
-                  {/* Rating badge */}
-                  <div className="bg-yellow-50 border-2 border-yellow-500 rounded-full px-3 py-1 flex items-center gap-1.5 shadow-sm">
-                    <Star className="h-4 w-4 fill-yellow-500 text-yellow-500" />
-                    <span className="text-sm font-bold text-foreground">{avgRating}</span>
-                    <span className="text-xs text-muted-foreground">/5</span>
-                  </div>
-                  {tasksWithRating.length > 0 && (
-                    <span className="text-xs text-muted-foreground">
-                      {tasksWithRating.length} {tasksWithRating.length === 1 ? "rating" : "ratings"}
-                    </span>
-                  )}
+          <div className="bg-white rounded-xl p-6 shadow-[0_2px_12px_-4px_rgba(0,0,0,0.08)]">
+            <div className="flex flex-col sm:flex-row items-start gap-6">
+              <div className="relative shrink-0 flex flex-col items-center gap-3">
+                <div className="relative">
+                  {/* Circular progress ring */}
+                  <svg className="absolute inset-0 -rotate-90" width="88" height="88" viewBox="0 0 88 88">
+                    <circle
+                      cx="44"
+                      cy="44"
+                      r="42"
+                      fill="none"
+                      stroke="#F3F4F6"
+                      strokeWidth="3"
+                    />
+                    <circle
+                      cx="44"
+                      cy="44"
+                      r="42"
+                      fill="none"
+                      stroke="black"
+                      strokeWidth="3"
+                      strokeDasharray={circumference}
+                      strokeDashoffset={strokeDashoffset}
+                      strokeLinecap="round"
+                      className="transition-all duration-500"
+                    />
+                  </svg>
+                  <Avatar className="h-20 w-20 m-1 border-2 border-white shadow-sm">
+                    <AvatarFallback className="text-2xl bg-gray-100 text-black font-bold">{initials}</AvatarFallback>
+                  </Avatar>
                 </div>
-
-                <div className="flex-1 min-w-0">
-                  <h2 className="text-xl font-bold">{worker.name}</h2>
-                  <p className="text-sm text-muted-foreground">{worker.role}</p>
-                  <div className="flex flex-wrap items-center gap-2 mt-2">
-                    <Badge variant="secondary">{worker.department}</Badge>
-                    <span className="text-sm text-muted-foreground">{worker.phone || "Not set"}</span>
-                    <span className="text-sm text-muted-foreground">
-                      {worker.shift_start && worker.shift_end
-                        ? formatShiftRange(worker.shift_start, worker.shift_end)
-                        : "Not set"}
-                    </span>
-                  </div>
+                {/* Rating badge */}
+                <div className="bg-black text-white rounded-full px-3 py-1 flex items-center gap-1.5 shadow-sm">
+                  <Star className="h-3.5 w-3.5 fill-white text-white" />
+                  <span className="text-sm font-bold">{avgRating}</span>
                 </div>
+                {tasksWithRating.length > 0 && (
+                  <span className="text-xs text-gray-400 font-medium uppercase tracking-wide">
+                    {tasksWithRating.length} {tasksWithRating.length === 1 ? "rating" : "ratings"}
+                  </span>
+                )}
+              </div>
 
-                <div className="flex flex-col items-start sm:items-end gap-2 min-w-[140px]">
-                  <div className="w-full">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-xs font-medium text-muted-foreground">Rejections</span>
-                      <span className="text-xs font-bold">
-                        {rejectedThisMonth}/{REJECTION_QUOTA}
-                      </span>
-                    </div>
-                    <div className="w-full h-2 bg-muted rounded-full overflow-hidden">
-                      <div
-                        className={`h-full transition-all duration-300 ${
-                          isOverQuota ? "bg-red-600" : rejectionPercentage >= 60 ? "bg-orange-500" : "bg-green-500"
-                        }`}
-                        style={{ width: `${Math.min(rejectionPercentage, 100)}%` }}
-                      />
-                    </div>
-                  </div>
-                  <div className="text-xs text-muted-foreground">
-                    <span className="font-medium">{rejectedThisMonth}</span> this month{" "}
-                    <span className="text-muted-foreground/60">({totalRejectedTasks} total)</span>
-                  </div>
-                  {isOverQuota && (
-                    <Badge variant="destructive" className="text-xs">
-                      Retraining Required
-                    </Badge>
-                  )}
-                  {!isOverQuota && quotaRemaining <= 2 && quotaRemaining > 0 && (
-                    <Badge variant="outline" className="text-xs border-orange-300 text-orange-700">
-                      {quotaRemaining} remaining
-                    </Badge>
-                  )}
+              <div className="flex-1 min-w-0 pt-1">
+                <h2 className="text-2xl font-bold text-black mb-1">{worker.name}</h2>
+                <p className="text-sm text-gray-500 font-medium uppercase tracking-wide mb-3">{worker.role}</p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge variant="secondary" className="bg-gray-100 text-gray-600 hover:bg-gray-200 border-none rounded-lg px-3 py-1">
+                    {worker.department}
+                  </Badge>
+                  <span className="text-sm text-gray-500 px-2 border-l border-gray-200">{worker.phone || "Not set"}</span>
+                  <span className="text-sm text-gray-500 px-2 border-l border-gray-200">
+                    {worker.shift_start && worker.shift_end
+                      ? formatShiftRange(worker.shift_start, worker.shift_end)
+                      : "Not set"}
+                  </span>
                 </div>
               </div>
-            </CardContent>
-          </Card>
+
+              <div className="flex flex-col items-start sm:items-end gap-2 min-w-[140px] bg-gray-50 p-4 rounded-xl w-full sm:w-auto">
+                <div className="w-full">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Rejections</span>
+                    <span className="text-xs font-bold text-black">
+                      {rejectedThisMonth}/{REJECTION_QUOTA}
+                    </span>
+                  </div>
+                  <div className="w-full h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                    <div
+                      className={`h-full transition-all duration-300 rounded-full ${
+                        isOverQuota ? "bg-red-600" : rejectionPercentage >= 60 ? "bg-orange-500" : "bg-black"
+                      }`}
+                      style={{ width: `${Math.min(rejectionPercentage, 100)}%` }}
+                    />
+                  </div>
+                </div>
+                <div className="text-xs text-gray-500 mt-1">
+                  <span className="font-bold text-black">{rejectedThisMonth}</span> this month{" "}
+                  <span className="text-gray-400">({totalRejectedTasks} total)</span>
+                </div>
+                {isOverQuota && (
+                  <Badge variant="destructive" className="text-[10px] uppercase tracking-wider font-bold">
+                    Retraining Required
+                  </Badge>
+                )}
+                {!isOverQuota && quotaRemaining <= 2 && quotaRemaining > 0 && (
+                  <Badge variant="outline" className="text-[10px] uppercase tracking-wider font-bold border-orange-200 text-orange-600 bg-orange-50">
+                    {quotaRemaining} remaining
+                  </Badge>
+                )}
+              </div>
+            </div>
+          </div>
 
           {/* Performance Stats */}
-          <div className="grid gap-3 grid-cols-2 lg:grid-cols-3">
-            <Card>
-              <CardContent className="pt-4">
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-sm font-medium">Total Tasks</p>
-                  <CheckCircle2 className="h-4 w-4 text-muted-foreground" />
-                </div>
-                <div className="text-2xl font-bold">{totalTasks}</div>
-                <p className="text-xs text-muted-foreground">{totalCompletedTasks} completed</p>
-              </CardContent>
-            </Card>
+          <div className="grid gap-4 grid-cols-2 lg:grid-cols-3">
+            <div className="bg-white rounded-xl p-5 shadow-[0_2px_12px_-4px_rgba(0,0,0,0.08)]">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Total Tasks</p>
+                <CheckCircle2 className="h-4 w-4 text-gray-300" />
+              </div>
+              <div className="text-2xl font-bold text-black">{totalTasks}</div>
+              <p className="text-xs text-gray-500 mt-1">{totalCompletedTasks} completed</p>
+            </div>
 
-            <Card>
-              <CardContent className="pt-4">
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-sm font-medium">Completion Rate</p>
-                  <TrendingUp className="h-4 w-4 text-muted-foreground" />
-                </div>
-                <div className="text-2xl font-bold">{completionRate}%</div>
-                <p className="text-xs text-muted-foreground">All time average</p>
-              </CardContent>
-            </Card>
+            <div className="bg-white rounded-xl p-5 shadow-[0_2px_12px_-4px_rgba(0,0,0,0.08)]">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">On-Time</p>
+                <Award className="h-4 w-4 text-gray-300" />
+              </div>
+              <div className="text-2xl font-bold text-black">{onTimeRate}%</div>
+              <p className="text-xs text-gray-500 mt-1">{onTimeTasks.length} tasks</p>
+            </div>
 
-            <Card>
-              <CardContent className="pt-4">
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-sm font-medium">On-Time</p>
-                  <Award className="h-4 w-4 text-muted-foreground" />
-                </div>
-                <div className="text-2xl font-bold">{onTimeRate}%</div>
-                <p className="text-xs text-muted-foreground">{onTimeTasks.length} tasks</p>
-              </CardContent>
-            </Card>
+            <div className="bg-white rounded-xl p-5 shadow-[0_2px_12px_-4px_rgba(0,0,0,0.08)]">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Speed</p>
+                <Clock className="h-4 w-4 text-gray-300" />
+              </div>
+              {hasSpeedData ? (
+                <>
+                  <div className="text-2xl font-bold">
+                    <span className={isFaster ? "text-green-600" : "text-red-600"}>
+                      {isFaster ? "+" : ""}{Math.round(avgSpeedPercent)}%
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">
+                    {isFaster ? "Faster" : "Slower"} than expected
+                  </p>
+                </>
+              ) : (
+                <>
+                  <div className="text-2xl font-bold text-gray-300">—</div>
+                  <p className="text-xs text-gray-500 mt-1">No data yet</p>
+                </>
+              )}
+            </div>
 
-            <Card>
-              <CardContent className="pt-4">
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-sm font-medium">Avg. Time</p>
-                  <Clock className="h-4 w-4 text-muted-foreground" />
-                </div>
-                <div className="text-2xl font-bold">{combinedAvgTime}m</div>
-                <p className="text-xs text-muted-foreground">Per task</p>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardContent className="pt-4">
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-sm font-medium">Issues</p>
-                  <AlertTriangle className="h-4 w-4 text-muted-foreground" />
-                </div>
-                <div className="text-2xl font-bold text-red-600">{totalRejectedTasks}</div>
-                <p className="text-xs text-muted-foreground">Rejected tasks</p>
-              </CardContent>
-            </Card>
+            <div className="bg-white rounded-xl p-5 shadow-[0_2px_12px_-4px_rgba(0,0,0,0.08)]">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Issues</p>
+                <AlertTriangle className="h-4 w-4 text-gray-300" />
+              </div>
+              <div className="text-2xl font-bold text-red-600">{totalRejectedTasks}</div>
+              <p className="text-xs text-gray-500 mt-1">Rejected tasks</p>
+            </div>
           </div>
         </div>
       </DialogContent>

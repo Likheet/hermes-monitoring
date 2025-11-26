@@ -116,7 +116,7 @@ function TasksPage() {
     <div className="min-h-screen bg-muted/30 pb-20">
       <header className="border-b bg-background sticky top-0 z-10">
         <div className="container mx-auto flex items-center gap-4 px-4 py-4">
-          <Button variant="ghost" size="icon" onClick={() => router.push("/worker")}>
+          <Button variant="ghost" size="icon" onClick={() => router.back()}>
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <div>
@@ -147,7 +147,7 @@ function TasksPage() {
         {filteredTasks.length === 0 ? (
           <div className="text-center py-12">
             <p className="text-muted-foreground">No tasks found</p>
-            <Button onClick={() => router.push("/worker")} className="mt-4">
+            <Button onClick={() => router.back()} className="mt-4">
               Back to Dashboard
             </Button>
           </div>

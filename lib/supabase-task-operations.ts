@@ -1409,11 +1409,16 @@ function maintenanceTaskToDatabase(task: MaintenanceTask): DatabaseMaintenanceTa
     typeof task.notes === "string" && task.notes.trim().length > 0 ? task.notes.trim() : null
   const createdAt = task.created_at ? new Date(task.created_at).toISOString() : new Date().toISOString()
 
+  // For lift tasks, store lift_id in room_number field since there's no lift_id column
+  const roomNumberValue = task.task_type === "lift" && task.lift_id 
+    ? task.lift_id 
+    : (task.room_number || null)
+
   return {
     id: task.id,
     schedule_id: scheduleId,
     task_type: task.task_type,
-    room_number: task.room_number || null,
+    room_number: roomNumberValue,
     status: normalizeMaintenanceStatus(task.status),
     assigned_to: assignedTo,
     ac_location: task.location,
@@ -1444,11 +1449,16 @@ function databaseToMaintenanceTask(dbTask: MaintenanceTaskRow): MaintenanceTask 
 
   const notes = typeof dbTask.notes === "string" && dbTask.notes.length > 0 ? dbTask.notes : undefined
   const assignedTo = typeof dbTask.assigned_to === "string" && dbTask.assigned_to.length > 0 ? dbTask.assigned_to : undefined
-  const roomNumber = typeof dbTask.room_number === "string" && dbTask.room_number.length > 0 ? dbTask.room_number : undefined
+  const rawRoomNumber = typeof dbTask.room_number === "string" && dbTask.room_number.length > 0 ? dbTask.room_number : undefined
   const location = typeof dbTask.ac_location === "string" && dbTask.ac_location.length > 0 ? dbTask.ac_location : ""
   const status: MaintenanceTask["status"] = dbTask.status === "verified" ? "completed" : dbTask.status
   const scheduleId = typeof dbTask.schedule_id === "string" ? dbTask.schedule_id : ""
   const taskType = toMaintenanceTaskType(dbTask.task_type)
+  
+  // For lift tasks, the room_number field stores the lift_id
+  const isLiftTask = taskType === "lift"
+  const liftId = isLiftTask ? rawRoomNumber : undefined
+  const roomNumber = isLiftTask ? undefined : rawRoomNumber
   
   // Get period from database or derive from created_at
   const createdDate = dbTask.created_at ? new Date(dbTask.created_at) : new Date()
@@ -1464,8 +1474,9 @@ function databaseToMaintenanceTask(dbTask: MaintenanceTaskRow): MaintenanceTask 
     schedule_id: scheduleId,
     task_type: taskType,
     room_number: roomNumber,
+    lift_id: liftId,
     location,
-    description: `${taskType} - ${roomNumber ?? "N/A"}`,
+    description: isLiftTask ? `Lift Maintenance - ${liftId}` : `${taskType} - ${roomNumber ?? "N/A"}`,
     status,
     assigned_to: assignedTo,
     started_at: startedAt,
