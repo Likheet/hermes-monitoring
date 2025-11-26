@@ -16,12 +16,12 @@
 ### 1. Database Schema
 
 **Tasks Table - Recurring Columns:**
-```sql
+\`\`\`sql
 custom_task_is_recurring BOOLEAN DEFAULT false
 custom_task_recurring_frequency TEXT (daily, weekly, biweekly, monthly)
 custom_task_recurring_time TIME
 custom_task_requires_specific_time BOOLEAN
-```
+\`\`\`
 
 **Key Finding:** These are purely descriptive fields. No triggers, functions, or automation exists to act on them.
 
@@ -65,7 +65,7 @@ custom_task_requires_specific_time BOOLEAN
 ### 4. What Actually Happens
 
 **Current Reality:**
-```
+\`\`\`
 Day 1: Manager creates "Daily Pool Cleaning" task
        ↓
        Task assigned to Worker A
@@ -75,10 +75,10 @@ Day 1: Manager creates "Daily Pool Cleaning" task
        Status: COMPLETED
        ↓
        ❌ NOTHING HAPPENS NEXT
-```
+\`\`\`
 
 **Expected Behavior (NOT IMPLEMENTED):**
-```
+\`\`\`
 Day 1: Manager creates "Daily Pool Cleaning" task
        ↓
        Task assigned to Worker A
@@ -92,7 +92,7 @@ Day 1: Manager creates "Daily Pool Cleaning" task
        ✅ Automatically creates new task for next day
        ↓
        ✅ Assigns to appropriate worker based on shift
-```
+\`\`\`
 
 ---
 
@@ -101,10 +101,10 @@ Day 1: Manager creates "Daily Pool Cleaning" task
 ### 1. ❌ No Cron Jobs / Scheduled Tasks
 
 **Database Check:**
-```sql
+\`\`\`sql
 SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_cron') as pg_cron_enabled;
 -- Result: false
-```
+\`\`\`
 
 **pg_cron extension is NOT enabled** in Supabase project.
 
@@ -121,7 +121,7 @@ SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_cron') as pg_cron_
 - No trigger on task completion checking `custom_task_is_recurring`
 
 **What Should Exist:**
-```sql
+\`\`\`sql
 -- EXAMPLE of what's needed (NOT IMPLEMENTED)
 CREATE OR REPLACE FUNCTION generate_next_recurring_task()
 RETURNS TRIGGER AS $$
@@ -140,7 +140,7 @@ AFTER UPDATE ON tasks
 FOR EACH ROW
 WHEN (NEW.status = 'COMPLETED')
 EXECUTE FUNCTION generate_next_recurring_task();
-```
+\`\`\`
 
 ### 3. ❌ No Recurring Task Scheduler Service
 
@@ -257,7 +257,7 @@ EXECUTE FUNCTION generate_next_recurring_task();
 ### Key Files for Recurring Logic
 
 **Recurring Task Detection:**
-```typescript
+\`\`\`typescript
 // app/worker/page.tsx:42-48
 const isRecurringTask = useCallback(
   (task: Task) =>
@@ -269,25 +269,25 @@ const isRecurringTask = useCallback(
     ),
   [],
 )
-```
+\`\`\`
 
 **Task Creation API:**
-```typescript
+\`\`\`typescript
 // app/api/tasks/route.ts:260-264
 custom_task_is_recurring: custom_task_is_recurring ?? null,
 custom_task_recurring_frequency: custom_task_recurring_frequency ?? null,
 custom_task_requires_specific_time: custom_task_requires_specific_time ?? null,
 custom_task_recurring_time: custom_task_recurring_time ?? null,
-```
+\`\`\`
 
 **Database Schema:**
-```sql
+\`\`\`sql
 -- scripts/001_create_schema.sql:49-52
 custom_task_is_recurring boolean NOT NULL DEFAULT false,
 custom_task_recurring_frequency text,
 custom_task_requires_specific_time boolean,
 custom_task_recurring_time time
-```
+\`\`\`
 
 ---
 

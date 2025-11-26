@@ -46,15 +46,15 @@ The Model Context Protocol allows applications to provide context for LLMs in a 
 
 ## Installation
 
-```bash
+\`\`\`bash
 npm install @modelcontextprotocol/sdk
-```
+\`\`\`
 
 ## Quick Start
 
 Let's create a simple MCP server that exposes a calculator tool and some data. Save the following as `server.ts`:
 
-```typescript
+\`\`\`typescript
 import { McpServer, ResourceTemplate } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import express from 'express';
@@ -128,7 +128,7 @@ app.listen(port, () => {
     console.error('Server error:', error);
     process.exit(1);
 });
-```
+\`\`\`
 
 Install the deps with `npm install @modelcontextprotocol/sdk express zod@3`, and run with `npx -y tsx server.ts`.
 
@@ -147,19 +147,19 @@ Then try asking your agent to add two numbers using its new tool!
 
 The McpServer is your core interface to the MCP protocol. It handles connection management, protocol compliance, and message routing:
 
-```typescript
+\`\`\`typescript
 const server = new McpServer({
     name: 'my-app',
     version: '1.0.0'
 });
-```
+\`\`\`
 
 ### Tools
 
 [Tools](https://modelcontextprotocol.io/specification/latest/server/tools) let LLMs take actions through your server. Tools can perform computation, fetch data and have side effects. Tools should be designed to be model-controlled - i.e. AI models will decide which tools to call,
 and the arguments.
 
-```typescript
+\`\`\`typescript
 // Simple tool with parameters
 server.registerTool(
     'calculate-bmi',
@@ -249,7 +249,7 @@ server.registerTool(
         };
     }
 );
-```
+\`\`\`
 
 #### ResourceLinks
 
@@ -261,7 +261,7 @@ Tools can return `ResourceLink` objects to reference resources without embedding
 
 Resources are designed to be used in an application-driven way, meaning MCP client applications can decide how to expose them. For example, a client could expose a resource picker to the human, or could expose them to the model directly.
 
-```typescript
+\`\`\`typescript
 // Static resource
 server.registerResource(
     'config',
@@ -327,13 +327,13 @@ server.registerResource(
         ]
     })
 );
-```
+\`\`\`
 
 ### Prompts
 
 [Prompts](https://modelcontextprotocol.io/specification/latest/server/prompts) are reusable templates that help humans prompt models to interact with your server. They're designed to be user-driven, and might appear as slash commands in a chat interface.
 
-```typescript
+\`\`\`typescript
 import { completable } from '@modelcontextprotocol/sdk/server/completable.js';
 
 server.registerPrompt(
@@ -393,7 +393,7 @@ server.registerPrompt(
         ]
     })
 );
-```
+\`\`\`
 
 ### Completions
 
@@ -401,7 +401,7 @@ MCP supports argument completions to help users fill in prompt arguments and res
 
 #### Client Usage
 
-```typescript
+\`\`\`typescript
 // Request completions for any argument
 const result = await client.complete({
     ref: {
@@ -419,7 +419,7 @@ const result = await client.complete({
         }
     }
 });
-```
+\`\`\`
 
 ### Display Names and Metadata
 
@@ -436,7 +436,7 @@ For tools specifically, there are two ways to specify a title:
 
 The precedence order is: `title` ΓåÆ `annotations.title` ΓåÆ `name`
 
-```typescript
+\`\`\`typescript
 // Using registerTool (recommended)
 server.registerTool(
     'my_tool',
@@ -458,22 +458,22 @@ server.tool(
     },
     handler
 );
-```
+\`\`\`
 
 When building clients, use the provided utility to get the appropriate display name:
 
-```typescript
+\`\`\`typescript
 import { getDisplayName } from '@modelcontextprotocol/sdk/shared/metadataUtils.js';
 
 // Automatically handles the precedence: title ΓåÆ annotations.title ΓåÆ name
 const displayName = getDisplayName(tool);
-```
+\`\`\`
 
 ### Sampling
 
 MCP servers can request LLM completions from connected clients that support sampling.
 
-```typescript
+\`\`\`typescript
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import express from 'express';
@@ -543,7 +543,7 @@ app.listen(port, () => {
     console.error('Server error:', error);
     process.exit(1);
 });
-```
+\`\`\`
 
 ## Running Your Server
 
@@ -557,7 +557,7 @@ For remote servers, use the Streamable HTTP transport.
 
 For most use cases where session management isn't needed:
 
-```typescript
+\`\`\`typescript
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import express from 'express';
@@ -630,13 +630,13 @@ app.listen(port, () => {
     console.error('Server error:', error);
     process.exit(1);
 });
-```
+\`\`\`
 
 #### With Session Management
 
 In some cases, servers need stateful sessions. This can be achieved by [session management](https://modelcontextprotocol.io/specification/2025-03-26/basic/transports#session-management) in the MCP protocol.
 
-```typescript
+\`\`\`typescript
 import express from 'express';
 import { randomUUID } from 'node:crypto';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -723,13 +723,13 @@ app.get('/mcp', handleSessionRequest);
 app.delete('/mcp', handleSessionRequest);
 
 app.listen(3000);
-```
+\`\`\`
 
 #### CORS Configuration for Browser-Based Clients
 
 If you'd like your server to be accessible by browser-based MCP clients, you'll need to configure CORS headers. The `Mcp-Session-Id` header must be exposed for browser clients to access it:
 
-```typescript
+\`\`\`typescript
 import cors from 'cors';
 
 // Add CORS middleware before your MCP routes
@@ -741,7 +741,7 @@ app.use(
         allowedHeaders: ['Content-Type', 'mcp-session-id']
     })
 );
-```
+\`\`\`
 
 This configuration is necessary because:
 
@@ -755,7 +755,7 @@ The Streamable HTTP transport includes DNS rebinding protection to prevent secur
 
 **Important**: If you are running this server locally, enable DNS rebinding protection:
 
-```typescript
+\`\`\`typescript
 const transport = new StreamableHTTPServerTransport({
   sessionIdGenerator: () => randomUUID(),
   enableDnsRebindingProtection: true,
@@ -763,13 +763,13 @@ const transport = new StreamableHTTPServerTransport({
   allowedHosts: ['127.0.0.1', ...],
   allowedOrigins: ['https://yourdomain.com', 'https://www.yourdomain.com']
 });
-```
+\`\`\`
 
 ### stdio
 
 For local integrations spawned by another process, you can use the stdio transport:
 
-```typescript
+\`\`\`typescript
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 
@@ -782,7 +782,7 @@ const server = new McpServer({
 
 const transport = new StdioServerTransport();
 await server.connect(transport);
-```
+\`\`\`
 
 ### Testing and Debugging
 
@@ -794,7 +794,7 @@ To test your server, you can use the [MCP Inspector](https://github.com/modelcon
 
 A simple server demonstrating resources, tools, and prompts:
 
-```typescript
+\`\`\`typescript
 import { McpServer, ResourceTemplate } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
@@ -856,13 +856,13 @@ server.registerPrompt(
         ]
     })
 );
-```
+\`\`\`
 
 ### SQLite Explorer
 
 A more complex example showing database integration:
 
-```typescript
+\`\`\`typescript
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import sqlite3 from 'sqlite3';
 import { promisify } from 'util';
@@ -949,7 +949,7 @@ server.registerTool(
         }
     }
 );
-```
+\`\`\`
 
 ## Advanced Usage
 
@@ -957,7 +957,7 @@ server.registerTool(
 
 If you want to offer an initial set of tools/prompts/resources, but later add additional ones based on user action or external state change, you can add/update/remove them _after_ the Server is connected. This will automatically emit the corresponding `listChanged` notifications:
 
-```typescript
+\`\`\`typescript
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import express from 'express';
@@ -1073,7 +1073,7 @@ const port = parseInt(process.env.PORT || '3000');
 app.listen(port, () => {
     console.log(`MCP Server running on http://localhost:${port}/mcp`);
 });
-```
+\`\`\`
 
 ### Improving Network Efficiency with Notification Debouncing
 
@@ -1086,7 +1086,7 @@ This feature coalesces multiple, rapid calls for the same notification type into
 
 This is an opt-in feature configured during server initialization.
 
-```typescript
+\`\`\`typescript
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
 const server = new McpServer(
@@ -1110,13 +1110,13 @@ server.registerTool("tool1", ...).disable();
 server.registerTool("tool2", ...).disable();
 server.registerTool("tool3", ...).disable();
 // Only one 'notifications/tools/list_changed' is sent.
-```
+\`\`\`
 
 ### Low-Level Server
 
 For more control, you can use the low-level Server class directly:
 
-```typescript
+\`\`\`typescript
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { ListPromptsRequestSchema, GetPromptRequestSchema } from '@modelcontextprotocol/sdk/types.js';
@@ -1171,13 +1171,13 @@ server.setRequestHandler(GetPromptRequestSchema, async request => {
 
 const transport = new StdioServerTransport();
 await server.connect(transport);
-```
+\`\`\`
 
 ### Eliciting User Input
 
 MCP servers can request additional information from users through the elicitation feature. This is useful for interactive workflows where the server needs user input or confirmation:
 
-```typescript
+\`\`\`typescript
 // Server-side: Restaurant booking tool that asks for alternatives
 server.registerTool(
     'book-restaurant',
@@ -1272,11 +1272,11 @@ server.registerTool(
         };
     }
 );
-```
+\`\`\`
 
 Client-side: Handle elicitation requests
 
-```typescript
+\`\`\`typescript
 // This is a placeholder - implement based on your UI framework
 async function getInputFromUser(
     message: string,
@@ -1297,7 +1297,7 @@ client.setRequestHandler(ElicitRequestSchema, async request => {
         content: userResponse.action === 'accept' ? userResponse.data : undefined
     };
 });
-```
+\`\`\`
 
 **Note**: Elicitation requires client support. Clients must declare the `elicitation` capability during initialization.
 
@@ -1305,7 +1305,7 @@ client.setRequestHandler(ElicitRequestSchema, async request => {
 
 The SDK provides a high-level client interface:
 
-```typescript
+\`\`\`typescript
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 
@@ -1347,13 +1347,13 @@ const result = await client.callTool({
         arg1: 'value'
     }
 });
-```
+\`\`\`
 
 ### Proxy Authorization Requests Upstream
 
 You can proxy OAuth requests to an external authorization provider:
 
-```typescript
+\`\`\`typescript
 import express from 'express';
 import { ProxyOAuthServerProvider } from '@modelcontextprotocol/sdk/server/auth/providers/proxyProvider.js';
 import { mcpAuthRouter } from '@modelcontextprotocol/sdk/server/auth/router.js';
@@ -1389,7 +1389,7 @@ app.use(
         serviceDocumentationUrl: new URL('https://docs.example.com/')
     })
 );
-```
+\`\`\`
 
 This setup allows you to:
 
@@ -1407,7 +1407,7 @@ Clients and servers with StreamableHttp transport can maintain [backwards compat
 
 For clients that need to work with both Streamable HTTP and older SSE servers:
 
-```typescript
+\`\`\`typescript
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
@@ -1432,13 +1432,13 @@ try {
     await client.connect(sseTransport);
     console.log('Connected using SSE transport');
 }
-```
+\`\`\`
 
 #### Server-Side Compatibility
 
 For servers that need to support both Streamable HTTP and older clients:
 
-```typescript
+\`\`\`typescript
 import express from 'express';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
@@ -1492,7 +1492,7 @@ app.post('/messages', async (req, res) => {
 });
 
 app.listen(3000);
-```
+\`\`\`
 
 **Note**: The SSE transport is now deprecated in favor of Streamable HTTP. New implementations should use Streamable HTTP, and existing SSE implementations should plan to migrate.
 

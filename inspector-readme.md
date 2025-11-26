@@ -23,9 +23,9 @@ Note that the proxy is not a network proxy for intercepting traffic. Instead, it
 
 To get up and running right away with the UI, just execute the following:
 
-```bash
+\`\`\`bash
 npx @modelcontextprotocol/inspector
-```
+\`\`\`
 
 The server will start up and the UI will be accessible at `http://localhost:6274`.
 
@@ -33,21 +33,21 @@ The server will start up and the UI will be accessible at `http://localhost:6274
 
 You can also start it in a Docker container with the following command:
 
-```bash
+\`\`\`bash
 docker run --rm --network host -p 6274:6274 -p 6277:6277 ghcr.io/modelcontextprotocol/inspector:latest
-```
+\`\`\`
 
 ### From an MCP server repository
 
 To inspect an MCP server implementation, there's no need to clone this repo. Instead, use `npx`. For example, if your server is built at `build/index.js`:
 
-```bash
+\`\`\`bash
 npx @modelcontextprotocol/inspector node build/index.js
-```
+\`\`\`
 
 You can pass both arguments and environment variables to your MCP server. Arguments are passed directly to your server, while environment variables can be set using the `-e` flag:
 
-```bash
+\`\`\`bash
 # Pass arguments only
 npx @modelcontextprotocol/inspector node build/index.js arg1 arg2
 
@@ -59,13 +59,13 @@ npx @modelcontextprotocol/inspector -e key=value -e key2=$VALUE2 node build/inde
 
 # Use -- to separate inspector flags from server arguments
 npx @modelcontextprotocol/inspector -e key=$VALUE -- node build/index.js -e server-flag
-```
+\`\`\`
 
 The inspector runs both an MCP Inspector (MCPI) client UI (default port 6274) and an MCP Proxy (MCPP) server (default port 6277). Open the MCPI client UI in your browser to use the inspector. (These ports are derived from the T9 dialpad mapping of MCPI and MCPP respectively, as a mnemonic). You can customize the ports if needed:
 
-```bash
+\`\`\`bash
 CLIENT_PORT=8080 SERVER_PORT=9000 npx @modelcontextprotocol/inspector node build/index.js
-```
+\`\`\`
 
 For more details on ways to use the inspector, see the [Inspector section of the MCP docs site](https://modelcontextprotocol.io/docs/tools/inspector). For help with debugging, see the [Debugging guide](https://modelcontextprotocol.io/docs/tools/debugging).
 
@@ -77,7 +77,7 @@ The MCP Inspector provides convenient buttons to export server launch configurat
 
   **STDIO transport example:**
 
-  ```json
+  \`\`\`json
   {
     "command": "node",
     "args": ["build/index.js", "--debug"],
@@ -86,33 +86,33 @@ The MCP Inspector provides convenient buttons to export server launch configurat
       "DEBUG": "true"
     }
   }
-  ```
+  \`\`\`
 
   **SSE transport example:**
 
-  ```json
+  \`\`\`json
   {
     "type": "sse",
     "url": "http://localhost:3000/events",
     "note": "For SSE connections, add this URL directly in Client"
   }
-  ```
+  \`\`\`
 
   **Streamable HTTP transport example:**
 
-  ```json
+  \`\`\`json
   {
     "type": "streamable-http",
     "url": "http://localhost:3000/mcp",
     "note": "For Streamable HTTP connections, add this URL directly in your MCP Client"
   }
-  ```
+  \`\`\`
 
 - **Servers File** - Copies a complete MCP configuration file structure to your clipboard, with your current server configuration added as `default-server`. This can be saved directly as `mcp.json`.
 
   **STDIO transport example:**
 
-  ```json
+  \`\`\`json
   {
     "mcpServers": {
       "default-server": {
@@ -125,11 +125,11 @@ The MCP Inspector provides convenient buttons to export server launch configurat
       }
     }
   }
-  ```
+  \`\`\`
 
   **SSE transport example:**
 
-  ```json
+  \`\`\`json
   {
     "mcpServers": {
       "default-server": {
@@ -139,11 +139,11 @@ The MCP Inspector provides convenient buttons to export server launch configurat
       }
     }
   }
-  ```
+  \`\`\`
 
   **Streamable HTTP transport example:**
 
-  ```json
+  \`\`\`json
   {
     "mcpServers": {
       "default-server": {
@@ -153,7 +153,7 @@ The MCP Inspector provides convenient buttons to export server launch configurat
       }
     }
   }
-  ```
+  \`\`\`
 
 These buttons appear in the Inspector UI after you've configured your server settings, making it easy to save and reuse your configurations.
 
@@ -173,12 +173,12 @@ The MCP Inspector includes a proxy server that can run and communicate with loca
 
 The MCP Inspector proxy server requires authentication by default. When starting the server, a random session token is generated and printed to the console:
 
-```
+\`\`\`
 ≡ƒöæ Session token: 3a1c267fad21f7150b7d624c160b7f09b0b8c4f623c7107bbf13378f051538d4
 
 ≡ƒöù Open inspector with token pre-filled:
    http://localhost:6274/?MCP_PROXY_AUTH_TOKEN=3a1c267fad21f7150b7d624c160b7f09b0b8c4f623c7107bbf13378f051538d4
-```
+\`\`\`
 
 This token must be included as a Bearer token in the Authorization header for all requests to the server. The inspector will automatically open your browser with the token pre-filled in the URL.
 
@@ -194,9 +194,9 @@ The token will be saved in your browser's local storage for future use.
 
 If you need to disable authentication (NOT RECOMMENDED), you can set the `DANGEROUSLY_OMIT_AUTH` environment variable:
 
-```bash
+\`\`\`bash
 DANGEROUSLY_OMIT_AUTH=true npm start
-```
+\`\`\`
 
 ---
 
@@ -210,17 +210,17 @@ Read more about the risks of this vulnerability on Oligo's blog: [Critical RCE V
 
 You can also set the token via the `MCP_PROXY_AUTH_TOKEN` environment variable when starting the server:
 
-```bash
+\`\`\`bash
 MCP_PROXY_AUTH_TOKEN=$(openssl rand -hex 32) npm start
-```
+\`\`\`
 
 #### Local-only Binding
 
 By default, both the MCP Inspector proxy server and client bind only to `localhost` to prevent network access. This ensures they are not accessible from other devices on the network. If you need to bind to all interfaces for development purposes, you can override this with the `HOST` environment variable:
 
-```bash
+\`\`\`bash
 HOST=0.0.0.0 npm start
-```
+\`\`\`
 
 **Warning:** Only bind to all interfaces in trusted network environments, as this exposes the proxy server's ability to execute local processes and both services to network access.
 
@@ -228,9 +228,9 @@ HOST=0.0.0.0 npm start
 
 To prevent DNS rebinding attacks, the MCP Inspector validates the `Origin` header on incoming requests. By default, only requests from the client origin are allowed (respects `CLIENT_PORT` if set, defaulting to port 6274). You can configure additional allowed origins by setting the `ALLOWED_ORIGINS` environment variable (comma-separated list):
 
-```bash
+\`\`\`bash
 ALLOWED_ORIGINS=http://localhost:6274,http://localhost:8000 npm start
-```
+\`\`\`
 
 ### Configuration
 
@@ -250,13 +250,13 @@ These settings can be adjusted in real-time through the UI and will persist acro
 
 The inspector also supports configuration files to store settings for different MCP servers. This is useful when working with multiple servers or complex configurations:
 
-```bash
+\`\`\`bash
 npx @modelcontextprotocol/inspector --config path/to/config.json --server everything
-```
+\`\`\`
 
 Example server configuration file:
 
-```json
+\`\`\`json
 {
   "mcpServers": {
     "everything": {
@@ -276,7 +276,7 @@ Example server configuration file:
     }
   }
 }
-```
+\`\`\`
 
 #### Transport Types in Config Files
 
@@ -284,7 +284,7 @@ The inspector automatically detects the transport type from your config file. Yo
 
 **STDIO (default):**
 
-```json
+\`\`\`json
 {
   "mcpServers": {
     "my-stdio-server": {
@@ -294,11 +294,11 @@ The inspector automatically detects the transport type from your config file. Yo
     }
   }
 }
-```
+\`\`\`
 
 **SSE (Server-Sent Events):**
 
-```json
+\`\`\`json
 {
   "mcpServers": {
     "my-sse-server": {
@@ -307,11 +307,11 @@ The inspector automatically detects the transport type from your config file. Yo
     }
   }
 }
-```
+\`\`\`
 
 **Streamable HTTP:**
 
-```json
+\`\`\`json
 {
   "mcpServers": {
     "my-http-server": {
@@ -320,7 +320,7 @@ The inspector automatically detects the transport type from your config file. Yo
     }
   }
 }
-```
+\`\`\`
 
 #### Default Server Selection
 
@@ -328,14 +328,14 @@ You can launch the inspector without specifying a server name if your config has
 
 1. **A single server** - automatically selected:
 
-```bash
+\`\`\`bash
 # Automatically uses "my-server" if it's the only one
 npx @modelcontextprotocol/inspector --config mcp.json
-```
+\`\`\`
 
 2. **A server named "default-server"** - automatically selected:
 
-```json
+\`\`\`json
 {
   "mcpServers": {
     "default-server": {
@@ -348,23 +348,23 @@ npx @modelcontextprotocol/inspector --config mcp.json
     }
   }
 }
-```
+\`\`\`
 
 > **Tip:** You can easily generate this configuration format using the **Server Entry** and **Servers File** buttons in the Inspector UI, as described in the Servers File Export section above.
 
 You can also set the initial `transport` type, `serverUrl`, `serverCommand`, and `serverArgs` via query params, for example:
 
-```
+\`\`\`
 http://localhost:6274/?transport=sse&serverUrl=http://localhost:8787/sse
 http://localhost:6274/?transport=streamable-http&serverUrl=http://localhost:8787/mcp
 http://localhost:6274/?transport=stdio&serverCommand=npx&serverArgs=arg1%20arg2
-```
+\`\`\`
 
 You can also set initial config settings via query params, for example:
 
-```
+\`\`\`
 http://localhost:6274/?MCP_SERVER_REQUEST_TIMEOUT=60000&MCP_REQUEST_TIMEOUT_RESET_ON_PROGRESS=false&MCP_PROXY_FULL_ADDRESS=http://10.1.1.22:5577
-```
+\`\`\`
 
 Note that if both the query param and the corresponding localStorage item are set, the query param will take precedence.
 
@@ -374,7 +374,7 @@ If you're working on the inspector itself:
 
 Development mode:
 
-```bash
+\`\`\`bash
 npm run dev
 
 # To co-develop with the typescript-sdk package (assuming it's cloned in ../typescript-sdk; set MCP_SDK otherwise):
@@ -382,7 +382,7 @@ npm run dev:sdk "cd sdk && npm run examples:simple-server:w"
 # then open http://localhost:3000/mcp as SHTTP in the inspector.
 # To go back to the deployed SDK version:
 #   npm run unlink:sdk && npm i
-```
+\`\`\`
 
 > **Note for Windows users:**
 > On Windows, use the following command instead:
@@ -393,22 +393,22 @@ npm run dev:sdk "cd sdk && npm run examples:simple-server:w"
 
 Production mode:
 
-```bash
+\`\`\`bash
 npm run build
 npm start
-```
+\`\`\`
 
 ### CLI Mode
 
 CLI mode enables programmatic interaction with MCP servers from the command line, ideal for scripting, automation, and integration with coding assistants. This creates an efficient feedback loop for MCP server development.
 
-```bash
+\`\`\`bash
 npx @modelcontextprotocol/inspector --cli node build/index.js
-```
+\`\`\`
 
 The CLI mode supports most operations across tools, resources, and prompts. A few examples:
 
-```bash
+\`\`\`bash
 # Basic usage
 npx @modelcontextprotocol/inspector --cli node build/index.js
 
@@ -444,7 +444,7 @@ npx @modelcontextprotocol/inspector --cli https://my-mcp-server.example.com --me
 
 # List resources from a remote server
 npx @modelcontextprotocol/inspector --cli https://my-mcp-server.example.com --method resources/list
-```
+\`\`\`
 
 ### UI Mode vs CLI Mode: When to Use Each
 
