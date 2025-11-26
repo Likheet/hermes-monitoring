@@ -11,6 +11,9 @@ import {
   type MaintenanceArea,
   type ScheduleFrequency,
 } from "@/lib/maintenance-types"
+import { useTasks } from "@/lib/task-context"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Label } from "@/components/ui/label"
 
 interface ScheduleFormProps {
   schedule?: MaintenanceSchedule
@@ -23,7 +26,16 @@ export function MaintenanceScheduleForm({ schedule, onClose, onSave }: ScheduleF
   const [area, setArea] = useState<MaintenanceArea>(schedule?.area || "both")
   const [frequency, setFrequency] = useState<ScheduleFrequency>(schedule?.frequency || "monthly")
   const [autoReset, setAutoReset] = useState(schedule?.auto_reset ?? true)
+  const [assignedTo, setAssignedTo] = useState<string[]>(schedule?.assigned_to || [])
   const [saving, setSaving] = useState(false)
+  const { users } = useTasks()
+
+  // Only show maintenance workers (workers in maintenance department)
+  const maintenanceStaff = users.filter(
+    (u) =>
+      (u.department === "maintenance" || u.department === "maintenance-dept") &&
+      (u.role === "worker" || u.role === "supervisor"),
+  )
 
   const handleSubmit = async () => {
     setSaving(true)
@@ -34,6 +46,7 @@ export function MaintenanceScheduleForm({ schedule, onClose, onSave }: ScheduleF
         frequency,
         auto_reset: autoReset,
         active: true,
+        assigned_to: assignedTo.length > 0 ? assignedTo : null,
       }
 
       await onSave(scheduleData)
@@ -133,6 +146,38 @@ export function MaintenanceScheduleForm({ schedule, onClose, onSave }: ScheduleF
               {frequency === "monthly" && "Tasks must be completed before the end of each month"}
               {frequency === "biweekly" && "Tasks must be completed every 2 weeks"}
               {frequency === "semiannual" && "Tasks must be completed every 6 months"}
+            </p>
+          </div>
+
+          {/* Assign To */}
+          <div>
+            <label className="block text-sm font-semibold text-foreground mb-2">Assign To (Optional)</label>
+            <div className="border-2 border-border rounded-lg p-4 max-h-48 overflow-y-auto space-y-2 bg-background">
+              {maintenanceStaff.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No maintenance staff found.</p>
+              ) : (
+                maintenanceStaff.map((user) => (
+                  <div key={user.id} className="flex items-center space-x-2">
+                    <Checkbox
+                      id={`user-${user.id}`}
+                      checked={assignedTo.includes(user.id)}
+                      onCheckedChange={(checked) => {
+                        if (checked) {
+                          setAssignedTo([...assignedTo, user.id])
+                        } else {
+                          setAssignedTo(assignedTo.filter((id) => id !== user.id))
+                        }
+                      }}
+                    />
+                    <Label htmlFor={`user-${user.id}`} className="text-sm cursor-pointer">
+                      {user.name} <span className="text-muted-foreground text-xs">({user.role})</span>
+                    </Label>
+                  </div>
+                ))
+              )}
+            </div>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Selected staff will be assigned tasks in a round-robin fashion.
             </p>
           </div>
 

@@ -29,6 +29,7 @@ export interface MaintenanceSchedule {
   day_range_end?: number | null
   created_by?: string | null
   metadata_version?: number
+  assigned_to?: string[] | null
 }
 
 export const MAINTENANCE_TASK_TYPES: ReadonlyArray<MaintenanceTaskType> = [

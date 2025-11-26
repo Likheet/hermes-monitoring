@@ -11,7 +11,17 @@ interface TaskProviderGateProps {
 }
 
 export function TaskProviderGate({ children }: TaskProviderGateProps) {
-  const { isAuthenticated } = useAuth()
+  const { isAuthenticated, loading } = useAuth()
+
+  // While loading, show a loading state to prevent components from rendering
+  // before we know the authentication status
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-sky-500"></div>
+      </div>
+    )
+  }
 
   if (!isAuthenticated) {
     return <>{children}</>

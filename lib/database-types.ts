@@ -136,6 +136,7 @@ export interface DatabaseMaintenanceSchedule {
   day_range_end?: number | null
   created_by?: string | null
   updated_at?: string | null
+  assigned_to?: string[] | null
 }
 
 // ============================================================================
@@ -331,80 +332,80 @@ function parseShiftTiming(raw: string | null) {
         parsed && typeof parsed.shift2 === "object" && parsed.shift2 !== null
           ? parsed.shift2
           : parsed && typeof parsed.secondary_shift === "object" && parsed.secondary_shift !== null
-          ? parsed.secondary_shift
-          : parsed && typeof parsed.secondaryShift === "object" && parsed.secondaryShift !== null
-          ? parsed.secondaryShift
-          : null
+            ? parsed.secondary_shift
+            : parsed && typeof parsed.secondaryShift === "object" && parsed.secondaryShift !== null
+              ? parsed.secondaryShift
+              : null
 
       const start =
         typeof shift1Source.start === "string"
           ? shift1Source.start
           : typeof parsed.start === "string"
-          ? parsed.start
-          : DEFAULT_SHIFT.start
+            ? parsed.start
+            : DEFAULT_SHIFT.start
       const end =
         typeof shift1Source.end === "string"
           ? shift1Source.end
           : typeof parsed.end === "string"
-          ? parsed.end
-          : DEFAULT_SHIFT.end
+            ? parsed.end
+            : DEFAULT_SHIFT.end
       const breakStart =
         typeof shift1Source.breakStart === "string"
           ? shift1Source.breakStart
           : typeof shift1Source.break_start === "string"
-          ? shift1Source.break_start
-          : typeof parsed.breakStart === "string"
-          ? parsed.breakStart
-          : typeof parsed.break_start === "string"
-          ? parsed.break_start
-          : DEFAULT_SHIFT.breakStart
+            ? shift1Source.break_start
+            : typeof parsed.breakStart === "string"
+              ? parsed.breakStart
+              : typeof parsed.break_start === "string"
+                ? parsed.break_start
+                : DEFAULT_SHIFT.breakStart
       const breakEnd =
         typeof shift1Source.breakEnd === "string"
           ? shift1Source.breakEnd
           : typeof shift1Source.break_end === "string"
-          ? shift1Source.break_end
-          : typeof parsed.breakEnd === "string"
-          ? parsed.breakEnd
-          : typeof parsed.break_end === "string"
-          ? parsed.break_end
-          : DEFAULT_SHIFT.breakEnd
+            ? shift1Source.break_end
+            : typeof parsed.breakEnd === "string"
+              ? parsed.breakEnd
+              : typeof parsed.break_end === "string"
+                ? parsed.break_end
+                : DEFAULT_SHIFT.breakEnd
 
       const shift2Start =
         shift2Source && typeof shift2Source.start === "string"
           ? shift2Source.start
           : typeof parsed.shift2Start === "string"
-          ? parsed.shift2Start
-          : typeof parsed.shift_2_start === "string"
-          ? parsed.shift_2_start
-          : DEFAULT_SHIFT.shift2Start
+            ? parsed.shift2Start
+            : typeof parsed.shift_2_start === "string"
+              ? parsed.shift_2_start
+              : DEFAULT_SHIFT.shift2Start
       const shift2End =
         shift2Source && typeof shift2Source.end === "string"
           ? shift2Source.end
           : typeof parsed.shift2End === "string"
-          ? parsed.shift2End
-          : typeof parsed.shift_2_end === "string"
-          ? parsed.shift_2_end
-          : DEFAULT_SHIFT.shift2End
+            ? parsed.shift2End
+            : typeof parsed.shift_2_end === "string"
+              ? parsed.shift_2_end
+              : DEFAULT_SHIFT.shift2End
       const shift2BreakStart =
         shift2Source && typeof shift2Source.breakStart === "string"
           ? shift2Source.breakStart
           : shift2Source && typeof shift2Source.break_start === "string"
-          ? shift2Source.break_start
-          : typeof parsed.shift2BreakStart === "string"
-          ? parsed.shift2BreakStart
-          : typeof parsed.shift_2_break_start === "string"
-          ? parsed.shift_2_break_start
-          : DEFAULT_SHIFT.shift2BreakStart
+            ? shift2Source.break_start
+            : typeof parsed.shift2BreakStart === "string"
+              ? parsed.shift2BreakStart
+              : typeof parsed.shift_2_break_start === "string"
+                ? parsed.shift_2_break_start
+                : DEFAULT_SHIFT.shift2BreakStart
       const shift2BreakEnd =
         shift2Source && typeof shift2Source.breakEnd === "string"
           ? shift2Source.breakEnd
           : shift2Source && typeof shift2Source.break_end === "string"
-          ? shift2Source.break_end
-          : typeof parsed.shift2BreakEnd === "string"
-          ? parsed.shift2BreakEnd
-          : typeof parsed.shift_2_break_end === "string"
-          ? parsed.shift_2_break_end
-          : DEFAULT_SHIFT.shift2BreakEnd
+            ? shift2Source.break_end
+            : typeof parsed.shift2BreakEnd === "string"
+              ? parsed.shift2BreakEnd
+              : typeof parsed.shift_2_break_end === "string"
+                ? parsed.shift_2_break_end
+                : DEFAULT_SHIFT.shift2BreakEnd
 
       const rawHasShift2 = parsed.hasShift2 ?? parsed.has_shift_2
       const hasShift2 =
@@ -708,8 +709,8 @@ export function databaseTaskToApp(dbTask: DatabaseTask): Task {
     audit_log: auditLog,
     is_custom_task: dbTask.is_custom_task ?? false,
     custom_task_name: dbTask.custom_task_name ?? null,
-  custom_task_category: toCustomTaskCategory(dbTask.custom_task_category),
-  custom_task_priority: toCustomTaskPriority(dbTask.custom_task_priority),
+    custom_task_category: toCustomTaskCategory(dbTask.custom_task_category),
+    custom_task_priority: toCustomTaskPriority(dbTask.custom_task_priority),
     custom_task_photo_required: dbTask.custom_task_photo_required ?? null,
     custom_task_photo_count: dbTask.custom_task_photo_count ?? null,
     custom_task_is_recurring: dbTask.custom_task_is_recurring ?? null,
@@ -790,12 +791,12 @@ export function appUserToDatabase(
     shift2:
       user.has_shift_2 || user.is_dual_shift
         ? {
-            start: user.shift_2_start ?? null,
-            end: user.shift_2_end ?? null,
-            hasBreak: user.shift_2_has_break ?? false,
-            breakStart: user.shift_2_break_start ?? null,
-            breakEnd: user.shift_2_break_end ?? null,
-          }
+          start: user.shift_2_start ?? null,
+          end: user.shift_2_end ?? null,
+          hasBreak: user.shift_2_has_break ?? false,
+          breakStart: user.shift_2_break_start ?? null,
+          breakEnd: user.shift_2_break_end ?? null,
+        }
         : null,
     isDualShift: Boolean(user.is_dual_shift ?? user.has_shift_2),
     hasShift2: Boolean(user.has_shift_2),
@@ -818,9 +819,9 @@ export function appUserToDatabase(
 export function appTaskToDatabase(task: Task): Omit<DatabaseTask, "created_at" | "updated_at"> {
   const assignedAt = task.assigned_at
     ? {
-        client: task.assigned_at.client,
-        server: task.assigned_at.server,
-      }
+      client: task.assigned_at.client,
+      server: task.assigned_at.server,
+    }
     : null
 
   let photoRequirements: Json = []
@@ -854,11 +855,11 @@ export function appTaskToDatabase(task: Task): Omit<DatabaseTask, "created_at" |
     assigned_at: assignedAt as Json,
     estimated_duration: task.expected_duration_minutes ?? null,
     actual_duration: task.actual_duration_minutes ?? null,
-  categorized_photos: (categorizedPhotos as unknown) as Json,
+    categorized_photos: (categorizedPhotos as unknown) as Json,
     worker_remarks: task.worker_remark || null,
     supervisor_remarks: task.supervisor_remark || null,
     quality_rating: task.rating ?? null,
-  requires_verification: task.photo_documentation_required ?? task.photo_required ?? false,
+    requires_verification: task.photo_documentation_required ?? task.photo_required ?? false,
     audit_log: (task.audit_log as unknown) as Json,
     pause_history: (task.pause_history as unknown) as Json,
     photo_requirements: photoRequirements,

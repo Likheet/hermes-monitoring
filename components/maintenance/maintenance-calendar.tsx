@@ -1,29 +1,38 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useMemo } from "react"
 import { ChevronRight, ChevronDown, CheckCircle, Clock, Circle, Search, Calendar } from "lucide-react"
 import { ALL_ROOMS } from "@/lib/location-data"
 import type { MaintenanceTask } from "@/lib/maintenance-types"
-import { useTasks } from "@/lib/task-context"
 import { Input } from "@/components/ui/input"
 
 interface MaintenanceCalendarProps {
   onRoomClick: (roomNumber: string, tasks: MaintenanceTask[]) => void
   searchQuery?: string
   onSearchChange?: (query: string) => void
+  tasks: MaintenanceTask[]
 }
 
-export function MaintenanceCalendar({ onRoomClick, searchQuery = "", onSearchChange }: MaintenanceCalendarProps) {
+export function MaintenanceCalendar({ onRoomClick, searchQuery = "", onSearchChange, tasks: maintenanceTasks }: MaintenanceCalendarProps) {
   const [expandedBlocks, setExpandedBlocks] = useState<Set<string>>(new Set())
   const [expandedFloors, setExpandedFloors] = useState<Set<string>>(new Set())
-  const { maintenanceTasks } = useTasks()
   const [currentMonth] = useState(new Date().getMonth() + 1)
   const [currentYear] = useState(new Date().getFullYear())
 
-  useEffect(() => {
+  // Get only rooms that have actual tasks scheduled
+  const roomsWithTasks = useMemo(() => {
+    if (!maintenanceTasks || maintenanceTasks.length === 0) return new Set<string>()
+    return new Set(maintenanceTasks.map(t => t.room_number))
   }, [maintenanceTasks])
 
-  if (maintenanceTasks.length === 0) {
+  // Filter ALL_ROOMS to only include rooms that have tasks
+  const scheduledRooms = useMemo(() => {
+    if (roomsWithTasks.size === 0) return []
+    return ALL_ROOMS.filter(room => roomsWithTasks.has(room.number))
+  }, [roomsWithTasks])
+
+  // Show empty state if no tasks exist
+  if (!maintenanceTasks || maintenanceTasks.length === 0) {
     return (
       <div className="space-y-4">
         <div className="relative">
@@ -42,7 +51,7 @@ export function MaintenanceCalendar({ onRoomClick, searchQuery = "", onSearchCha
           <Calendar className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
           <h3 className="text-xl font-bold text-foreground mb-2">No Maintenance Scheduled</h3>
           <p className="text-muted-foreground">
-            There are no active maintenance schedules. Contact your administrator to create a maintenance schedule.
+            There are no active maintenance schedules for this month. Contact your administrator to create a maintenance schedule.
           </p>
         </div>
       </div>
@@ -70,6 +79,7 @@ export function MaintenanceCalendar({ onRoomClick, searchQuery = "", onSearchCha
   }
 
   const getRoomTasks = (roomNumber: string): MaintenanceTask[] => {
+    if (!maintenanceTasks || maintenanceTasks.length === 0) return []
     return maintenanceTasks.filter((t) => t.room_number === roomNumber)
   }
 
@@ -83,7 +93,8 @@ export function MaintenanceCalendar({ onRoomClick, searchQuery = "", onSearchCha
     return "pending"
   }
 
-  const filteredRooms = ALL_ROOMS.filter((room) => room.number.includes(searchQuery))
+  // Filter only rooms that have scheduled tasks AND match search query
+  const filteredRooms = scheduledRooms.filter((room) => room.number.includes(searchQuery))
 
   const aBlockRooms = filteredRooms.filter((r) => r.block === "A")
   const bBlockRooms = filteredRooms.filter((r) => r.block === "B")
@@ -93,12 +104,17 @@ export function MaintenanceCalendar({ onRoomClick, searchQuery = "", onSearchCha
 
   const getBlockStats = (block: "A" | "B") => {
     const blockRooms = block === "A" ? aBlockRooms : bBlockRooms
+    if (blockRooms.length === 0) return { completed: 0, total: 0 }
     const completed = blockRooms.filter((r) => getRoomStatus(r.number) === "completed").length
     return { completed, total: blockRooms.length }
   }
 
   const aStats = getBlockStats("A")
   const bStats = getBlockStats("B")
+
+  // Don't show blocks that have no scheduled rooms
+  const showABlock = aBlockRooms.length > 0
+  const showBBlock = bBlockRooms.length > 0
 
   return (
     <div className="space-y-4">
@@ -124,7 +140,8 @@ export function MaintenanceCalendar({ onRoomClick, searchQuery = "", onSearchCha
         </p>
       </div>
 
-      {/* A Block */}
+      {/* A Block - Only show if there are scheduled rooms */}
+      {showABlock && (
       <div className="bg-card border-2 border-border rounded-xl overflow-hidden">
         <button
           onClick={() => toggleBlock("A")}
@@ -145,7 +162,7 @@ export function MaintenanceCalendar({ onRoomClick, searchQuery = "", onSearchCha
             <div className="w-32 bg-muted rounded-full h-2">
               <div
                 className="bg-primary h-2 rounded-full transition-all"
-                style={{ width: `${(aStats.completed / aStats.total) * 100}%` }}
+                style={{ width: `${aStats.total > 0 ? (aStats.completed / aStats.total) * 100 : 0}%` }}
               />
             </div>
           </div>
@@ -188,13 +205,12 @@ export function MaintenanceCalendar({ onRoomClick, searchQuery = "", onSearchCha
                           <button
                             key={room.number}
                             onClick={() => onRoomClick(room.number, roomTasks)}
-                            className={`p-4 rounded-lg border-2 transition-all hover:shadow-md ${
-                              status === "completed"
-                                ? "bg-primary/10 border-primary"
-                                : status === "in_progress"
-                                  ? "bg-accent border-accent-foreground"
-                                  : "bg-card border-border hover:border-muted-foreground"
-                            }`}
+                            className={`p-4 rounded-lg border-2 transition-all hover:shadow-md ${status === "completed"
+                              ? "bg-primary/10 border-primary"
+                              : status === "in_progress"
+                                ? "bg-accent border-accent-foreground"
+                                : "bg-card border-border hover:border-muted-foreground"
+                              }`}
                           >
                             <div className="flex items-center justify-between mb-2">
                               <span className="font-bold text-foreground">{room.number}</span>
@@ -206,7 +222,7 @@ export function MaintenanceCalendar({ onRoomClick, searchQuery = "", onSearchCha
                                 <Circle className="w-5 h-5 text-muted-foreground" />
                               )}
                             </div>
-                            <div className="text-xs text-muted-foreground">{completedCount}/4 tasks</div>
+                            <div className="text-xs text-muted-foreground">{completedCount}/{roomTasks.length} tasks</div>
                           </button>
                         )
                       })}
@@ -218,8 +234,10 @@ export function MaintenanceCalendar({ onRoomClick, searchQuery = "", onSearchCha
           </div>
         )}
       </div>
+      )}
 
-      {/* B Block - Same structure */}
+      {/* B Block - Only show if there are scheduled rooms */}
+      {showBBlock && (
       <div className="bg-card border-2 border-border rounded-xl overflow-hidden">
         <button
           onClick={() => toggleBlock("B")}
@@ -240,7 +258,7 @@ export function MaintenanceCalendar({ onRoomClick, searchQuery = "", onSearchCha
             <div className="w-32 bg-muted rounded-full h-2">
               <div
                 className="bg-primary h-2 rounded-full transition-all"
-                style={{ width: `${(bStats.completed / bStats.total) * 100}%` }}
+                style={{ width: `${bStats.total > 0 ? (bStats.completed / bStats.total) * 100 : 0}%` }}
               />
             </div>
           </div>
@@ -283,13 +301,12 @@ export function MaintenanceCalendar({ onRoomClick, searchQuery = "", onSearchCha
                           <button
                             key={room.number}
                             onClick={() => onRoomClick(room.number, roomTasks)}
-                            className={`p-4 rounded-lg border-2 transition-all hover:shadow-md ${
-                              status === "completed"
-                                ? "bg-primary/10 border-primary"
-                                : status === "in_progress"
-                                  ? "bg-accent border-accent-foreground"
-                                  : "bg-card border-border hover:border-muted-foreground"
-                            }`}
+                            className={`p-4 rounded-lg border-2 transition-all hover:shadow-md ${status === "completed"
+                              ? "bg-primary/10 border-primary"
+                              : status === "in_progress"
+                                ? "bg-accent border-accent-foreground"
+                                : "bg-card border-border hover:border-muted-foreground"
+                              }`}
                           >
                             <div className="flex items-center justify-between mb-2">
                               <span className="font-bold text-foreground">{room.number}</span>
@@ -301,7 +318,7 @@ export function MaintenanceCalendar({ onRoomClick, searchQuery = "", onSearchCha
                                 <Circle className="w-5 h-5 text-muted-foreground" />
                               )}
                             </div>
-                            <div className="text-xs text-muted-foreground">{completedCount}/4 tasks</div>
+                            <div className="text-xs text-muted-foreground">{completedCount}/{roomTasks.length} tasks</div>
                           </button>
                         )
                       })}
@@ -313,6 +330,7 @@ export function MaintenanceCalendar({ onRoomClick, searchQuery = "", onSearchCha
           </div>
         )}
       </div>
+      )}
     </div>
   )
 }

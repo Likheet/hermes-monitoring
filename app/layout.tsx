@@ -62,15 +62,15 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${geistSans.variable} ${geistMono.variable}`}>
       <head>
-  <link rel="icon" href="/favicon.ico" />
-  <link rel="mask-icon" href="/placeholder-logo.svg" color="#0ea5e9" />
+        <link rel="icon" href="/favicon.ico" />
+        <link rel="mask-icon" href="/placeholder-logo.svg" color="#0ea5e9" />
         <link rel="manifest" href="/manifest.json" />
-  <link rel="apple-touch-icon" href="/favicon.ico" />
+        <link rel="apple-touch-icon" href="/favicon.ico" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
       </head>
-      <body className="font-sans antialiased">
+      <body className="font-sans antialiased" suppressHydrationWarning>
         <ErrorBoundary>
           <Suspense fallback={null}>
             <StorageCleaner />

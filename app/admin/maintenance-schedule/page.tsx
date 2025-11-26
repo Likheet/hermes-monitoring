@@ -40,7 +40,15 @@ export default function MaintenanceSchedulePage() {
           description: "The maintenance schedule has been updated successfully.",
         })
       } else {
-        addSchedule(scheduleData as Omit<MaintenanceSchedule, "id" | "created_at">)
+        const result = addSchedule(scheduleData as Omit<MaintenanceSchedule, "id" | "created_at">)
+        if (!result.success) {
+          toast({
+            title: "Duplicate Schedule",
+            description: result.error || "A schedule with these settings already exists.",
+            variant: "destructive",
+          })
+          return // Don't close the form on duplicate error
+        }
         toast({
           title: "Schedule Created",
           description: "The maintenance schedule has been created successfully.",

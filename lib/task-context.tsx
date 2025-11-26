@@ -16,11 +16,15 @@ import {
   loadTasksFromSupabase,
   loadUsersFromSupabase,
   loadShiftSchedulesFromSupabase,
+  loadMaintenanceSchedulesFromSupabase,
+  loadMaintenanceTasksFromSupabase,
   saveTaskToSupabase,
   saveUserToSupabase,
   saveMaintenanceScheduleToSupabase,
   saveMaintenanceTaskToSupabase,
   deleteMaintenanceScheduleFromSupabase,
+  deleteMaintenanceTasksByScheduleId,
+  deleteOrphanedMaintenanceTasks,
   saveShiftScheduleToSupabase,
   deleteShiftScheduleFromSupabase,
   type LoadOptions,
@@ -198,7 +202,7 @@ interface TaskContextType {
   ) => void
   addWorker: (input: CreateUserInput) => Promise<CreateUserResult>
   raiseIssue: (taskId: string, userId: string, issueDescription: string, photos?: string[]) => void
-  addSchedule: (schedule: Omit<MaintenanceSchedule, "id" | "created_at">) => void
+  addSchedule: (schedule: Omit<MaintenanceSchedule, "id" | "created_at">) => { success: boolean; error?: string }
   updateSchedule: (scheduleId: string, updates: Partial<MaintenanceSchedule>) => void
   deleteSchedule: (scheduleId: string) => void
   toggleSchedule: (scheduleId: string) => void
@@ -701,6 +705,37 @@ export function TaskProvider({
     [runWithGlobalLoading],
   )
 
+  const refreshMaintenanceData = useCallback(
+    (options?: RefreshOptions & { cleanupOrphans?: boolean }) => {
+      const { useGlobalLoader = true, cleanupOrphans = false, ...loadOptions } = options ?? {}
+
+      const execute = async () => {
+        try {
+          // Clean up orphaned tasks if requested (tasks whose schedule was deleted)
+          if (cleanupOrphans) {
+            const orphansDeleted = await deleteOrphanedMaintenanceTasks()
+            if (orphansDeleted > 0) {
+              console.log(`[v0] Cleaned up ${orphansDeleted} orphaned maintenance tasks`)
+            }
+          }
+          
+          const [schedulesData, tasksData] = await Promise.all([
+            loadMaintenanceSchedulesFromSupabase({ ...loadOptions, forceRefresh: true }),
+            loadMaintenanceTasksFromSupabase({ ...loadOptions, forceRefresh: true }),
+          ])
+          console.log(`[v0] Loaded ${schedulesData.length} maintenance schedules and ${tasksData.length} maintenance tasks`)
+          setSchedules(schedulesData)
+          setMaintenanceTasks(tasksData)
+        } catch (error) {
+          console.error("Error loading maintenance data from Supabase:", error)
+        }
+      }
+
+      return useGlobalLoader ? runWithGlobalLoading(execute) : execute()
+    },
+    [runWithGlobalLoading],
+  )
+
   const refreshDashboardSnapshot = useCallback(
     (options?: { useGlobalLoader?: boolean; forceRefresh?: boolean }) => {
       const { useGlobalLoader = true, forceRefresh = false } = options ?? {}
@@ -917,7 +952,10 @@ export function TaskProvider({
   useEffect(() => {
     void (async () => {
       try {
-        await refreshDashboardSnapshot({ useGlobalLoader: false })
+        await Promise.all([
+          refreshDashboardSnapshot({ useGlobalLoader: false }),
+          refreshMaintenanceData({ useGlobalLoader: false, cleanupOrphans: true }),
+        ])
       } catch (error) {
         console.error("Error loading data:", error)
         setUsers((prev) => (prev.length > 0 ? prev : mockUsers))
@@ -925,7 +963,7 @@ export function TaskProvider({
         setUsersLoadError(true)
       }
     })()
-  }, [refreshDashboardSnapshot])
+  }, [refreshDashboardSnapshot, refreshMaintenanceData])
 
   useEffect(() => {
     return () => {
@@ -1605,7 +1643,24 @@ export function TaskProvider({
     console.log("[v0] Issue raised:", newIssue)
   }
 
-  const addSchedule = (scheduleData: Omit<MaintenanceSchedule, "id" | "created_at">) => {
+  const addSchedule = (scheduleData: Omit<MaintenanceSchedule, "id" | "created_at">): { success: boolean; error?: string } => {
+    // Check for duplicate: same task_type, area, and frequency
+    const duplicate = schedules.find(
+      (s) =>
+        s.task_type === scheduleData.task_type &&
+        s.area === scheduleData.area &&
+        s.frequency === scheduleData.frequency &&
+        s.active // Only check active schedules
+    )
+
+    if (duplicate) {
+      console.warn("[v0] Duplicate schedule detected:", scheduleData.task_type, scheduleData.area, scheduleData.frequency)
+      return {
+        success: false,
+        error: `A schedule for ${scheduleData.task_type === "all" ? "Complete Maintenance" : scheduleData.task_type.replace("_", " ").toUpperCase()} in ${scheduleData.area === "both" ? "Both Blocks" : scheduleData.area === "a_block" ? "A Block" : "B Block"} with ${scheduleData.frequency} frequency already exists.`,
+      }
+    }
+
     const newSchedule: MaintenanceSchedule = {
       ...scheduleData,
       id: generateUuid(),
@@ -1639,6 +1694,7 @@ export function TaskProvider({
     }
 
     void persistSchedule()
+    return { success: true }
   }
 
   const updateSchedule = (scheduleId: string, updates: Partial<MaintenanceSchedule>) => {
@@ -1669,6 +1725,8 @@ export function TaskProvider({
       return updated
     })
     runWithGlobalLoading(async () => {
+      // Delete maintenance tasks first, then the schedule
+      await deleteMaintenanceTasksByScheduleId(scheduleId)
       await deleteMaintenanceScheduleFromSupabase(scheduleId)
     }).catch((error) => {
       console.error("[v0] Error deleting maintenance schedule:", error)
@@ -1715,6 +1773,16 @@ export function TaskProvider({
     const currentYear = currentDate.getFullYear()
 
     console.log("[v0] Generating maintenance tasks for schedule:", schedule.id, schedule.task_type, schedule.area)
+
+    // Check if tasks already exist for this schedule in the current period
+    const existingTasksForSchedule = maintenanceTasks.filter(
+      (t) => t.schedule_id === schedule.id && t.period_month === currentMonth && t.period_year === currentYear
+    )
+    
+    if (existingTasksForSchedule.length > 0) {
+      console.log(`[v0] Tasks already exist for schedule ${schedule.id} in ${currentMonth}/${currentYear}. Skipping generation.`)
+      return
+    }
 
     let roomsToGenerate = ALL_ROOMS
     if (schedule.area === "a_block") {

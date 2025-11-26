@@ -63,6 +63,8 @@ const TASK_SUMMARY_COLUMNS = [
   "custom_task_recurring_frequency",
   "custom_task_requires_specific_time",
   "custom_task_recurring_time",
+  "custom_task_recurring_days",
+  "department",
 ] as const
 
 type DatabaseTaskSummaryBase = Pick<
@@ -93,8 +95,11 @@ type DatabaseTaskSummaryBase = Pick<
   | "custom_task_photo_count"
   | "custom_task_is_recurring"
   | "custom_task_recurring_frequency"
+
   | "custom_task_requires_specific_time"
   | "custom_task_recurring_time"
+  | "custom_task_recurring_days"
+  | "department"
 >
 
 type DatabaseTaskSummary = DatabaseTaskSummaryBase & {
@@ -202,7 +207,7 @@ function parseCategorizedPhotosJson(value: Json): CategorizedPhotos | null {
 }
 
 function isValidUuid(value: unknown): value is string {
-  return typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
+  return typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)
 }
 
 function normalizeMaintenanceStatus(status: MaintenanceTask["status"]): "pending" | "in_progress" | "completed" | "verified" {
@@ -352,7 +357,7 @@ export async function loadTasksFromSupabase(
 
     const { data, error } = await supabase
       .from("tasks")
-  .select(TASK_SUMMARY_COLUMNS.join(","))
+      .select(TASK_SUMMARY_COLUMNS.join(","))
       .order("updated_at", { ascending: false })
       .limit(limit)
 
@@ -430,13 +435,13 @@ export async function loadTasksFromSupabase(
         verified_at: null,
         verified_by_user_id: null,
         assigned_at: row.assigned_at ?? null,
-    estimated_duration: row.estimated_duration ?? null,
-    actual_duration: row.actual_duration ?? null,
-    categorized_photos: categorizedPhotosMap?.get(row.id) ?? null,
+        estimated_duration: row.estimated_duration ?? null,
+        actual_duration: row.actual_duration ?? null,
+        categorized_photos: categorizedPhotosMap?.get(row.id) ?? null,
         worker_remarks: row.worker_remarks ?? null,
         supervisor_remarks: row.supervisor_remarks ?? null,
         quality_rating: null,
-  requires_verification: row.requires_verification ?? false,
+        requires_verification: row.requires_verification ?? false,
         audit_log: [],
         pause_history: [],
         photo_requirements: row.photo_requirements ?? null,
@@ -451,11 +456,13 @@ export async function loadTasksFromSupabase(
         custom_task_recurring_frequency: row.custom_task_recurring_frequency ?? null,
         custom_task_requires_specific_time: row.custom_task_requires_specific_time ?? null,
         custom_task_recurring_time: row.custom_task_recurring_time ?? null,
+        custom_task_recurring_days: row.custom_task_recurring_days ?? null,
+        department: row.department ?? null,
       } as DatabaseTask),
     )
     setCachedValue("tasks", mapped)
 
-        return mapped
+    return mapped
   } catch (error) {
     logSupabaseFailure("tasks", error)
     const cached = cacheStore.tasks as CacheEntry<Task[]> | undefined
@@ -539,6 +546,8 @@ export async function loadTaskHistoryChunk(
       custom_task_recurring_frequency: row.custom_task_recurring_frequency ?? null,
       custom_task_requires_specific_time: row.custom_task_requires_specific_time ?? null,
       custom_task_recurring_time: row.custom_task_recurring_time ?? null,
+      custom_task_recurring_days: row.custom_task_recurring_days ?? null,
+      department: row.department ?? null,
     } as DatabaseTask),
   )
 
@@ -610,10 +619,10 @@ export async function loadUsersFromSupabase(
       throw new Error(`Failed to load users: ${error.message}`)
     }
 
-  const mapped = ((data ?? []) as DatabaseUser[]).map((dbUser) => databaseUserToApp(dbUser))
+    const mapped = ((data ?? []) as DatabaseUser[]).map((dbUser) => databaseUserToApp(dbUser))
     setCachedValue("users", mapped)
 
-        return mapped
+    return mapped
   } catch (error) {
     logSupabaseFailure("users", error)
     return []
@@ -633,7 +642,7 @@ export async function saveTaskToSupabase(task: Task): Promise<boolean> {
     }
 
     invalidateCache("tasks")
-        return true
+    return true
   } catch (error) {
     console.error("[v0] Exception saving task:", error)
     return false
@@ -657,7 +666,7 @@ export async function saveUserToSupabase(
     }
 
     invalidateCache("users")
-        return true
+    return true
   } catch (error) {
     console.error("[v0] Exception saving user:", error)
     return false
@@ -675,8 +684,8 @@ export async function loadShiftSchedulesFromSupabase(
 
   try {
     const supabase = supabaseOverride ?? createClient()
-    
-        
+
+
     const baseColumns = [
       "id",
       "worker_id",
@@ -727,7 +736,7 @@ export async function loadShiftSchedulesFromSupabase(
       console.warn(
         "[v0] shift_schedules dual-shift columns missing in Supabase; falling back to legacy schema.",
       )
-            const legacyResult = await executeQuery(legacyColumns)
+      const legacyResult = await executeQuery(legacyColumns)
       data = legacyResult.data
       error = legacyResult.error
     }
@@ -787,7 +796,7 @@ export async function loadShiftSchedulesFromSupabase(
     })
 
     setCachedValue("shift_schedules", mapped)
-        return mapped
+    return mapped
   } catch (error) {
     logSupabaseFailure("shift_schedules", error)
     return []
@@ -826,7 +835,7 @@ export async function saveShiftScheduleToSupabase(schedule: ShiftSchedule): Prom
     }
 
     invalidateCache("shift_schedules")
-        return true
+    return true
   } catch (error) {
     console.error("[v0] Exception saving shift schedule:", error)
     return false
@@ -844,7 +853,7 @@ export async function deleteShiftScheduleFromSupabase(scheduleId: string): Promi
     }
 
     invalidateCache("shift_schedules")
-        return true
+    return true
   } catch (error) {
     console.error("[v0] Exception deleting shift schedule:", error)
     return false
@@ -876,7 +885,7 @@ export async function loadMaintenanceSchedulesFromSupabase(
     )
     setCachedValue("maintenance_schedules", mapped)
 
-        return mapped
+    return mapped
   } catch (error) {
     console.error("[v0] Exception loading maintenance schedules:", error)
     return []
@@ -895,7 +904,7 @@ export async function saveMaintenanceScheduleToSupabase(schedule: MaintenanceSch
     }
 
     invalidateCache("maintenance_schedules")
-        return true
+    return true
   } catch (error) {
     console.error("[v0] Exception saving maintenance schedule:", error)
     return false
@@ -913,7 +922,7 @@ export async function deleteMaintenanceScheduleFromSupabase(scheduleId: string):
     }
 
     invalidateCache("maintenance_schedules", "maintenance_tasks")
-        return true
+    return true
   } catch (error) {
     console.error("[v0] Exception deleting maintenance schedule:", error)
     return false
@@ -1018,11 +1027,12 @@ export async function loadMaintenanceTasksFromSupabase(options: LoadOptions = {}
       throw new Error(`Failed to load maintenance tasks: ${error.message}`)
     }
 
-  const rows = Array.isArray(data) ? (data as MaintenanceTaskRow[]) : []
-  const mapped = rows.map(databaseToMaintenanceTask)
+    const rows = Array.isArray(data) ? (data as MaintenanceTaskRow[]) : []
+    console.log(`[v0] Loaded ${rows.length} maintenance tasks from Supabase`)
+    const mapped = rows.map(databaseToMaintenanceTask)
     setCachedValue("maintenance_tasks", mapped)
 
-        return mapped
+    return mapped
   } catch (error) {
     console.error("[v0] Exception loading maintenance tasks:", error)
     return []
@@ -1041,10 +1051,97 @@ export async function saveMaintenanceTaskToSupabase(task: MaintenanceTask): Prom
     }
 
     invalidateCache("maintenance_tasks")
-        return true
+    return true
   } catch (error) {
     console.error("[v0] Exception saving maintenance task:", error)
     return false
+  }
+}
+
+export async function deleteMaintenanceTasksByScheduleId(scheduleId: string): Promise<boolean> {
+  try {
+    const supabase = createClient()
+    const { error } = await supabase
+      .from("maintenance_tasks")
+      .delete()
+      .eq("schedule_id", scheduleId)
+
+    if (error) {
+      console.warn("[v0] Error deleting maintenance tasks by schedule_id from Supabase:", error.message)
+      return false
+    }
+
+    invalidateCache("maintenance_tasks")
+    console.log(`[v0] Deleted maintenance tasks for schedule: ${scheduleId}`)
+    return true
+  } catch (error) {
+    console.warn("[v0] Exception deleting maintenance tasks by schedule_id:", error)
+    return false
+  }
+}
+
+export async function deleteOrphanedMaintenanceTasks(): Promise<number> {
+  try {
+    const supabase = createClient()
+    
+    // Get all valid schedule IDs
+    const { data: schedules, error: scheduleError } = await supabase
+      .from("maintenance_schedules")
+      .select("id")
+    
+    if (scheduleError) {
+      console.warn("[v0] Error fetching schedules for orphan cleanup:", scheduleError.message)
+      return 0
+    }
+    
+    const validScheduleIds = new Set((schedules || []).map(s => s.id))
+    
+    // Get all maintenance tasks
+    const { data: tasks, error: taskError } = await supabase
+      .from("maintenance_tasks")
+      .select("id, schedule_id")
+    
+    if (taskError) {
+      console.warn("[v0] Error fetching tasks for orphan cleanup:", taskError.message)
+      return 0
+    }
+    
+    // Find orphaned tasks (tasks whose schedule_id doesn't exist or is null)
+    const orphanedTaskIds = (tasks || [])
+      .filter(t => !t.schedule_id || !validScheduleIds.has(t.schedule_id))
+      .map(t => t.id)
+    
+    if (orphanedTaskIds.length === 0) {
+      console.log("[v0] No orphaned maintenance tasks found")
+      return 0
+    }
+    
+    // Delete orphaned tasks in batches to avoid query size limits
+    const batchSize = 100
+    let totalDeleted = 0
+    
+    for (let i = 0; i < orphanedTaskIds.length; i += batchSize) {
+      const batch = orphanedTaskIds.slice(i, i + batchSize)
+      const { error: deleteError } = await supabase
+        .from("maintenance_tasks")
+        .delete()
+        .in("id", batch)
+      
+      if (deleteError) {
+        console.warn("[v0] Error deleting orphaned tasks batch:", deleteError.message)
+        continue
+      }
+      totalDeleted += batch.length
+    }
+    
+    if (totalDeleted > 0) {
+      invalidateCache("maintenance_tasks")
+      console.log(`[v0] Deleted ${totalDeleted} orphaned maintenance tasks`)
+    }
+    return totalDeleted
+  } catch (error) {
+    console.warn("[v0] Exception cleaning up orphaned maintenance tasks:", error)
+    return 0
   }
 }
 
@@ -1189,6 +1286,7 @@ function maintenanceScheduleToDatabase(schedule: MaintenanceSchedule) {
     last_completed: lastCompleted,
     next_due: nextDue,
     created_at: timestamp.server,
+    assigned_to: schedule.assigned_to,
   }
 }
 
@@ -1289,6 +1387,7 @@ function databaseToMaintenanceSchedule(dbSchedule: DatabaseMaintenanceSchedule):
     created_by: createdBy ?? undefined,
     updated_at: updatedAt ?? undefined,
     metadata_version: metadataVersion,
+    assigned_to: dbSchedule.assigned_to,
   }
 }
 
@@ -1349,10 +1448,17 @@ function databaseToMaintenanceTask(dbTask: MaintenanceTaskRow): MaintenanceTask 
   const roomNumber = typeof dbTask.room_number === "string" && dbTask.room_number.length > 0 ? dbTask.room_number : undefined
   const location = typeof dbTask.ac_location === "string" && dbTask.ac_location.length > 0 ? dbTask.ac_location : ""
   const status: MaintenanceTask["status"] = dbTask.status === "verified" ? "completed" : dbTask.status
-  const periodMonth = typeof dbTask.period_month === "number" ? dbTask.period_month : 0
-  const periodYear = typeof dbTask.period_year === "number" ? dbTask.period_year : 0
   const scheduleId = typeof dbTask.schedule_id === "string" ? dbTask.schedule_id : ""
   const taskType = toMaintenanceTaskType(dbTask.task_type)
+  
+  // Get period from database or derive from created_at
+  const createdDate = dbTask.created_at ? new Date(dbTask.created_at) : new Date()
+  const periodMonth = typeof dbTask.period_month === "number" && dbTask.period_month > 0 
+    ? dbTask.period_month 
+    : (createdDate.getMonth() + 1)
+  const periodYear = typeof dbTask.period_year === "number" && dbTask.period_year > 0 
+    ? dbTask.period_year 
+    : createdDate.getFullYear()
 
   return {
     id: dbTask.id,
